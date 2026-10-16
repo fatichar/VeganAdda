@@ -1,0 +1,37 @@
+@page "/messages"
+@page "/messages/{Key}"
+@inherits Screen
+<PageTitle>Messages · VeganAdda</PageTitle>
+<span class="eyebrow">Good conversations grow here</span><h1>Messages</h1><Feedback Error="@Error" />
+@if (Session?.Id == null) { <Empty Icon="chat_bubble" Title="A space for your conversations" Text="Sign in to chat privately with accepted connections."><a class="button" href="/signin?returnUrl=%2Fmessages">Sign in</a></Empty> }
+else { <div class="chat-layout @(Key != null ? "has-conversation" : "")"><aside class="conversation-list"><h2>Your conversations</h2>@if (conversations.Count == 0) { <Empty Icon="chat_bubble" Title="No conversations yet" Text="Accept a connection to start chatting."><a href="/connections" class="button secondary">View connections</a></Empty> }@foreach (var c in conversations) { <a class="conversation @(c.Key == Key ? "selected" : "")" href="/messages/@c.Key"><Avatar Name="@c.Name" Photo="@c.Photo" /><div><strong>@c.Name</strong><p>@c.Latest</p><small>@Date(c.Updated)</small></div>@if (c.Unread > 0) { <span class="count">@c.Unread</span> }</a> }</aside><section class="chat-panel" aria-label="Conversation">@if (Key == null) { <Empty Icon="forum" Title="Pull up a chair." Text="Choose a conversation to catch up with your people." /> } else if (messagePage == null) { <p class="loading" role="status">Loading conversation…</p> } else { <div class="chat-header"><a class="icon-button mobile-back" href="/messages" aria-label="Back to conversations"><Icon Name="arrow_back" /></a><Avatar Name="@(selected?.Name ?? "Conversation")" Photo="@(selected?.Photo ?? "")" /><div><h2>@(selected?.Name ?? "Conversation")</h2><small>@(messagePage?.CanMessage == true ? "A private conversation between connections" : "Messaging is closed · history remains available")</small></div><Icon Name="lock" /></div><div class="message-history" aria-live="polite">@if (hasOlder) { <button class="secondary older" @onclick="Older" disabled="@Busy">Load earlier messages</button> }<div class="chat-welcome"><Icon Name="spa" /><p>Kind words. Shared warmth. A little connection.</p><small>Text messages only. Respect each other's boundaries.</small></div>@foreach (var message in history) { <div class="message-row @(message.SenderId == Session.Id ? "mine" : "")" @key="message.Id"><div class="message-bubble">@message.Text</div><small>@Date(message.SentAt) @(message.SenderId == Session.Id ? "· Sent" : "")</small></div> }@foreach (var item in pending.Values.Where(p => p.Key == Key).ToList()) { <div class="message-row mine"><div class="message-bubble">@item.Text</div><small>@(item.Failed ? "Failed to send" : "Sending…")</small>@if (item.Failed) { <button class="text-button" @onclick="() => SendPending(item)">Retry message</button> }</div> }</div>
+@if (messagePage?.CanMessage == true) { <form class="composer" @onsubmit="Send" @onsubmit:preventDefault><label for="message" class="sr-only">Your message</label><textarea id="message" rows="2" maxlength="2000" @bind="text" @bind:event="oninput" placeholder="Write a mindful message…"></textarea><button type="submit" class="icon-button" aria-label="Send message" disabled="@(string.IsNullOrWhiteSpace(text) || sending)"><Icon Name="send" /></button></form> } else { <div class="notice">This conversation is closed. Existing messages are available to both participants until an account is deleted.</div> }<p class="chat-footnote">Messages arrive in-app while you're connected. There are no background push or email notifications.</p> }</section></div> }
+@code {
+    [Parameter] public string? Key { get; set; }
+    List<Conversation> conversations = []; List<Message> history = []; MessagePage? messagePage; string text = "", loadedKey = ""; bool sending, refreshing, refreshAgain, hasOlder; CancellationTokenSource stop = new();
+    Dictionary<Guid, PendingMessage> pending = new(); Conversation? selected => conversations.FirstOrDefault(c => c.Key == Key);
+    class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; }
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); }
+    protected override async Task OnParametersSetAsync() { if (Key != loadedKey) { history.Clear(); messagePage = null; hasOlder = false; loadedKey = Key ?? ""; } if (Session?.Id != null) await Run(Refresh); }
+    protected override async Task OnAfterRenderAsync(bool first) { await base.OnAfterRenderAsync(first); if (first) _ = Poll(); }
+    async Task Poll() { try { using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20)); while (await timer.WaitForNextTickAsync(stop.Token)) { await InvokeAsync(async () => { await Run(Refresh); await Platform.StartRealtime(); StateHasChanged(); }); } } catch (OperationCanceledException) { } }
+    protected override async Task Refresh()
+    {
+        if (Session?.Id == null) return; if (refreshing) { refreshAgain = true; return; } refreshing = true; refreshAgain = false;
+        try { conversations = await Api.Get<List<Conversation>>("conversations"); if (Key != null) { var key = Key; MessagePage result; if (history.Count == 0) { result = await Api.Get<MessagePage>($"conversations/{key}/messages"); hasOlder = result.HasOlder; history = result.Items; } else { do { result = await Api.Get<MessagePage>($"conversations/{key}/messages?after={history[^1].Id}"); if (Key != key) return; history = history.Concat(result.Items).DistinctBy(m => m.Id).OrderBy(m => m.Id).ToList(); } while (result.HasNewer); } if (Key != key) return; messagePage = result; foreach (var m in history) pending.Remove(m.ClientId); if (history.Count > 0) await Api.Send<Ok>($"conversations/{key}/read", new ReadInput(history[^1].Id)); } } finally { refreshing = false; if (refreshAgain) await Refresh(); }
+    }
+    Task Older() => Run(async () => { var older = await Api.Get<MessagePage>($"conversations/{Key}/messages?before={history.FirstOrDefault()?.Id ?? long.MaxValue}"); history = older.Items.Concat(history).DistinctBy(m => m.Id).OrderBy(m => m.Id).ToList(); hasOlder = older.HasOlder; messagePage = older; });
+    async Task Send() { if (string.IsNullOrWhiteSpace(text) || Key == null) return; var item = new PendingMessage(Guid.NewGuid(), text.Trim(), Key); pending[item.Id] = item; text = ""; await SendPending(item); }
+    async Task SendPending(PendingMessage item)
+    {
+        if (sending) return; item.Failed = false; sending = true;
+        try { var result = await Api.Send<Message>($"conversations/{item.Key}/messages", new MessageInput(item.Id, item.Text)); pending.Remove(item.Id); if (item.Key == Key) history = history.Append(result).DistinctBy(m => m.Id).OrderBy(m => m.Id).ToList(); await Refresh(); Error = ""; }
+        catch (Exception e) { item.Failed = true; Error = e is ApiException ? e.Message : "Message couldn't be sent. Retry when your connection returns."; }
+        finally { sending = false; }
+    }
+    public override void Dispose() { stop.Cancel(); stop.Dispose(); base.Dispose(); }
+}
+
+
+
+

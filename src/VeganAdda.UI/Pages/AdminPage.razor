@@ -1,0 +1,56 @@
+@page "/admin"
+@inherits Screen
+<PageTitle>Community administration · VeganAdda</PageTitle>
+<span class="eyebrow">Care for the community</span><h1>Community administration</h1><Feedback Error="@Error" Success="@Success" />
+@if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
+else if (data != null) {
+    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => tab = t">@t</button> }</div>
+    @if (tab == "Events") {
+        <div class="admin-events"><aside class="card"><button @onclick="NewEvent"><Icon Name="add" />Create event</button>@foreach (var item in data.Events) { <button class="admin-event-link secondary" @onclick="() => Edit(item)">@item.Title<span class="badge">@(item.Published ? "Published" : "Draft")</span></button> }</aside>
+        @if (edit != null) {
+            <form class="form-card" @onsubmit="SaveEvent" @onsubmit:preventDefault><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
+                <h2>@(edit.Id == Guid.Empty ? "New gathering" : "Edit gathering")</h2>
+                <label for="event-title">Title</label><input id="event-title" required maxlength="150" @bind="edit.Title" @bind:event="oninput" />
+                <label for="event-description">Description</label><textarea id="event-description" rows="5" maxlength="4000" @bind="edit.Description" @bind:event="oninput"></textarea>
+                <label for="cover">Cover image</label><InputFile id="cover" OnChange="Upload" accept="image/jpeg,image/png,image/webp" />
+                @if (edit.Cover != "") { <img class="admin-cover" src="@edit.Cover" alt="Event cover preview" /> }
+                <label for="event-city">City</label><input id="event-city" maxlength="80" @bind="edit.City" @bind:event="oninput" />
+                <label for="venue">Venue</label><input id="venue" maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
+                <label for="organizer">Organizer</label><input id="organizer" maxlength="150" @bind="edit.Organizer" @bind:event="oninput" />
+                <label for="zone">IANA time zone</label><input id="zone" required @bind="edit.TimeZone" @bind:event="oninput" placeholder="Asia/Kolkata" />
+                <label for="start">Local start date and time</label><input id="start" type="datetime-local" @bind="start" />
+                <label for="end">Local end date and time</label><input id="end" type="datetime-local" @bind="end" />
+                <label for="registration">Official registration / information URL</label><input id="registration" type="url" @bind="edit.Registration" @bind:event="oninput" placeholder="https://" />
+                <label class="check-row"><input type="checkbox" @bind="edit.Featured" />Feature this event</label>
+                <label class="check-row"><input type="checkbox" @bind="edit.Published" />Publish · details are verified and image rights confirmed</label>
+                <button disabled="@Busy">Save event</button><small>Leave Ekatva as a draft until official details and affiliation wording are confirmed by the owner.</small>
+            </fieldset></form>
+        }</div>
+    }
+    else if (tab == "Members") {
+        <p class="muted">Showing up to 200 members. Only consenting public profiles can be featured.</p><div class="admin-rows">
+        @foreach (var p in data.People) {
+            <article class="card admin-row"><div><strong>@p.Name</strong><small>@(p.Suspended ? "Suspended" : "Active") · @(p.Public ? "Public" : "Members only") · @(p.Consent ? "Feature consent" : "No feature consent")</small></div><div class="actions"><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button><button class="secondary small-button danger" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button></div></article>
+        }</div>
+    }
+    else {
+        @if (data.Reports.Count == 0) { <Empty Icon="shield" Title="No reports to review" Text="Member reports will appear here." /> }
+        @foreach (var report in data.Reports) {
+            <article class="card"><div class="section-heading"><h3>@report.Subject</h3><span class="badge">@(report.Resolved ? "Resolved" : "Needs review")</span></div><p>@report.Reason</p><small>@Date(report.Created)</small>
+            @if (!report.Resolved) { <div class="actions"><button class="secondary" @onclick='() => Moderate(report.Id, "resolve")'>Mark reviewed</button>@if (report.SubjectId != Guid.Empty) { <button class="danger-button" @onclick='() => Moderate(report.SubjectId, "suspend")'>Suspend member</button> }</div> }</article>
+        }
+    }
+}
+@code {
+    AdminData? data; EventInput? edit; string tab = "Events"; DateTime? start, end;
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(Refresh); }
+    protected override async Task Refresh() => data = await Api.Get<AdminData>("admin");
+    void NewEvent() { edit = new(); start = end = null; }
+    void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
+    Task SaveEvent() => Run(async () => { try { var zone = TimeZoneInfo.FindSystemTimeZoneById(edit!.TimeZone); edit.Start = start.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start.Value, DateTimeKind.Unspecified), zone)) : null; edit.End = end.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end.Value, DateTimeKind.Unspecified), zone)) : null; } catch { throw new ApiException(400, "Check the time zone and local event times."); } await Api.Send<Ok>("admin/events", edit); await Refresh(); Success = "Event saved."; });
+    Task Moderate(Guid id, string action) => Run(async () => { await Api.Send<Ok>("admin/moderate", new ModerateInput(id, action)); await Refresh(); Success = "Community record updated."; });
+    Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 2 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 2 MB."); await using var stream = e.File.OpenReadStream(2 * 1024 * 1024); edit!.Cover = await Platform.Upload(stream, e.File.Name, e.File.ContentType); });
+}
+
+
+

@@ -1,0 +1,14 @@
+@page "/notifications"
+@inherits Screen
+<PageTitle>Notifications · VeganAdda</PageTitle>
+<div class="narrow"><div class="section-heading"><div><span class="eyebrow">A hello from your community</span><h1>Notifications</h1></div>@if (items?.Unread > 0) { <button class="secondary small-button" @onclick="MarkRead">Mark all seen</button> }</div><Feedback Error="@Error" />
+@if (Session?.Id == null) { <Empty Icon="notifications" Title="Stay in the circle" Text="Sign in to see requests and messages."><a href="/signin?returnUrl=%2Fnotifications" class="button">Sign in</a></Empty> }
+else if (items?.Items.Count == 0) { <Empty Icon="notifications_none" Title="A quiet moment in the Adda" Text="New connection requests and messages will appear here." /> }
+else if (items != null) { <div class="notification-list">@foreach (var n in items.Items) { <a class="notification card @(n.Read ? "" : "unread")" href="@n.Url"><span class="notice-symbol"><Icon Name="@(n.Kind == "message" ? "chat_bubble" : "person_add")" /></span><div><strong>@n.Text</strong><small>@Date(n.Created)</small></div><Icon Name="arrow_forward" /></a> }</div> }<p class="small muted">In-app updates only. No browser push or email notifications are sent.</p></div>
+@code {
+    NotificationList? items;
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(Refresh); }
+    protected override async Task Refresh() => items = await Api.Get<NotificationList>("notifications");
+    Task MarkRead() => Act(async () => { await Api.Send<Ok>("notifications/read"); await Refresh(); });
+}
+

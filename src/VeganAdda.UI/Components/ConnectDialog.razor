@@ -1,0 +1,24 @@
+@if (Person != null)
+{
+    <div class="modal-backdrop" @onkeydown="KeyDown"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="connect-heading" tabindex="-1" @ref="dialog"><span tabindex="0" class="focus-guard" @onfocus="() => sendButton.FocusAsync()"></span>
+        <div class="section-heading"><h2 id="connect-heading">Say hello to @Person.Name.Split(' ')[0]</h2><button class="icon-button" aria-label="Close introduction" @ref="closeButton" @onclick="Close"><Icon Name="close" /></button></div>
+        <p>A small hello can be the start of something good.</p><label for="introduction">Introduction <span class="muted">(optional)</span></label><textarea id="introduction" maxlength="300" rows="4" @bind="intro" @bind:event="oninput" placeholder="Hi! I'd love to connect over our shared interests." @ref="input"></textarea><small>@intro.Length / 300</small>
+        <Feedback Error="@error" />
+        <div class="actions"><button class="secondary" @onclick="Close" disabled="@busy">Cancel</button><button @ref="sendButton" @onclick="Send" disabled="@busy">@(busy ? "Sending…" : "Send request")<Icon Name="arrow_forward" /></button></div>
+    <span tabindex="0" class="focus-guard" @onfocus="() => closeButton.FocusAsync()"></span></section></div>
+}
+@code {
+    [Inject] ICommunityApi Api { get; set; } = default!;
+    [Parameter] public Person? Person { get; set; }
+    [Parameter] public EventCallback Closed { get; set; }
+    [Parameter] public EventCallback Sent { get; set; }
+    string intro = "", error = ""; bool busy, focus; ElementReference input, dialog, closeButton, sendButton;
+    protected override void OnParametersSet() { if (Person != null && !focus) focus = true; }
+    protected override async Task OnAfterRenderAsync(bool first) { if (focus && Person != null) { focus = false; await input.FocusAsync(); } }
+    async Task Close() { intro = ""; error = ""; await Closed.InvokeAsync(); }
+    async Task Send() { if (busy) return; busy = true; try { await Api.Send<Ok>("connections", new ConnectionInput(Person!.Id, intro)); await Sent.InvokeAsync(); await Close(); } catch (Exception e) { error = e is ApiException ? e.Message : "Please check your connection and try again."; } finally { busy = false; } }
+    async Task KeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") await Close(); }
+}
+
+
+

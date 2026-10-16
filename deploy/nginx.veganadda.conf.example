@@ -1,0 +1,31 @@
+# EXAMPLE ONLY. Inspect nginx -T, existing listeners, certificate paths and upstream ports first.
+# Add this as a separate vhost only after owner approval; do not replace nginx.conf.
+server {
+    listen 80;
+    server_name veganadda.com www.veganadda.com;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://veganadda.com$request_uri; }
+}
+server {
+    listen 443 ssl;
+    server_name veganadda.com www.veganadda.com;
+    ssl_certificate /etc/letsencrypt/live/veganadda.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/veganadda.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 3m;
+    # Avoid query-string logging of OAuth authorization codes and personal discovery queries.
+    access_log off;
+    location / {
+        proxy_pass http://127.0.0.1:5080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        # VPS already defines $connection_upgrade in conf.d/dinzer-upgrade.conf.
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_buffering off;
+    }
+}

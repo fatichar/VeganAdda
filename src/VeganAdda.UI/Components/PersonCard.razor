@@ -1,0 +1,21 @@
+<article class="person-card">
+    <div class="person-header"><a class="person-identity" href="/people/@Person.Id"><Avatar Name="@Person.Name" Photo="@Person.Photo" /><div><h3>@Person.Name</h3><span class="location"><Icon Name="location_on" />@Person.City</span></div></a><button class="icon-button" aria-label="@((Person.Saved ? "Unsave " : "Save ") + Person.Name)" @onclick="() => Save.InvokeAsync(Person)"><Icon Name="@(Person.Saved ? "bookmark" : "bookmark_border")" /></button></div>
+    <p class="bio">@Person.Bio</p>
+    <div class="card-label">Interests</div><div class="tags">@foreach (var i in Person.Interests) { <span>#@i.Replace(" ", "")</span> }</div>
+    <div class="intent-line"><Icon Name="diversity_1" /><span>Looking for:</span> @string.Join(", ", Person.LookingFor)</div>
+    <div class="person-footer"><span class="muted small">@(Person.Demo ? "Sample profile · not a real member" : Person.Featured ? "Community spotlight" : "A little more kindness, together")</span>
+        @if (Person.Relationship == "self") { <a class="button small-button secondary" href="/settings">Your profile</a> }
+        else if (Person.Relationship == "connected") { <a class="button small-button" href="/messages/@Pair"><Icon Name="chat_bubble" />Message</a> }
+        else if (Person.Relationship is "sent" or "received") { <a class="button small-button secondary" href="/connections">@(Person.Relationship == "sent" ? "Request sent" : "View request")</a> }
+        else { <button class="small-button" @onclick="() => Connect.InvokeAsync(Person)"><Icon Name="person_add" />Connect</button> }
+    </div>
+</article>
+@code {
+    [Parameter, EditorRequired] public Person Person { get; set; } = default!;
+    [Parameter] public Guid? Viewer { get; set; }
+    [Parameter] public EventCallback<Person> Connect { get; set; }
+    [Parameter] public EventCallback<Person> Save { get; set; }
+    string Pair => string.CompareOrdinal(Viewer.ToString(), Person.Id.ToString()) < 0 ? $"{Viewer:N}_{Person.Id:N}" : $"{Person.Id:N}_{Viewer:N}";
+}
+
+

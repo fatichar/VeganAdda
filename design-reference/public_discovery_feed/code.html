@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><title>VeganAdda</title><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "tertiary-fixed": "#ffdcc3", "error-container": "#ffdad6", "primary-fixed": "#c1ecd4", "surface-container-high": "#ebe8e2", "on-surface-variant": "#414844", "on-background": "#1c1c18", "on-primary-fixed": "#002114", "inverse-primary": "#a5d0b9", "surface-container-lowest": "#ffffff", "on-tertiary-container": "#f48c24", "inverse-surface": "#31312d", "primary": "#012d1d", "surface-dim": "#dcdad4", "on-secondary-fixed": "#3a0b00", "outline": "#717973", "surface-container": "#f0eee8", "surface": "#fcf9f3", "secondary-container": "#fd8c68", "surface-tint": "#3f6653", "primary-fixed-dim": "#a5d0b9", "tertiary-container": "#5e3000", "surface-bright": "#fcf9f3", "surface-container-low": "#f6f3ed", "on-tertiary-fixed": "#2f1500", "tertiary-fixed-dim": "#ffb77d", "on-error": "#ffffff", "on-tertiary-fixed-variant": "#6e3900", "on-secondary-fixed-variant": "#7e2c10", "outline-variant": "#c1c8c2", "error": "#ba1a1a", "on-secondary-container": "#742508", "on-surface": "#1c1c18", "secondary-fixed": "#ffdbd0", "secondary": "#9d4225", "on-error-container": "#93000a", "surface-container-highest": "#e5e2dc", "inverse-on-surface": "#f3f0ea", "on-primary-container": "#86af99", "background": "#fcf9f3", "on-tertiary": "#ffffff", "tertiary": "#3e1e00", "on-primary-fixed-variant": "#274e3d", "surface-variant": "#e5e2dc", "primary-container": "#1b4332", "secondary-fixed-dim": "#ffb59e", "on-primary": "#ffffff", "on-secondary": "#ffffff" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-sm": "0.5rem", "space-lg": "1.5rem", "space-xs": "0.25rem", "gutter": "1.5rem", "space-xl": "2.5rem", "gutter-mobile": "1rem", "margin": "2rem", "space-md": "1rem", "margin-mobile": "1rem" }, "fontFamily": { "headline-xl": ["Plus Jakarta Sans"], "headline-md": ["Plus Jakarta Sans"], "display-lg": ["Plus Jakarta Sans"], "display-lg-mobile": ["Plus Jakarta Sans"], "label-lg": ["Plus Jakarta Sans"], "headline-lg-mobile": ["Plus Jakarta Sans"], "headline-lg": ["Plus Jakarta Sans"], "body-sm": ["Plus Jakarta Sans"], "body-md": ["Plus Jakarta Sans"], "label-sm": ["Plus Jakarta Sans"], "headline-xl-mobile": ["Plus Jakarta Sans"], "body-lg": ["Plus Jakarta Sans"], "label-md": ["Plus Jakarta Sans"], "headline-sm": ["Plus Jakarta Sans"] }, "fontSize": { "headline-xl": ["2.25rem", { "lineHeight": "2.75rem", "letterSpacing": "-0.015em", "fontWeight": "700" }], "headline-md": ["1.25rem", { "lineHeight": "1.75rem", "letterSpacing": "-0.005em", "fontWeight": "600" }], "display-lg": ["3.5rem", { "lineHeight": "4rem", "letterSpacing": "-0.02em", "fontWeight": "800" }], "display-lg-mobile": ["2.25rem", { "lineHeight": "2.75rem", "letterSpacing": "-0.02em", "fontWeight": "800" }], "label-lg": ["0.9375rem", { "lineHeight": "1.25rem", "letterSpacing": "0.01em", "fontWeight": "600" }], "headline-lg-mobile": ["1.375rem", { "lineHeight": "1.875rem", "letterSpacing": "-0.01em", "fontWeight": "700" }], "headline-lg": ["1.75rem", { "lineHeight": "2.25rem", "letterSpacing": "-0.01em", "fontWeight": "700" }], "body-sm": ["0.875rem", { "lineHeight": "1.4rem", "fontWeight": "400" }], "body-md": ["1rem", { "lineHeight": "1.6rem", "fontWeight": "400" }], "label-sm": ["0.6875rem", { "lineHeight": "0.9rem", "letterSpacing": "0.04em", "fontWeight": "700" }], "headline-xl-mobile": ["1.75rem", { "lineHeight": "2.25rem", "letterSpacing": "-0.015em", "fontWeight": "700" }], "body-lg": ["1.125rem", { "lineHeight": "1.75rem", "fontWeight": "400" }], "label-md": ["0.8125rem", { "lineHeight": "1.125rem", "letterSpacing": "0.02em", "fontWeight": "600" }], "headline-sm": ["1.125rem", { "lineHeight": "1.6rem", "fontWeight": "600" }] } } } };</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(45,35,20,0.04)]"><div class="h-20 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-lg flex-shrink-0"><a class="flex items-center gap-space-sm text-primary transition-opacity hover:opacity-95" href="#"><img alt="VeganAdda Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1W4JTj-eC1an8ax_nPa0P3USlZQEu4QPX7GMDhQCVosGqi6UksvEFVkxWPOftTmYX-j7PZYOGfz8RNMDgq1ngt8SdMv-0_5XtjmFTbjqwf8P1G-lXMsTtB_TgACzCMy2K3YwTM5U8K8_YxSFCsUP6LXDUeKZE11XFRNFB5OxByhn_VrYxUxtL6Wwgf5cx83A9sA3gxVc2qCue2is-DkZU6wW4cUIVsswoBb0bBev8ui"/><span class="font-headline-md text-headline-md tracking-tight text-primary">VeganAdda</span></a><div class="relative hidden xl:flex items-center"><button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-low text-on-surface hover:bg-surface-container-high hover:text-on-surface font-label-md text-label-md transition-colors" type="button"><span class="w-2 h-2 rounded-full bg-secondary"></span><span>Bengaluru</span><span class="material-symbols-outlined text-[18px] text-on-surface-variant">expand_more</span></button></div></div><nav class="hidden lg:flex items-center gap-1.5" data-active-classes="bg-primary-container text-on-primary font-label-lg rounded-full shadow-sm"><a aria-current="page" class="px-4 py-2 transition-colors bg-primary-container text-on-primary font-label-lg rounded-full shadow-sm" data-path="discover" href="#">Discover</a><a class="px-4 py-2 rounded-full font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="events" href="#">Events</a><a class="inline-flex items-center gap-2 px-4 py-2 rounded-full font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="connections" href="#"><span>Connections</span><span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-secondary text-on-secondary font-label-sm text-label-sm leading-none">3</span></a><a class="inline-flex items-center gap-2 px-4 py-2 rounded-full font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="messages" href="#"><span>Messages</span><span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-secondary text-on-secondary font-label-sm text-label-sm leading-none">1</span></a></nav><div class="flex items-center gap-space-md flex-shrink-0"><div class="relative hidden sm:block w-48 md:w-60"><span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] pointer-events-none">search</span><input class="w-full h-10 pl-9 pr-4 rounded-full bg-surface-container-low font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest transition-all" placeholder="Search addas, dishes..." type="text"/></div><div class="relative flex items-center gap-2 pl-1"><button class="flex items-center gap-1 p-0.5 rounded-full hover:ring-2 hover:ring-primary-container focus:outline-none transition-all" type="button"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3-UfTsnt6ocX6rf3fsuwTKzlCk50EuQxfyLl6AzIp5dAIEFfw2z5dYRYX_IE3Icom3X8dJaK9zfg1HlX9L-CnGUpYJUd4kg-4nDGsqd_4fBLA0cEiOUypvL-t9rwtBW8WL4uD74l3PJvKZl-LdwVRDVYzs0bdWXz3eh0IwDdUT9zsh4WwPGmUNwfm6SJFxyVN2kRbCCIfOJ_baRnI5z28O0tlIWVfc3ja1bYUvMfC"/><span class="material-symbols-outlined text-[18px] text-on-surface-variant hidden sm:inline-block">keyboard_arrow_down</span></button></div></div></div></header><main class="w-full pt-20 bg-surface min-h-[calc(100vh-20rem)]"><div class="flex flex-col w-full">
+<!-- Discover Hero Header -->
+<section class="relative px-6 lg:px-12 pt-8 pb-10 max-w-7xl mx-auto w-full">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-surface-container-high">
+<div class="max-w-2xl">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-fixed text-on-primary-fixed font-label-md text-label-md mb-3">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span>Bengaluru Adda • 42 active now</span>
+</div>
+<h1 class="font-display-lg text-display-lg-mobile lg:text-display-lg text-primary tracking-tight leading-none mb-3">
+          Find your vegan people.
+        </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+          Friendships, shared interests, and meaningful community connections across India. No superficial swipes—just thoughtful spaces to belong.
+        </p>
+</div>
+<!-- Quick Switcher Controls -->
+<div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+<!-- View Scope Toggle -->
+<div class="inline-flex p-1 rounded-full bg-surface-container shadow-sm" id="view-type-toggle">
+<button class="px-4 py-1.5 rounded-full font-label-md text-label-md bg-surface-container-lowest text-primary shadow-sm font-semibold transition-all" data-filter="all" type="button">People &amp; Events</button>
+<button class="px-4 py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all" data-filter="people" type="button">People</button>
+<button class="px-4 py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all" data-filter="events" type="button">Events</button>
+</div>
+</div>
+</div>
+<!-- City Switcher Bar -->
+<div class="flex items-center gap-2 overflow-x-auto py-4 scrollbar-none">
+<span class="font-label-md text-label-md text-outline mr-2 shrink-0">City Hubs:</span>
+<button class="px-4 py-2 rounded-full font-label-md text-label-md bg-surface-container-lowest text-on-surface shadow-sm shrink-0 hover:bg-surface-container transition-colors" type="button">
+        All India
+      </button>
+<button class="px-4 py-2 rounded-full font-label-md text-label-md bg-primary text-on-primary shadow-sm shrink-0 flex items-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+        Bengaluru
+      </button>
+<button class="px-4 py-2 rounded-full font-label-md text-label-md bg-surface-container-lowest text-on-surface shadow-sm shrink-0 hover:bg-surface-container transition-colors" type="button">
+        Mumbai
+      </button>
+<button class="px-4 py-2 rounded-full font-label-md text-label-md bg-surface-container-lowest text-on-surface shadow-sm shrink-0 hover:bg-surface-container transition-colors" type="button">
+        Delhi NCR
+      </button>
+<button class="px-4 py-2 rounded-full font-label-md text-label-md bg-surface-container-lowest text-on-surface shadow-sm shrink-0 hover:bg-surface-container transition-colors" type="button">
+        Pune
+      </button>
+<button class="px-4 py-2 rounded-full font-label-md text-label-md bg-surface-container-lowest text-on-surface shadow-sm shrink-0 hover:bg-surface-container transition-colors" type="button">
+        Hyderabad
+      </button>
+</div>
+</section>
+<!-- Spotlight Feature: Ekatva Festival 2025 -->
+<section class="px-6 lg:px-12 max-w-7xl mx-auto w-full mb-10">
+<div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-tertiary-fixed/40 via-surface-container-low to-secondary-fixed/30 p-6 lg:p-8 shadow-sm">
+<div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+<div class="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+<div class="w-16 h-16 rounded-2xl bg-secondary text-on-secondary flex items-center justify-center shadow-md shrink-0">
+<span class="material-symbols-outlined text-[36px]">festival</span>
+</div>
+<div>
+<div class="flex flex-wrap items-center gap-2 mb-1.5">
+<span class="px-2.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm uppercase tracking-wider font-bold">Spotlight Gathering</span>
+<span class="font-label-md text-label-md text-secondary font-medium">India's Premier Conscious Living Festival</span>
+</div>
+<h2 class="font-headline-lg text-headline-lg text-primary tracking-tight">Ekatva Festival 2025</h2>
+<div class="flex flex-wrap items-center gap-y-1 gap-x-4 mt-2 font-body-sm text-body-sm text-on-surface-variant">
+<span class="inline-flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px] text-secondary">calendar_today</span>
+                Feb 15–16, 2025
+              </span>
+<span class="inline-flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px] text-secondary">place</span>
+                Jayamahal Palace Grounds, Bengaluru
+              </span>
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-surface-container-lowest shadow-sm text-primary font-label-sm text-label-sm font-semibold">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                48 community members attending
+              </span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-3 shrink-0 w-full sm:w-auto">
+<button class="w-full sm:w-auto px-6 py-3 rounded-full bg-secondary text-on-secondary hover:bg-on-secondary-container font-label-lg text-label-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2" type="button">
+<span>Explore Event &amp; Attendees</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Subtle Decorative Earthen Ring -->
+<div class="absolute -right-12 -bottom-16 w-56 h-56 rounded-full bg-secondary/5 blur-2xl pointer-events-none"></div>
+</div>
+</section>
+<!-- Visitor Sign-In Notice Banner -->
+<section class="px-6 lg:px-12 max-w-7xl mx-auto w-full mb-8">
+<div class="rounded-xl bg-surface-container-low p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary text-[24px] shrink-0">info</span>
+<div>
+<p class="font-label-lg text-label-lg text-on-surface">Browsing as a visitor?</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Sign in to send connection requests, exchange recipe notes, and RSVP for regional circle meetups.</p>
+</div>
+</div>
+<button class="shrink-0 px-4 py-2.5 rounded-full bg-surface-container-lowest text-on-surface hover:bg-surface-container-high shadow-sm font-label-md text-label-md flex items-center gap-2 transition-colors" type="button">
+<svg class="w-4 h-4" viewbox="0 0 24 24">
+<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"></path>
+<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"></path>
+</svg>
+<span>Continue with Google</span>
+</button>
+</div>
+</section>
+<!-- Filter & Search Bar -->
+<section class="px-6 lg:px-12 max-w-7xl mx-auto w-full mb-8">
+<div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 pb-4">
+<!-- Search Input -->
+<div class="relative w-full lg:w-96">
+<span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-[20px] pointer-events-none">search</span>
+<input class="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-container-low font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest shadow-sm transition-all" id="interestSearchInput" placeholder="Search by interest (e.g. Baking, Sanctuaries)..." type="text"/>
+</div>
+<!-- Tag Filters -->
+<div class="flex flex-wrap items-center gap-2" id="filterPillsContainer">
+<button class="filter-pill px-3.5 py-1.5 rounded-full font-label-md text-label-md bg-secondary text-on-secondary shadow-sm transition-all flex items-center gap-1" data-tag="all" type="button">
+<span>All Interests</span>
+</button>
+<button class="filter-pill px-3.5 py-1.5 rounded-full font-label-md text-label-md bg-surface-container-low hover:bg-surface-container text-on-surface transition-all" data-tag="Attending Ekatva" type="button">
+<span>Attending Ekatva</span>
+</button>
+<button class="filter-pill px-3.5 py-1.5 rounded-full font-label-md text-label-md bg-surface-container-low hover:bg-surface-container text-on-surface transition-all" data-tag="Friendship" type="button">
+<span>Friendship</span>
+</button>
+<button class="filter-pill px-3.5 py-1.5 rounded-full font-label-md text-label-md bg-surface-container-low hover:bg-surface-container text-on-surface transition-all" data-tag="Business &amp; Networking" type="button">
+<span>Business &amp; Networking</span>
+</button>
+<button class="filter-pill px-3.5 py-1.5 rounded-full font-label-md text-label-md bg-surface-container-low hover:bg-surface-container text-on-surface transition-all" data-tag="Sanctuaries" type="button">
+<span>Sanctuary Volunteering</span>
+</button>
+<button class="filter-pill px-3.5 py-1.5 rounded-full font-label-md text-label-md bg-surface-container-low hover:bg-surface-container text-on-surface transition-all" data-tag="Running" type="button">
+<span>Fitness &amp; Running</span>
+</button>
+<button class="px-3 py-1.5 text-secondary hover:text-on-secondary-container font-label-md text-label-md flex items-center gap-1 transition-colors" id="clearFiltersBtn" type="button">
+<span class="material-symbols-outlined text-[16px]">close</span>
+<span>Clear filters</span>
+</button>
+</div>
+</div>
+</section>
+<!-- People Feed Grid -->
+<section class="px-6 lg:px-12 max-w-7xl mx-auto w-full mb-16">
+<div class="flex items-center justify-between mb-6">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-primary tracking-tight">Meet the Community in Bengaluru</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">4 members active today • Verified safe profiles with strict non-commercial focus</p>
+</div>
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider hidden sm:inline">Updated 10m ago</span>
+</div>
+<!-- 4 User Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="profilesGrid">
+<!-- Card 1: Ananya -->
+<article class="profile-card bg-surface-container-lowest rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between" data-name="Ananya" data-tags="Design Running Zero Waste Rescues Friendship Business &amp; Networking Attending Ekatva">
+<div>
+<!-- Header -->
+<div class="flex items-start justify-between gap-4 mb-4">
+<div class="flex items-center gap-4">
+<div class="relative">
+<img alt="Ananya portrait" class="w-16 h-16 rounded-full object-cover shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3-UfTsnt6ocX6rf3fsuwTKzlCk50EuQxfyLl6AzIp5dAIEFfw2z5dYRYX_IE3Icom3X8dJaK9zfg1HlX9L-CnGUpYJUd4kg-4nDGsqd_4fBLA0cEiOUypvL-t9rwtBW8WL4uD74l3PJvKZl-LdwVRDVYzs0bdWXz3eh0IwDdUT9zsh4WwPGmUNwfm6SJFxyVN2kRbCCIfOJ_baRnI5z28O0tlIWVfc3ja1bYUvMfC"/>
+<span class="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-primary-fixed border-2 border-surface-container-lowest" title="Active today"></span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline-md text-headline-md text-primary">Ananya</h3>
+<span class="material-symbols-outlined text-secondary text-[18px]" title="Community Verified">verified</span>
+</div>
+<div class="flex items-center gap-1.5 text-secondary font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[14px]">location_on</span>
+<span>Bengaluru (Indiranagar)</span>
+</div>
+</div>
+</div>
+<!-- Spotlight badge -->
+<span class="px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm font-bold shrink-0">
+              Attending Ekatva
+            </span>
+</div>
+<!-- Bio -->
+<p class="font-body-md text-body-md text-on-surface mb-4 leading-relaxed">
+            Architect &amp; cruelty-free interior consultant. Love morning park runs at Cubbon, low-waste living, and ethical design spaces.
+          </p>
+<!-- Looking For Intent -->
+<div class="mb-4">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Open to:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Friendship</span>
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Business &amp; Networking</span>
+</div>
+</div>
+<!-- Interests Tags -->
+<div class="mb-6">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Shared Interests:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Design</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Running</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#ZeroWaste</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Rescues</span>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="pt-4 border-t border-surface-container-high flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-outline">Vegan for 6 years</span>
+<button class="px-5 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5" onclick="openConnectModal('Ananya')" type="button">
+<span class="material-symbols-outlined text-[16px]">send</span>
+<span>Connect</span>
+</button>
+</div>
+</article>
+<!-- Card 2: Rohan -->
+<article class="profile-card bg-surface-container-lowest rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between" data-name="Rohan" data-tags="Tech Sanctuaries Hiking Friendship Activism">
+<div>
+<!-- Header -->
+<div class="flex items-start justify-between gap-4 mb-4">
+<div class="flex items-center gap-4">
+<div class="relative">
+<img alt="Rohan portrait" class="w-16 h-16 rounded-full object-cover shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcbwWX3ck6gQZCq3LDUjKJqp_Z2sdE6ahCDOyxZt9N62v0a1eE0jhFf8l2nVu-ICJP_h4TALoN1X2leCgaxa1cXCvSgZqSHfJKgxmI1FViWUjy1KCFdRynXol2-zAcmWQSKSII_oOkxrAZkIQ9H4YWsV1-UOsp76_ksmEuUAiWoTm4RoSVRn-5w1BGnFXBsWPRu__roTY0RpUZGtg3n4zoqEnfdY7yhnJlsY_XjMh3"/>
+<span class="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-primary-fixed border-2 border-surface-container-lowest" title="Active today"></span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline-md text-headline-md text-primary">Rohan</h3>
+<span class="material-symbols-outlined text-secondary text-[18px]" title="Community Verified">verified</span>
+</div>
+<div class="flex items-center gap-1.5 text-secondary font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[14px]">flight_takeoff</span>
+<span>Pune • Visiting BLR this week</span>
+</div>
+</div>
+</div>
+<span class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm font-semibold shrink-0">
+              Visiting
+            </span>
+</div>
+<!-- Bio -->
+<p class="font-body-md text-body-md text-on-surface mb-4 leading-relaxed">
+            Software engineer building open-source solar tools. Weekends spent volunteering at animal rescue sanctuaries and trail scouting.
+          </p>
+<!-- Looking For Intent -->
+<div class="mb-4">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Open to:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Friendship</span>
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Activism</span>
+</div>
+</div>
+<!-- Interests Tags -->
+<div class="mb-6">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Shared Interests:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Tech</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Sanctuaries</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Hiking</span>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="pt-4 border-t border-surface-container-high flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-outline">Vegan for 3 years</span>
+<button class="px-5 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5" onclick="openConnectModal('Rohan')" type="button">
+<span class="material-symbols-outlined text-[16px]">send</span>
+<span>Connect</span>
+</button>
+</div>
+</article>
+<!-- Card 3: Sunita -->
+<article class="profile-card bg-surface-container-lowest rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between" data-name="Sunita" data-tags="Baking Gardening Heritage Food Business &amp; Networking Friendship">
+<div>
+<!-- Header -->
+<div class="flex items-start justify-between gap-4 mb-4">
+<div class="flex items-center gap-4">
+<div class="relative">
+<img alt="Sunita portrait" class="w-16 h-16 rounded-full object-cover shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuApu0nLoZbVtV4uzPIwekz_8BvqOvDZyKsYaDmb0bKzTnzMKCZbRo6__8Js7tb8Hxb-_ouXKWAZzWuDfp2W7KUh5CGRJtSP4D8MYDVSDP48Ix8dyY1poZfyfFRLjTuahzUFB4LzRlArMco4U-lFr4k0G7xFxU1jLYzexIbZK921DEJ8CUjF7xc1chrrXMmO6DXG5HCTGMzzxjevJhAlBwgORtBA0tDhJxwLxN_Po-NJ"/>
+<span class="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-primary-fixed border-2 border-surface-container-lowest" title="Active today"></span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline-md text-headline-md text-primary">Sunita</h3>
+<span class="material-symbols-outlined text-secondary text-[18px]" title="Community Verified">verified</span>
+</div>
+<div class="flex items-center gap-1.5 text-secondary font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[14px]">location_on</span>
+<span>Bengaluru (Malleshwaram)</span>
+</div>
+</div>
+</div>
+<span class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm font-semibold shrink-0">
+              Community Elder
+            </span>
+</div>
+<!-- Bio -->
+<p class="font-body-md text-body-md text-on-surface mb-4 leading-relaxed">
+            Plant-based home baker &amp; culinary educator. Sharing traditional Karnataka heritage dishes made dairy-free with cold-pressed oils.
+          </p>
+<!-- Looking For Intent -->
+<div class="mb-4">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Open to:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Business &amp; Networking</span>
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Friendship</span>
+</div>
+</div>
+<!-- Interests Tags -->
+<div class="mb-6">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Shared Interests:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Baking</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Gardening</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#HeritageFood</span>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="pt-4 border-t border-surface-container-high flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-outline">Vegan for 9 years</span>
+<button class="px-5 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5" onclick="openConnectModal('Sunita')" type="button">
+<span class="material-symbols-outlined text-[16px]">send</span>
+<span>Connect</span>
+</button>
+</div>
+</article>
+<!-- Card 4: Kabir -->
+<article class="profile-card bg-surface-container-lowest rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between" data-name="Kabir" data-tags="Photography Music Coffee Friendship Creative Projects">
+<div>
+<!-- Header -->
+<div class="flex items-start justify-between gap-4 mb-4">
+<div class="flex items-center gap-4">
+<div class="relative">
+<img alt="Kabir portrait" class="w-16 h-16 rounded-full object-cover shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBv9Gd0cMOwlEJYJPMhRZcgMRvIdCe4-GSW--YtRvmqywtFyMIRiX2W6tOR14uRYLmm5QgXZinOFA2WiZLs2-7TRGr6BoDtPxDtSJKXOjRFmE1z5MsHk8Qh8hinBWhu9mGCZ0-vi5HnFAHmmJUzaOZTqDfW7M3NSDlN7RF1yVAADcd1dAIqp-ztNWFha2jG_Ih8iWKAP47qNJ9D76MJauUyd65WknAPoMnfeegnq9si"/>
+<span class="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-primary-fixed border-2 border-surface-container-lowest" title="Active today"></span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline-md text-headline-md text-primary">Kabir</h3>
+<span class="material-symbols-outlined text-secondary text-[18px]" title="Community Verified">verified</span>
+</div>
+<div class="flex items-center gap-1.5 text-secondary font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[14px]">local_shipping</span>
+<span>Delhi NCR • Relocating to BLR</span>
+</div>
+</div>
+</div>
+<span class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm font-semibold shrink-0">
+              Relocating
+            </span>
+</div>
+<!-- Bio -->
+<p class="font-body-md text-body-md text-on-surface mb-4 leading-relaxed">
+            Documentary photographer focusing on ethical wildlife &amp; indie music scenes. Always up for strong South Indian filter coffee &amp; film discussions.
+          </p>
+<!-- Looking For Intent -->
+<div class="mb-4">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Open to:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Friendship</span>
+<span class="px-2.5 py-1 rounded-lg bg-surface-container text-on-surface font-label-md text-label-md">Creative Projects</span>
+</div>
+</div>
+<!-- Interests Tags -->
+<div class="mb-6">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider block mb-1.5">Shared Interests:</span>
+<div class="flex flex-wrap gap-1.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Photography</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Music</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm">#Coffee</span>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="pt-4 border-t border-surface-container-high flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-outline">Vegan for 4 years</span>
+<button class="px-5 py-2 rounded-full bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-sm transition-all flex items-center gap-1.5" onclick="openConnectModal('Kabir')" type="button">
+<span class="material-symbols-outlined text-[16px]">send</span>
+<span>Connect</span>
+</button>
+</div>
+</article>
+</div>
+</section>
+<!-- Community Values & Guidelines Footer Teaser -->
+<section class="px-6 lg:px-12 max-w-7xl mx-auto w-full mb-12">
+<div class="rounded-2xl bg-surface-container p-6 lg:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+<div class="max-w-xl">
+<h4 class="font-headline-md text-headline-md text-primary mb-1">A mindful space for conscious living.</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+          VeganAdda emphasizes mutual dignity, friendship, and ethical food discovery. Dating-oriented approaches and cold direct messaging without shared affinity are strictly restricted.
+        </p>
+</div>
+<div class="flex items-center gap-4 shrink-0">
+<a class="px-5 py-2.5 rounded-full bg-surface-container-lowest text-on-surface hover:bg-surface-container-high font-label-md text-label-md shadow-sm transition-colors" href="#">Read Guidelines</a>
+<a class="px-5 py-2.5 rounded-full bg-primary text-on-primary hover:bg-primary-container font-label-md text-label-md shadow-sm transition-colors" href="#">Join Adda</a>
+</div>
+</div>
+</section>
+<!-- Connection Prompt Modal Backdrop -->
+<div class="fixed inset-0 z-50 hidden bg-inverse-surface/40 backdrop-blur-sm flex items-center justify-center p-4" id="connectModal">
+<div class="bg-surface-container-lowest rounded-2xl max-w-lg w-full p-6 shadow-xl relative animate-in fade-in duration-200">
+<div class="flex items-center justify-between pb-3 border-b border-surface-container-high mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[22px]">waving_hand</span>
+<h3 class="font-headline-md text-headline-md text-primary">Say Hello to <span id="modalTargetName">Member</span></h3>
+</div>
+<button class="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center text-outline" onclick="closeConnectModal()" type="button">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-4">
+        Share a brief note about why you'd like to connect—whether it's about a recipe, volunteer initiative, or catching up at Ekatva Festival!
+      </p>
+<div class="mb-4">
+<textarea class="w-full p-3 rounded-xl bg-surface-container-low font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest border-0 transition-all" id="connectNote" placeholder="Hi there! Saw your profile and would love to exchange notes on..." rows="3"></textarea>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-outline">Your personal email or phone are never shared</span>
+<div class="flex items-center gap-2">
+<button class="px-4 py-2 rounded-full font-label-md text-label-md text-on-surface-variant hover:bg-surface-container transition-colors" onclick="closeConnectModal()" type="button">Cancel</button>
+<button class="px-5 py-2 rounded-full bg-secondary text-on-secondary hover:bg-on-secondary-container font-label-md text-label-md shadow-sm transition-colors" onclick="submitConnection()" type="button">Send Request</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Toast Notification -->
+<div class="fixed bottom-6 right-6 z-50 hidden bg-primary text-on-primary px-5 py-3 rounded-full shadow-lg font-label-md text-label-md flex items-center gap-2 transition-all" id="toastMessage">
+<span class="material-symbols-outlined text-[20px] text-primary-fixed">check_circle</span>
+<span id="toastText">Connection note sent!</span>
+</div>
+</div>
+<script>
+  // Simple interactive filter logic
+  const searchInput = document.getElementById('interestSearchInput');
+  const cards = document.querySelectorAll('.profile-card');
+  const filterPills = document.querySelectorAll('.filter-pill');
+  const clearBtn = document.getElementById('clearFiltersBtn');
+
+  function filterCards() {
+    const query = searchInput.value.toLowerCase().trim();
+    const activePill = document.querySelector('.filter-pill.bg-secondary')?.getAttribute('data-tag');
+
+    cards.forEach(card => {
+      const tags = (card.getAttribute('data-tags') || '').toLowerCase();
+      const name = (card.getAttribute('data-name') || '').toLowerCase();
+      const textContent = card.innerText.toLowerCase();
+
+      const matchesSearch = !query || tags.includes(query) || name.includes(query) || textContent.includes(query);
+      const matchesPill = !activePill || activePill === 'all' || tags.includes(activePill.toLowerCase());
+
+      if (matchesSearch && matchesPill) {
+        card.style.display = 'flex';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', filterCards);
+  }
+
+  filterPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      filterPills.forEach(p => {
+        p.classList.remove('bg-secondary', 'text-on-secondary');
+        p.classList.add('bg-surface-container-low', 'text-on-surface');
+      });
+      pill.classList.remove('bg-surface-container-low', 'text-on-surface');
+      pill.classList.add('bg-secondary', 'text-on-secondary');
+      filterCards();
+    });
+  });
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      filterPills.forEach(p => {
+        p.classList.remove('bg-secondary', 'text-on-secondary');
+        p.classList.add('bg-surface-container-low', 'text-on-surface');
+      });
+      const allPill = document.querySelector('.filter-pill[data-tag="all"]');
+      if (allPill) {
+        allPill.classList.remove('bg-surface-container-low', 'text-on-surface');
+        allPill.classList.add('bg-secondary', 'text-on-secondary');
+      }
+      filterCards();
+    });
+  }
+
+  // Modal interactions
+  const modal = document.getElementById('connectModal');
+  const modalTargetName = document.getElementById('modalTargetName');
+  const connectNote = document.getElementById('connectNote');
+  const toast = document.getElementById('toastMessage');
+  const toastText = document.getElementById('toastText');
+
+  window.openConnectModal = function(name) {
+    if (modalTargetName) modalTargetName.innerText = name;
+    if (connectNote) connectNote.value = '';
+    if (modal) modal.classList.remove('hidden');
+  };
+
+  window.closeConnectModal = function() {
+    if (modal) modal.classList.add('hidden');
+  };
+
+  window.submitConnection = function() {
+    closeConnectModal();
+    if (toast && toastText) {
+      toastText.innerText = `Connection note sent to ${modalTargetName?.innerText || 'member'}!`;
+      toast.classList.remove('hidden');
+      setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3500);
+    }
+  };
+</script></main><footer class="w-full bg-surface-container-low text-on-surface-variant mt-space-xl shadow-[0_-1px_6px_rgba(45,35,20,0.03)]"><div class="max-w-7xl mx-auto px-6 lg:px-12 py-12 flex flex-col md:flex-row items-center justify-between gap-6"><div class="flex items-center gap-space-sm"><img alt="VeganAdda Logo" class="h-6 w-auto object-contain opacity-80" src="https://lh3.googleusercontent.com/aida/AEtjO1W4JTj-eC1an8ax_nPa0P3USlZQEu4QPX7GMDhQCVosGqi6UksvEFVkxWPOftTmYX-j7PZYOGfz8RNMDgq1ngt8SdMv-0_5XtjmFTbjqwf8P1G-lXMsTtB_TgACzCMy2K3YwTM5U8K8_YxSFCsUP6LXDUeKZE11XFRNFB5OxByhn_VrYxUxtL6Wwgf5cx83A9sA3gxVc2qCue2is-DkZU6wW4cUIVsswoBb0bBev8ui"/><span class="font-label-lg text-label-lg text-on-surface">VeganAdda © 2025</span><span class="text-outline-variant font-label-sm text-label-sm hidden sm:inline">• Gatherings, Festivals &amp; Life</span></div><div class="flex flex-wrap items-center justify-center gap-6 font-label-md text-label-md text-on-surface-variant"><a class="hover:text-primary transition-colors" data-path="about-veganadda" href="#">About VeganAdda</a><a class="hover:text-primary transition-colors" data-path="community-guidelines" href="#">Community Guidelines</a><a class="text-secondary hover:text-on-secondary-container transition-colors font-label-md text-label-md" data-path="ekatva-festival-2025" href="#">Ekatva Festival 2025</a><a class="hover:text-primary transition-colors" data-path="privacy-terms" href="#">Privacy &amp; Terms</a></div></div></footer></body></html>

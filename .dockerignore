@@ -1,0 +1,11 @@
+.git
+.local
+artifacts
+design-reference
+tests
+**/bin
+**/obj
+**/uploads
+**/keys
+.env*
+node_modules

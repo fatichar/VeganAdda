@@ -1,0 +1,21 @@
+@page "/events"
+@inherits Screen
+<PageTitle>Community gatherings · VeganAdda</PageTitle>
+<span class="eyebrow">Find your people, in person</span><h1>Community gatherings & events</h1><p class="muted">Shared meals, thoughtful conversations, and a little more belonging.</p><div class="city-tabs">@foreach (var city in Wire.Cities) { <button class="chip @(City == city ? "active" : "")" aria-pressed="@(City == city)" @onclick="() => ChangeCity(city)">@city</button> }</div><Feedback Error="@Error" Success="@Success" />
+@if (items.Count == 0 && !Busy) { <Empty Icon="festival" Title="Something good is gathering" Text="Upcoming gatherings will appear here once the community team confirms their details." /> }
+else { <div class="events-grid">@foreach (var ev in items) { <EventCardView Event="ev" Save="Save" /> }</div> }
+@if (total > 12) { <div class="pagination"><button class="secondary" disabled="@(page == 1 || Busy)" @onclick="Previous">Previous</button><span>Page @(page)</span><button class="secondary" disabled="@(page * 12 >= total || Busy)" @onclick="Next">Next</button></div> }
+<section class="community-note"><div><h2>Every gathering starts with an idea.</h2><p>Know a vegan meetup that belongs here? Share it with the community team for review.</p></div><a href="/help" class="button">Get in touch<Icon Name="arrow_forward" /></a></section>
+@code {
+    [SupplyParameterFromQuery] public string City { get; set; } = "All India";
+    List<EventCard> items = []; int page = 1, total;
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); }
+    protected override Task OnParametersSetAsync() => Run(Refresh);
+    protected override async Task Refresh() { var result = await Api.Get<Page<EventCard>>($"events?city={E(City)}&page={page}"); items = result.Items; total = result.Total; }
+    Task ChangeCity(string city) { City = city; page = 1; return Run(Refresh); }
+    Task Previous() { page--; return Run(Refresh); } Task Next() { page++; return Run(Refresh); }
+    async Task Save(EventCard ev) { if (!ReadyForAction($"/events/{ev.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"events/{ev.Id}/save"); await Refresh(); Success = "Your saved events are updated."; }); }
+}
+
+
+

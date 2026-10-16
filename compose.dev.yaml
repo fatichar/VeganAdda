@@ -1,0 +1,17 @@
+name: veganadda-dev
+services:
+  db:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_USER: veganadda
+      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: veganadda
+    ports: [127.0.0.1:55432:5432]
+    volumes: [dev-database:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U veganadda -d veganadda']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  dev-database:

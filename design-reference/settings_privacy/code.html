@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_stack" name="shell-type"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: 'class', theme: { extend: { colors: { 'secondary': '#9d4225', 'on-primary': '#ffffff', 'primary-container': '#1b4332', 'on-primary-fixed': '#002114', 'on-secondary-container': '#742508', 'on-tertiary-fixed-variant': '#6e3900', 'surface': '#fcf9f3', 'on-error-container': '#93000a', 'primary-fixed': '#c1ecd4', 'surface-container': '#f0eee8', 'on-tertiary-container': '#f48c24', 'secondary-container': '#fd8c68', 'on-error': '#ffffff', 'tertiary': '#3e1e00', 'on-background': '#1c1c18', 'inverse-surface': '#31312d', 'outline': '#717973', 'surface-container-lowest': '#ffffff', 'secondary-fixed-dim': '#ffb59e', 'surface-bright': '#fcf9f3', 'background': '#fcf9f3', 'tertiary-fixed-dim': '#ffb77d', 'inverse-primary': '#a5d0b9', 'tertiary-fixed': '#ffdcc3', 'on-primary-fixed-variant': '#274e3d', 'on-secondary-fixed-variant': '#7e2c10', 'on-secondary-fixed': '#3a0b00', 'surface-dim': '#dcdad4', 'outline-variant': '#c1c8c2', 'error': '#ba1a1a', 'on-surface': '#1c1c18', 'inverse-on-surface': '#f3f0ea', 'primary': '#012d1d', 'surface-variant': '#e5e2dc', 'secondary-fixed': '#ffdbd0', 'surface-container-highest': '#e5e2dc', 'on-surface-variant': '#414844', 'error-container': '#ffdad6', 'tertiary-container': '#5e3000', 'on-tertiary': '#ffffff', 'surface-tint': '#3f6653', 'on-tertiary-fixed': '#2f1500', 'surface-container-high': '#ebe8e2', 'on-secondary': '#ffffff', 'primary-fixed-dim': '#a5d0b9', 'surface-container-low': '#f6f3ed', 'on-primary-container': '#86af99' }, borderRadius: { 'DEFAULT': '0.25rem', 'lg': '0.5rem', 'xl': '0.75rem', 'full': '9999px' }, spacing: { 'space-md': '1rem', 'gutter': '1.5rem', 'margin-mobile': '1rem', 'space-xl': '2.5rem', 'space-xs': '0.25rem', 'margin': '2rem', 'space-lg': '1.5rem', 'gutter-mobile': '1rem', 'space-sm': '0.5rem' }, fontFamily: { 'display-lg-mobile': ['Plus Jakarta Sans'], 'headline-md': ['Plus Jakarta Sans'], 'label-lg': ['Plus Jakarta Sans'], 'label-sm': ['Plus Jakarta Sans'], 'body-md': ['Plus Jakarta Sans'], 'headline-lg': ['Plus Jakarta Sans'], 'display-lg': ['Plus Jakarta Sans'], 'headline-xl': ['Plus Jakarta Sans'], 'body-sm': ['Plus Jakarta Sans'], 'body-lg': ['Plus Jakarta Sans'], 'headline-xl-mobile': ['Plus Jakarta Sans'], 'headline-lg-mobile': ['Plus Jakarta Sans'], 'label-md': ['Plus Jakarta Sans'], 'headline-sm': ['Plus Jakarta Sans'] }, fontSize: { 'display-lg-mobile': ['2.25rem', { lineHeight: '2.75rem', letterSpacing: '-0.02em', fontWeight: '800' }], 'headline-md': ['1.25rem', { lineHeight: '1.75rem', letterSpacing: '-0.005em', fontWeight: '600' }], 'label-lg': ['0.9375rem', { lineHeight: '1.25rem', letterSpacing: '0.01em', fontWeight: '600' }], 'label-sm': ['0.6875rem', { lineHeight: '0.9rem', letterSpacing: '0.04em', fontWeight: '700' }], 'body-md': ['1rem', { lineHeight: '1.6rem', fontWeight: '400' }], 'headline-lg': ['1.75rem', { lineHeight: '2.25rem', letterSpacing: '-0.01em', fontWeight: '700' }], 'display-lg': ['3.5rem', { lineHeight: '4rem', letterSpacing: '-0.02em', fontWeight: '800' }], 'headline-xl': ['2.25rem', { lineHeight: '2.75rem', letterSpacing: '-0.015em', fontWeight: '700' }], 'body-sm': ['0.875rem', { lineHeight: '1.4rem', fontWeight: '400' }], 'body-lg': ['1.125rem', { lineHeight: '1.75rem', fontWeight: '400' }], 'headline-xl-mobile': ['1.75rem', { lineHeight: '2.25rem', letterSpacing: '-0.015em', fontWeight: '700' }], 'headline-lg-mobile': ['1.375rem', { lineHeight: '1.875rem', letterSpacing: '-0.01em', fontWeight: '700' }], 'label-md': ['0.8125rem', { lineHeight: '1.125rem', letterSpacing: '0.02em', fontWeight: '600' }], 'headline-sm': ['1.125rem', { lineHeight: '1.6rem', fontWeight: '600' }] } } } };</script><style>@layer base{html,body{width:100%;margin:0;padding:0;background-color:#fcf9f3;color:#1c1c18;font-family:'Plus Jakarta Sans',sans-serif;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="min-h-full bg-surface text-on-surface flex flex-col antialiased selection:bg-secondary-fixed selection:text-on-secondary-fixed"><header class="fixed top-0 w-full z-50 bg-surface/85 backdrop-blur-xl pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.03)]"><div class="h-16 px-gutter-mobile flex items-center justify-between"><div class="flex items-center gap-space-sm"><button aria-label="Go back" class="w-11 h-11 -ml-1 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container active:bg-surface-container-high transition-colors" onclick="history.back()"><span class="material-symbols-outlined text-[24px]">arrow_back</span></button><h1 class="font-headline-md text-headline-md text-on-surface line-clamp-1">Profile</h1></div><div class="flex items-center gap-space-xs"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-16 bg-surface min-h-screen"><div class="flex flex-col w-full pb-safe">
+<!-- Warm Top Summary Banner / Delightful Greeting -->
+<div class="px-gutter-mobile pt-space-md pb-space-sm">
+<div class="bg-surface-container-low rounded-xl p-space-md shadow-sm flex items-center justify-between">
+<div class="flex items-center gap-space-md">
+<div class="relative w-14 h-14 rounded-full overflow-hidden bg-primary-fixed flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A warm portrait of a smiling South Asian individual wearing earthy linen clothes in natural golden hour light, peaceful natural garden background, dignified communal warmth aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiNHIQ2qs5D1n5xI_MRTsNyv8tRTlVCF8PisZPhZLYRRe7R1EerUNLYnX5gZ-Yn0N2dohW50VNd2I3EyDh5eD0KxjzHGTlrNkw5Ox0tAH2Y-BizyxzKN1WCkevwY5haKj7v6bKvYCiW1h80FLtCJNek2x1rJ3aBWEvz57JqKg1JPF1m8kqlpJ9rOZI1UsyNvt_a3x_Fr5kMseXgY16D27xqKZ7RW3Bk6_QOnko2GD6"/>
+<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-secondary rounded-full ring-2 ring-surface"></div>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-space-xs">
+<h2 class="font-headline-sm text-headline-sm text-on-surface truncate">Aarav Sharma</h2>
+<span class="material-symbols-outlined text-[16px] text-secondary" style="font-variation-settings: 'FILL' 1;">eco</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Bengaluru Adda • Member since Oct '24</p>
+</div>
+</div>
+<button aria-label="Preview public card" class="w-10 h-10 rounded-full bg-surface flex items-center justify-center text-on-surface hover:bg-surface-container transition-colors shadow-sm" onclick="triggerToast('Viewing Public Card')">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+</div>
+<!-- Settings Container Groups -->
+<div class="px-gutter-mobile flex flex-col gap-space-lg pt-space-xs">
+<!-- 1. Account & Profile -->
+<section class="flex flex-col gap-space-xs">
+<div class="px-space-xs flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Account &amp; Presence</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Profile Complete 85%</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col">
+<!-- Edit Profile Item -->
+<button class="w-full text-left p-space-md flex items-center justify-between hover:bg-surface-container-low active:bg-surface-container transition-colors" onclick="triggerToast('Opening Profile Editor')">
+<div class="flex items-start gap-space-md min-w-0 pr-space-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">badge</span>
+</div>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface">Edit Profile Details</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Name, Bio, City Adda, dietary journey &amp; social handles</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[22px] flex-shrink-0">chevron_right</span>
+</button>
+<div class="h-[1px] bg-surface-container mx-space-md"></div>
+<!-- Profile Photo Item -->
+<button class="w-full text-left p-space-md flex items-center justify-between hover:bg-surface-container-low active:bg-surface-container transition-colors" onclick="triggerToast('Opening Photo Uploader')">
+<div class="flex items-start gap-space-md min-w-0 pr-space-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">add_a_photo</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-space-xs">
+<p class="font-headline-sm text-headline-sm text-on-surface">Profile Avatar</p>
+<span class="bg-primary-fixed text-on-primary-fixed font-label-sm text-label-sm px-space-xs rounded-full">Updated</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Warm, candid photos help friends spot you at physical meetups</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[22px] flex-shrink-0">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- 2. Privacy & Boundaries -->
+<section class="flex flex-col gap-space-xs">
+<div class="px-space-xs">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Privacy &amp; Boundaries</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col">
+<!-- Public Profile Toggle -->
+<div class="p-space-md flex items-start justify-between gap-space-md">
+<div class="flex items-start gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">public</span>
+</div>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface">Public Profile Visibility</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Visible to non-signed in visitors. Personal contact numbers and dating prompts remain safely hidden.</p>
+</div>
+</div>
+<!-- Native-feeling animated switch -->
+<button aria-checked="true" class="w-12 h-7 rounded-full bg-primary relative transition-colors duration-200 flex-shrink-0 self-center focus:outline-none" data-toggle="public-toggle" onclick="toggleSwitch(this)" role="switch">
+<span class="block w-5 h-5 rounded-full bg-on-primary shadow-sm transform translate-x-6 transition-transform duration-200 pointer-events-none"></span>
+</button>
+</div>
+<div class="h-[1px] bg-surface-container mx-space-md"></div>
+<!-- Dating Mode Visibility Toggle (Default OFF) -->
+<div class="p-space-md flex items-start justify-between gap-space-md">
+<div class="flex items-start gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-secondary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">favorite</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-space-xs">
+<p class="font-headline-sm text-headline-sm text-on-surface">Dating Mode Visibility</p>
+<span class="bg-secondary-fixed text-on-secondary-fixed font-label-sm text-label-sm px-space-xs rounded-full">Private</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Only visible to verified members who are also currently active in plant-based dating mode.</p>
+</div>
+</div>
+<button aria-checked="false" class="w-12 h-7 rounded-full bg-surface-container-highest relative transition-colors duration-200 flex-shrink-0 self-center focus:outline-none" data-toggle="dating-toggle" onclick="toggleSwitch(this)" role="switch">
+<span class="block w-5 h-5 rounded-full bg-on-primary shadow-sm transform translate-x-1 transition-transform duration-200 pointer-events-none"></span>
+</button>
+</div>
+<div class="h-[1px] bg-surface-container mx-space-md"></div>
+<!-- Event Attendance Visibility Toggle (Default ON) -->
+<div class="p-space-md flex items-start justify-between gap-space-md">
+<div class="flex items-start gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">celebration</span>
+</div>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface">Event Attendance Visibility</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Show me in attendee rosters and circle circles for gatherings &amp; potlucks I RSVP to.</p>
+</div>
+</div>
+<button aria-checked="true" class="w-12 h-7 rounded-full bg-primary relative transition-colors duration-200 flex-shrink-0 self-center focus:outline-none" data-toggle="events-toggle" onclick="toggleSwitch(this)" role="switch">
+<span class="block w-5 h-5 rounded-full bg-on-primary shadow-sm transform translate-x-6 transition-transform duration-200 pointer-events-none"></span>
+</button>
+</div>
+<div class="h-[1px] bg-surface-container mx-space-md"></div>
+<!-- Contextual Notifications Toggle (Default ON) -->
+<div class="p-space-md flex items-start justify-between gap-space-md">
+<div class="flex items-start gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">notifications_active</span>
+</div>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface">Contextual Notifications</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Notify me softly when local adda circles invite me, or when connection requests and messages arrive.</p>
+</div>
+</div>
+<button aria-checked="true" class="w-12 h-7 rounded-full bg-primary relative transition-colors duration-200 flex-shrink-0 self-center focus:outline-none" data-toggle="notifs-toggle" onclick="toggleSwitch(this)" role="switch">
+<span class="block w-5 h-5 rounded-full bg-on-primary shadow-sm transform translate-x-6 transition-transform duration-200 pointer-events-none"></span>
+</button>
+</div>
+</div>
+</section>
+<!-- 3. Safety & Moderation -->
+<section class="flex flex-col gap-space-xs">
+<div class="px-space-xs">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Safety &amp; Community Care</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col">
+<!-- Blocked Members -->
+<button class="w-full text-left p-space-md flex items-center justify-between hover:bg-surface-container-low active:bg-surface-container transition-colors" onclick="triggerToast('No blocked members in your circle')">
+<div class="flex items-start gap-space-md min-w-0 pr-space-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">block</span>
+</div>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface">Blocked Members</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">0 members blocked</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[22px] flex-shrink-0">chevron_right</span>
+</button>
+<div class="h-[1px] bg-surface-container mx-space-md"></div>
+<!-- Community Guidelines & Code of Ahimsa -->
+<button class="w-full text-left p-space-md flex items-center justify-between hover:bg-surface-container-low active:bg-surface-container transition-colors" onclick="openAhimsaSheet()">
+<div class="flex items-start gap-space-md min-w-0 pr-space-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">spa</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-space-xs">
+<p class="font-headline-sm text-headline-sm text-on-surface">Code of Ahimsa</p>
+<span class="bg-primary-fixed-dim text-on-primary-fixed-variant font-label-sm text-label-sm px-space-xs rounded-full">Foundation</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Our sacred agreement of mutual kindness, non-judgment, and convivial respect.</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[22px] flex-shrink-0">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- 4. About & Legal -->
+<section class="flex flex-col gap-space-xs">
+<div class="px-space-xs">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">About &amp; Trust</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col">
+<!-- About VeganAdda -->
+<div class="p-space-md flex items-center justify-between hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">info</span>
+</div>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface">About VeganAdda</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">v1.0 MVP Launch • Ekatva Festival Edition</p>
+</div>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-space-sm py-0.5 rounded-full">v1.0.4</span>
+</div>
+<div class="h-[1px] bg-surface-container mx-space-md"></div>
+<!-- Terms of Service & Privacy Policy -->
+<button class="w-full text-left p-space-md flex items-center justify-between hover:bg-surface-container-low active:bg-surface-container transition-colors" onclick="triggerToast('Opening Terms &amp; Privacy Policy')">
+<div class="flex items-center gap-space-md min-w-0 pr-space-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">policy</span>
+</div>
+<div class="min-w-0">
+<p class="font-headline-sm text-headline-sm text-on-surface">Terms of Service &amp; Privacy Policy</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Simple, human-first data policies honoring your privacy</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[22px] flex-shrink-0">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Destructive & Account Actions -->
+<section class="flex flex-col gap-space-sm pt-space-xs pb-space-lg">
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm flex flex-col">
+<!-- Sign Out -->
+<button class="w-full p-space-md flex items-center justify-between text-left hover:bg-surface-container-low active:bg-surface-container transition-colors" onclick="confirmSignOut()">
+<div class="flex items-center gap-space-md">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">logout</span>
+</div>
+<span class="font-headline-sm text-headline-sm text-on-surface">Sign Out</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[20px]">chevron_right</span>
+</button>
+<div class="h-[1px] bg-surface-container mx-space-md"></div>
+<!-- Delete Account (Red Destructive Link) -->
+<button class="w-full p-space-md flex items-center justify-between text-left bg-surface-container-lowest hover:bg-error-container/20 active:bg-error-container/40 transition-colors group" onclick="confirmDeleteAccount()">
+<div class="flex items-center gap-space-md">
+<div class="w-10 h-10 rounded-full bg-error-container flex items-center justify-center text-error flex-shrink-0">
+<span class="material-symbols-outlined text-[20px]">delete_forever</span>
+</div>
+<div>
+<p class="font-headline-sm text-headline-sm text-error">Delete Account</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Permanently purge your profile, posts, and meetup history</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-error text-[20px] group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+</button>
+</div>
+<!-- Festive Community Whisper Footer -->
+<div class="text-center pt-space-sm pb-space-md">
+<p class="font-label-sm text-label-sm text-outline flex items-center justify-center gap-space-xs">
+<span>Crafted with</span>
+<span class="material-symbols-outlined text-secondary text-[14px]" style="font-variation-settings: 'FILL' 1;">favorite</span>
+<span>for India's conscious gathering spaces</span>
+</p>
+</div>
+</section>
+</div>
+<!-- Interactive Sheet: Ahimsa Guidelines (Hidden Modal / Bottom Sheet) -->
+<div class="fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm hidden items-end justify-center transition-opacity" id="ahimsaModal" onclick="closeAhimsaSheet(event)">
+<div class="bg-surface rounded-t-2xl w-full max-w-lg p-space-lg max-h-[751px] overflow-y-auto shadow-2xl flex flex-col gap-space-md animate-slide-up" onclick="event.stopPropagation()">
+<div class="w-12 h-1.5 bg-surface-container-high rounded-full self-center mb-space-xs"></div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed">
+<span class="material-symbols-outlined text-[22px]">spa</span>
+</div>
+<div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface">The Code of Ahimsa</h3>
+<p class="font-label-sm text-label-sm text-secondary">Our Guiding Community Covenant</p>
+</div>
+</div>
+<button aria-label="Close modal" class="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center text-on-surface" onclick="closeAhimsaSheet()">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<div class="flex flex-col gap-space-md pt-space-xs">
+<div class="p-space-md rounded-xl bg-surface-container-lowest">
+<p class="font-headline-sm text-headline-sm text-primary">1. Compassion Over Dogma</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">We welcome everyone wherever they are on their plant-curious journey. Zero shaming, infinite hospitality.</p>
+</div>
+<div class="p-space-md rounded-xl bg-surface-container-lowest">
+<p class="font-headline-sm text-headline-sm text-primary">2. Convivial Sacred Gatherings</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Physical meetups and addas are spaces of trust. Respect individual consent, personal space, and dialogue boundaries.</p>
+</div>
+<div class="p-space-md rounded-xl bg-surface-container-lowest">
+<p class="font-headline-sm text-headline-sm text-primary">3. Safe Communal Sharing</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Hate speech, harassment, unsolicited commercial spam, or deceptive identities will be lovingly but firmly removed.</p>
+</div>
+</div>
+<button class="mt-space-sm w-full h-12 bg-primary text-on-primary rounded-full font-label-lg text-label-lg font-semibold hover:bg-primary-container transition-colors shadow-sm" onclick="closeAhimsaSheet()">
+        I Honor the Code
+      </button>
+</div>
+</div>
+<!-- Notification Toast Container -->
+<div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none transform translate-y-12 opacity-0 transition-all duration-300" id="toastBox">
+<div class="bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-full shadow-lg flex items-center gap-space-xs font-label-md text-label-md">
+<span class="material-symbols-outlined text-secondary-fixed text-[18px]">check_circle</span>
+<span id="toastMessage">Preference saved</span>
+</div>
+</div>
+</div>
+<script>
+  function toggleSwitch(btn) {
+    const isChecked = btn.getAttribute('aria-checked') === 'true';
+    const newState = !isChecked;
+    btn.setAttribute('aria-checked', String(newState));
+    const thumb = btn.querySelector('span');
+
+    if (newState) {
+      btn.classList.remove('bg-surface-container-highest');
+      btn.classList.add('bg-primary');
+      thumb.classList.remove('translate-x-1');
+      thumb.classList.add('translate-x-6');
+      triggerToast('Setting enabled');
+    } else {
+      btn.classList.remove('bg-primary');
+      btn.classList.add('bg-surface-container-highest');
+      thumb.classList.remove('translate-x-6');
+      thumb.classList.add('translate-x-1');
+      triggerToast('Setting updated');
+    }
+  }
+
+  function triggerToast(text) {
+    const toast = document.getElementById('toastBox');
+    const msg = document.getElementById('toastMessage');
+    if (!toast || !msg) return;
+    msg.textContent = text;
+    toast.classList.remove('translate-y-12', 'opacity-0');
+    toast.classList.add('translate-y-0', 'opacity-100');
+    setTimeout(() => {
+      toast.classList.remove('translate-y-0', 'opacity-100');
+      toast.classList.add('translate-y-12', 'opacity-0');
+    }, 2200);
+  }
+
+  function openAhimsaSheet() {
+    const modal = document.getElementById('ahimsaModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  function closeAhimsaSheet(e) {
+    const modal = document.getElementById('ahimsaModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  function confirmSignOut() {
+    if (confirm('Sign out of your VeganAdda account?')) {
+      triggerToast('Signing out...');
+    }
+  }
+
+  function confirmDeleteAccount() {
+    if (confirm('Are you sure you wish to permanently delete your account? This action cannot be undone.')) {
+      triggerToast('Account deletion request initiated');
+    }
+  }
+</script></main></body></html>

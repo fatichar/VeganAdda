@@ -1,0 +1,127 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using SkiaSharp;
+using VeganAdda.Contracts;
+
+namespace VeganAdda.Tests;
+
+[Collection("Postgres")]
+public class HttpTests : IDisposable
+{
+    private readonly DatabaseFixture f;
+    private readonly WebApplicationFactory<Program> factory;
+    private readonly string storage = Path.Combine(Path.GetTempPath(), "veganadda-http-" + Guid.NewGuid().ToString("N"));
+    public HttpTests(DatabaseFixture database)
+    {
+        f = database;
+        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+            { ["ConnectionStrings:Database"] = f.Connection, ["Development:Enabled"] = "false", ["Development:Seed"] = "false", ["Storage:MediaPath"] = storage, ["Storage:KeysPath"] = Path.Combine(storage, "keys") }));
+            b.ConfigureTestServices(s =>
+            {
+                s.AddAuthentication().AddScheme<AuthenticationSchemeOptions, TestAuth>("Test", _ => { });
+                s.PostConfigure<AuthenticationOptions>(o => { o.DefaultAuthenticateScheme = "Test"; o.DefaultChallengeScheme = "Test"; });
+                Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.RemoveAll<Microsoft.EntityFrameworkCore.DbContextOptions<VeganAdda.Web.Data.CommunityDb>>(s);
+                s.AddDbContext<VeganAdda.Web.Data.CommunityDb>(o => Microsoft.EntityFrameworkCore.NpgsqlDbContextOptionsBuilderExtensions.UseNpgsql(o, f.Connection));
+            });
+        });
+    }
+    HttpClient Client(Guid? id = null)
+    {
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        if (id.HasValue) client.DefaultRequestHeaders.Add("X-Test-User", id.ToString()); return client;
+    }
+    async Task<HttpResponseMessage> Post(HttpClient c, string path, object body)
+    {
+        var token = await c.GetFromJsonAsync<Csrf>("/api/csrf");
+        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-CSRF-TOKEN", token!.Token); var response = await c.SendAsync(request); if (!response.IsSuccessStatusCode) throw new Exception($"HTTP {response.StatusCode}: {await response.Content.ReadAsStringAsync()}"); return response;
+    }
+    [Fact] public async Task Http_requires_csrf_and_member_identity_and_public_html_prerenders()
+    {
+        using var anon = Client(); using var c = Client(await f.Member());
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anon.GetAsync("/api/connections")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/api/connections", new ConnectionInput(await f.Member()))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(c, "/api/connections", new ConnectionInput(await f.Member()))).StatusCode);
+        var html = await c.GetStringAsync("/"); Assert.Contains("Find your vegan people.", html); Assert.DoesNotContain("This screen couldn&#x27;t be loaded", html);
+        Assert.Contains("no-store", (await c.GetAsync("/settings")).Headers.CacheControl!.ToString());
+    }
+    [Fact] public async Task Google_return_target_is_local_and_development_routes_are_absent_when_disabled()
+    {
+        using var c = Client();
+        Assert.Equal("/signin?error=configuration", (await c.GetAsync("/auth/google?returnUrl=https://evil.test")).Headers.Location!.ToString());
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await c.PostAsJsonAsync("/auth/dev/aarav", new { })).StatusCode);
+    }
+    [Fact] public async Task Static_downloads_do_not_exhaust_api_limits_but_connection_requests_are_limited()
+    {
+        using var c=Client(await f.Member());
+        for(int i=0;i<250;i++) Assert.Equal(HttpStatusCode.OK,(await c.GetAsync("/health/live")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,(await c.GetAsync("/api/session")).StatusCode);
+        var recipient=await f.Member();
+        for(int i=0;i<15;i++) await Post(c,"/api/connections",new ConnectionInput(recipient));
+        var token=await c.GetFromJsonAsync<Csrf>("/api/csrf");
+        using var req=new HttpRequestMessage(HttpMethod.Post,"/api/connections"){Content=JsonContent.Create(new ConnectionInput(recipient))}; req.Headers.Add("X-CSRF-TOKEN",token!.Token);
+        Assert.Equal(HttpStatusCode.TooManyRequests,(await c.SendAsync(req)).StatusCode);
+    }
+    [Fact] public async Task Upload_rejects_fake_images_and_normalizes_valid_images_to_owned_jpeg()
+    {
+        var user = await f.Member(); using var c = Client(user);
+        async Task<HttpResponseMessage> Upload(byte[] bytes)
+        {
+            var token = await c.GetFromJsonAsync<Csrf>("/api/csrf"); using var form = new MultipartFormDataContent();
+            var content = new ByteArrayContent(bytes); content.Headers.ContentType = new("image/png"); form.Add(content, "file", "../../fake.png");
+            using var req = new HttpRequestMessage(HttpMethod.Post, "/api/upload") { Content = form }; req.Headers.Add("X-CSRF-TOKEN", token!.Token); return await c.SendAsync(req);
+        }
+        Assert.Equal(HttpStatusCode.BadRequest, (await Upload("not an image"u8.ToArray())).StatusCode);
+        using var bitmap = new SKBitmap(8, 8); bitmap.Erase(SKColors.Green); using var image = SKImage.FromBitmap(bitmap); using var encoded = image.Encode(SKEncodedImageFormat.Png, 90);
+        var result = await Upload(encoded.ToArray()); Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+        var path = (await result.Content.ReadFromJsonAsync<UploadResult>())!.Path;
+        Assert.Matches("^/media/[a-f0-9]{32}\\.jpg$", path);
+        Assert.Equal("image/jpeg", (await c.GetAsync(path)).Content.Headers.ContentType!.MediaType);
+        using var other = Client(await f.Member()); Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync(path)).StatusCode);
+        var profile = await c.GetFromJsonAsync<ProfileInput>("/api/profile"); profile!.Photo = path;
+        Assert.Equal(HttpStatusCode.OK,(await Post(c,"/api/profile",profile)).StatusCode);
+        using var anon = Client(); Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
+    }
+    [Fact] public async Task SignalR_authenticates_origin_and_delivers_invalidation_after_persisted_message()
+    {
+        var a = await f.Member(); var b = await f.Member(); using var ca = Client(a); using var cb = Client(b);
+        await Post(ca,"/api/connections",new ConnectionInput(b)); await Post(cb,"/api/connections/accept",new ConnectionInput(a));
+        using var anon = Client(); Assert.Equal(HttpStatusCode.Unauthorized,(await anon.PostAsync("/hubs/community/negotiate?negotiateVersion=1",null)).StatusCode);
+        ca.DefaultRequestHeaders.Add("Origin","https://evil.test"); Assert.Equal(HttpStatusCode.Forbidden,(await ca.PostAsync("/hubs/community/negotiate?negotiateVersion=1",null)).StatusCode); ca.DefaultRequestHeaders.Remove("Origin");
+        await using var hub = new HubConnectionBuilder().WithUrl("http://localhost/hubs/community", o => { o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler(); o.Transports = HttpTransportType.LongPolling; o.Headers["X-Test-User"] = b.ToString(); }).Build();
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); hub.On("Changed", () => changed.TrySetResult()); await hub.StartAsync();
+        var key = CommunityServicePair(a,b);
+        var response = await Post(ca,$"/api/conversations/{key}/messages",new MessageInput(Guid.NewGuid(),"Realtime integration test")); Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(8));
+        var history = await cb.GetFromJsonAsync<MessagePage>($"/api/conversations/{key}/messages"); Assert.Single(history!.Items);
+        await hub.StopAsync();
+    }
+    static string CommunityServicePair(Guid a, Guid b) => VeganAdda.Web.Services.CommunityService.Pair(a,b);
+    public void Dispose() { factory.Dispose(); if (Directory.Exists(storage)) Directory.Delete(storage, true); }
+    record Csrf(string Token);
+    record UploadResult(string Path);
+    private sealed class TestAuth(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options,logger,encoder)
+    {
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            if (!Guid.TryParse(Request.Headers["X-Test-User"],out var id)) return Task.FromResult(AuthenticateResult.NoResult());
+            return Task.FromResult(AuthenticateResult.Success(new(new ClaimsPrincipal(new ClaimsIdentity([new(ClaimTypes.NameIdentifier,id.ToString())],"Test")),"Test")));
+        }
+    }
+}
+

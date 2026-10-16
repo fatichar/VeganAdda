@@ -1,0 +1,62 @@
+name: veganadda
+services:
+  db:
+    image: postgres:18-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: veganadda
+      POSTGRES_USER: veganadda
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - database:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U veganadda -d veganadda']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+  migrate:
+    build: .
+    image: ${IMAGE_REF:-veganadda:local}
+    command: [--migrate]
+    restart: 'no'
+    environment: &app_environment
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Database: Host=db;Database=veganadda;Username=veganadda;Password=${POSTGRES_PASSWORD}
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
+      Authentication__AdminGoogleSubject: ${ADMIN_GOOGLE_SUBJECT:-}
+      Hosting__TrustedProxy: ${TRUSTED_PROXY_IP:-172.30.87.1}
+      AllowedHosts: veganadda.com;www.veganadda.com;localhost
+      Storage__MediaPath: /data/media
+      Storage__KeysPath: /data/keys
+      Development__Enabled: 'false'
+      Development__Seed: 'false'
+    volumes: [media:/data/media, keys:/data/keys]
+    depends_on:
+      db: {condition: service_healthy}
+    networks: [backend]
+  web:
+    build: .
+    image: ${IMAGE_REF:-veganadda:local}
+    restart: unless-stopped
+    environment: *app_environment
+    ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
+    volumes: [media:/data/media, keys:/data/keys]
+    depends_on:
+      db: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    networks: [backend]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+networks:
+  backend:
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-172.30.87.0/24}
+volumes:
+  database:
+  media:
+  keys:
+

@@ -1,0 +1,4 @@
+@if (Error != "") { <div class="feedback error" role="alert"><Icon Name="error" /><span>@Error</span></div> }
+@if (Success != "") { <div class="feedback success" role="status"><Icon Name="check_circle" /><span>@Success</span></div> }
+@code { [Parameter] public string Error { get; set; } = ""; [Parameter] public string Success { get; set; } = ""; }
+
