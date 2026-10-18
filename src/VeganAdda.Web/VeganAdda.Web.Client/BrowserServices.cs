@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.JSInterop;
 using Microsoft.AspNetCore.SignalR.Client;
 using VeganAdda.Contracts;
 
@@ -40,13 +42,51 @@ public class BrowserApi(HttpClient http) : ICommunityApi
     private record UploadResult(string Path);
     private record Failure(string Error);
 }
-public class BrowserPlatform(NavigationManager navigation, ICommunityApi api) : IPlatform, IAsyncDisposable
+public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJSRuntime js, ILogger<BrowserPlatform> logger, IWebAssemblyHostEnvironment environment) : IPlatform, IAsyncDisposable
 {
     private HubConnection? hub;
+    private IJSObjectReference? firebaseModule;
     private bool starting;
     public event Action? Changed;
     public Task<string> Upload(Stream stream, string filename, string contentType) => ((BrowserApi)api).Upload(stream, filename, contentType);
     public void SignIn(string returnTo) => navigation.NavigateTo("/signin?returnUrl=" + Uri.EscapeDataString(returnTo));
+    public async Task SignInWithGoogle(string returnTo)
+    {
+        try
+        {
+            firebaseModule ??= await js.InvokeAsync<IJSObjectReference>("import", "./js/firebase-auth.js");
+            var idToken = await firebaseModule.InvokeAsync<string>("signInWithGoogle");
+            await api.Send<Ok>("auth/firebase", new FirebaseLoginInput(idToken));
+            var session = await api.Get<Session>("session");
+            var target = session.HasProfile ? returnTo : "/onboarding?returnUrl=" + Uri.EscapeDataString(returnTo);
+            navigation.NavigateTo(target, forceLoad: true);
+        }
+        catch (ApiException ex) when (ex.Status != 429)
+        {
+            logger.LogWarning(ex, "Firebase Google sign-in failed at the server with HTTP {Status}.", ex.Status);
+            var message = environment.IsDevelopment()
+                ? $"Google sign-in failed (HTTP {ex.Status}): {ex.Message}"
+                : "Google sign-in couldn't be completed. Please try again.";
+            throw new ApiException(400, message);
+        }
+        catch (JSException ex)
+        {
+            logger.LogWarning(ex, "Firebase Google sign-in failed in the browser.");
+            var message = environment.IsDevelopment()
+                ? $"Google sign-in failed in the browser: {ex.Message}"
+                : "Google sign-in was closed or couldn't be completed. Please try again.";
+            throw new ApiException(400, message);
+        }
+    }
+    public async Task ClearFirebaseSession()
+    {
+        try
+        {
+            firebaseModule ??= await js.InvokeAsync<IJSObjectReference>("import", "./js/firebase-auth.js");
+            await firebaseModule.InvokeVoidAsync("signOut");
+        }
+        catch (JSException) { }
+    }
     public async Task StartRealtime()
     {
         if (hub != null || starting) return;
@@ -63,5 +103,9 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api) : 
         catch { if (hub != null) await hub.DisposeAsync(); hub = null; }
         finally { starting = false; }
     }
-    public async ValueTask DisposeAsync() { if (hub != null) await hub.DisposeAsync(); }
+    public async ValueTask DisposeAsync()
+    {
+        if (hub != null) await hub.DisposeAsync();
+        if (firebaseModule != null) await firebaseModule.DisposeAsync();
+    }
 }

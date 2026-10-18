@@ -40,6 +40,10 @@ trap cleanup EXIT
 docker login ghcr.io --username "$registry_user" --password-stdin
 docker compose config --quiet
 docker compose pull web migrate
+# File-backed Compose secrets retain the host file's permissions. Check access as
+# the image's non-root app user before stopping the existing web container.
+docker compose run -T --rm --no-deps --pull never --entrypoint /bin/sh web \
+  -c 'test -r /run/secrets/firebase_admin' || { echo 'Firebase Admin secret is not readable by the web container user'; exit 1; }
 docker compose up -d --wait --wait-timeout 120 db
 maintenance=true
 BACKUP_KEEP_STOPPED=1 bash "$release/backup.sh" "$root/backups"

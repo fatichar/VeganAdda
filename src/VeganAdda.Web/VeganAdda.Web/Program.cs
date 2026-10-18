@@ -4,7 +4,6 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -17,17 +16,26 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders(); builder.Logging.AddJsonConsole();
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 3 * 1024 * 1024);
 var dev = builder.Environment.IsDevelopment();
+if (dev)
+    Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", Environment.GetEnvironmentVariable("FIREBASE_ADMIN_CREDENTIALS_VEGANADDA"));
 if (!dev && (builder.Configuration.GetValue<bool>("Development:Enabled") || builder.Configuration.GetValue<bool>("Development:Seed")))
     throw new InvalidOperationException("Development authentication and fixtures are forbidden outside Development.");
-var connection = builder.Configuration.GetConnectionString("Database") ?? (dev ? "Host=127.0.0.1;Port=55432;Database=veganadda;Username=veganadda" : throw new InvalidOperationException("ConnectionStrings__Database is required."));
-var googleId = builder.Configuration["Authentication:Google:ClientId"];
-var googleSecret = builder.Configuration["Authentication:Google:ClientSecret"];
-if (!dev && (string.IsNullOrWhiteSpace(googleId) || string.IsNullOrWhiteSpace(googleSecret))) throw new InvalidOperationException("Production Google OAuth credentials are required.");
+var connection = builder.Configuration.GetConnectionString("Database") ?? throw new InvalidOperationException("ConnectionStrings__Database is required.");
+var firebaseProjectId = builder.Configuration["Authentication:Firebase:ProjectId"];
+var firebaseApiKey = builder.Configuration["Authentication:Firebase:ApiKey"];
+var firebaseAuthDomain = builder.Configuration["Authentication:Firebase:AuthDomain"];
+var firebaseAppId = builder.Configuration["Authentication:Firebase:AppId"];
+var firebaseConfigured = new[] { firebaseProjectId, firebaseApiKey, firebaseAuthDomain, firebaseAppId }.All(x => !string.IsNullOrWhiteSpace(x));
+var migrationOnly = args.Contains("--migrate", StringComparer.Ordinal);
+if (!dev && !migrationOnly && !firebaseConfigured) throw new InvalidOperationException("Authentication:Firebase project ID, API key, auth domain and app ID are required.");
+if (!dev && !migrationOnly && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS")))
+    throw new InvalidOperationException("GOOGLE_APPLICATION_CREDENTIALS must point to a mounted Firebase Admin service-account file.");
 builder.Services.AddDbContext<CommunityDb>(o => o.UseNpgsql(connection));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IActor, HttpActor>(); builder.Services.AddScoped<CommunityService>();
 builder.Services.AddScoped<ICommunityApi, ServerApi>(); builder.Services.AddScoped<IPlatform, ServerPlatform>();
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
+builder.Services.AddSingleton<IFirebaseIdentityVerifier, FirebaseIdentityVerifier>();
 builder.Services.AddRazorComponents().AddInteractiveWebAssemblyComponents();
 builder.Services.AddSignalR(o => { o.EnableDetailedErrors = false; o.MaximumReceiveMessageSize = 4096; });
 builder.Services.AddAuthorization();
@@ -48,25 +56,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         if (!Guid.TryParse(c.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var id) || !await db.Accounts.AnyAsync(a => a.Id == id && !a.Suspended))
         { c.RejectPrincipal(); await c.HttpContext.SignOutAsync(); }
     };
-}).AddGoogle(o =>
-{
-    o.ClientId = googleId ?? "not-configured"; o.ClientSecret = googleSecret ?? "not-configured"; o.SaveTokens = false;
-    o.Events.OnCreatingTicket = async c =>
-    {
-        var subject = c.Principal?.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException("Google did not provide a subject.");
-        var db = c.HttpContext.RequestServices.GetRequiredService<CommunityDb>();
-        await using var tx = await db.Database.BeginTransactionAsync();
-        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({"google:" + subject}, 0))");
-        var account = await db.Accounts.SingleOrDefaultAsync(a => a.Subject == "google:" + subject);
-        if (account == null)
-        {
-            account = new() { Subject = "google:" + subject, Name = CommunityService.Text(c.Principal?.FindFirstValue(ClaimTypes.Name), 80), Admin = builder.Configuration["Authentication:AdminGoogleSubject"] == subject };
-            db.Accounts.Add(account); await db.SaveChangesAsync();
-        }
-        if (account.Suspended) throw new ApiException(403, "This account is suspended.");
-        await tx.CommitAsync(); c.Principal = Principal(account);
-    };
-    o.Events.OnRemoteFailure = c => { c.HandleResponse(); c.Response.Redirect("/signin?error=google"); return Task.CompletedTask; };
 });
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
@@ -102,7 +91,7 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     ctx.Response.Headers["X-Frame-Options"] = "DENY";
-    ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://apis.google.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com ws: wss:; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     if (!ctx.Request.Path.StartsWithSegments("/_framework") && !ctx.Request.Path.StartsWithSegments("/_content")) ctx.Response.Headers.CacheControl = "no-cache, no-store";
     try { await next(); }
     catch (ApiException ex) when (!ctx.Response.HasStarted) { ctx.Response.StatusCode = ex.Status; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
@@ -117,12 +106,28 @@ app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter(); app.UseAn
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet("/health/ready", async (CommunityDb db) => await db.Database.CanConnectAsync() ? Results.Ok(new { status = "ready" }) : Results.StatusCode(503));
 app.MapGet("/api/csrf", (HttpContext ctx, IAntiforgery csrf) => Results.Ok(new { token = csrf.GetAndStoreTokens(ctx).RequestToken }));
-app.MapGet("/auth/google", (string? returnUrl) => string.IsNullOrEmpty(googleId) ? Results.Redirect("/signin?error=configuration") : Results.Challenge(new AuthenticationProperties { RedirectUri = "/auth/complete?returnUrl=" + Uri.EscapeDataString(SafeReturn(returnUrl)) }, [GoogleDefaults.AuthenticationScheme]));
-app.MapGet("/auth/complete", async (HttpContext ctx, CommunityDb db, string? returnUrl) =>
+app.MapGet("/api/auth/config", () => Results.Json(new FirebaseClientConfig(firebaseApiKey ?? "", firebaseAuthDomain ?? "", firebaseProjectId ?? "", firebaseAppId ?? "", firebaseConfigured), Wire.Json));
+app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforgery csrf, IFirebaseIdentityVerifier verifier, FirebaseLoginInput? input) =>
 {
-    if (!Guid.TryParse(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id)) return Results.Redirect("/signin");
-    var target = SafeReturn(returnUrl);
-    return Results.Redirect(await db.Profiles.AnyAsync(p => p.Id == id) ? target : "/onboarding?returnUrl=" + Uri.EscapeDataString(target));
+    await csrf.ValidateRequestAsync(ctx);
+    if (!firebaseConfigured) return Results.Json(new { error = "Firebase Authentication is not configured for this environment." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    if (input?.IdToken is not { Length: > 0 and <= 16000 } idToken) throw new ApiException(400, "Google sign-in couldn't be completed. Please try again.");
+    var identity = await verifier.Verify(idToken);
+    if (identity is null || identity.Provider is not ("google.com" or "phone")) return Results.Unauthorized();
+    var subject = $"firebase:{firebaseProjectId}:{identity.Uid}";
+    await using var tx = await db.Database.BeginTransactionAsync();
+    await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({subject}, 0))");
+    var account = await db.Accounts.SingleOrDefaultAsync(a => a.Subject == subject);
+    if (account == null)
+    {
+        var name = CommunityService.Text(identity.Name, 80);
+        account = new() { Subject = subject, Name = name.Length == 0 ? "New member" : name, Admin = builder.Configuration["Authentication:AdminFirebaseUid"] == identity.Uid };
+        db.Accounts.Add(account); await db.SaveChangesAsync();
+    }
+    if (account.Suspended) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    await tx.CommitAsync();
+    await ctx.SignInAsync(Principal(account));
+    return Results.Ok(new Ok());
 });
 app.MapPost("/auth/signout", async (HttpContext ctx, IAntiforgery csrf) => { await csrf.ValidateRequestAsync(ctx); await ctx.SignOutAsync(); return Results.Ok(new Ok()); });
 if (dev && builder.Configuration.GetValue<bool>("Development:Enabled"))
@@ -170,8 +175,10 @@ if (args.Contains("--migrate"))
 if (dev)
 {
     await using var scope = app.Services.CreateAsyncScope();
-    var db = scope.ServiceProvider.GetRequiredService<CommunityDb>(); await db.Database.MigrateAsync();
-    if (builder.Configuration.GetValue<bool>("Development:Seed")) await DevelopmentSeed.Run(db, builder.Configuration, builder.Environment.ContentRootPath);
+    var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
+    await db.Database.MigrateAsync();
+    if (builder.Configuration.GetValue<bool>("Development:Seed"))
+        await DevelopmentSeed.Run(db, builder.Configuration, builder.Environment.ContentRootPath);
 }
 else
 {
@@ -181,6 +188,5 @@ else
 }
 app.Run();
 
-static string SafeReturn(string? value) => value is { Length: > 0 } && value.StartsWith('/') && !value.StartsWith("//") && !value.Contains('\\') && !value.Any(char.IsControl) ? value : "/";
 static ClaimsPrincipal Principal(Account account) => new(new ClaimsIdentity([new(ClaimTypes.NameIdentifier, account.Id.ToString()), new(ClaimTypes.Name, account.Name)], CookieAuthenticationDefaults.AuthenticationScheme));
 public partial class Program;

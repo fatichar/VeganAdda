@@ -11,4 +11,4 @@ until docker compose -p "$project" exec -T db pg_isready -U veganadda -d veganad
 docker compose -p "$project" exec -T db pg_restore -U veganadda -d veganadda --exit-on-error --no-owner < "$bundle/database.dump"
 docker compose -p "$project" run -T --rm --no-deps --user root --entrypoint tar web -C /data -xzf - < "$bundle/media-and-keys.tgz"
 docker compose -p "$project" run -T --rm --no-deps --user root --entrypoint chown web -R 1654:1654 /data
-echo "Restored isolated project $project. Review APP_PORT, proxy and OAuth origin before starting its web service."
+echo "Restored isolated project $project. Review APP_PORT, proxy and Firebase authorized domain before starting its web service."

@@ -23,9 +23,11 @@ services:
     environment: &app_environment
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Database: Host=db;Database=veganadda;Username=veganadda;Password=${POSTGRES_PASSWORD}
-      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
-      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:?Set GOOGLE_CLIENT_SECRET}
-      Authentication__AdminGoogleSubject: ${ADMIN_GOOGLE_SUBJECT:-}
+      Authentication__Firebase__ProjectId: ${FIREBASE_PROJECT_ID:?Set FIREBASE_PROJECT_ID}
+      Authentication__Firebase__ApiKey: ${FIREBASE_API_KEY:?Set FIREBASE_API_KEY}
+      Authentication__Firebase__AuthDomain: ${FIREBASE_AUTH_DOMAIN:?Set FIREBASE_AUTH_DOMAIN}
+      Authentication__Firebase__AppId: ${FIREBASE_APP_ID:?Set FIREBASE_APP_ID}
+      Authentication__AdminFirebaseUid: ${ADMIN_FIREBASE_UID:-}
       Hosting__TrustedProxy: ${TRUSTED_PROXY_IP:-172.30.87.1}
       AllowedHosts: veganadda.com;www.veganadda.com;localhost
       Storage__MediaPath: /data/media
@@ -40,7 +42,10 @@ services:
     build: .
     image: ${IMAGE_REF:-veganadda:local}
     restart: unless-stopped
-    environment: *app_environment
+    secrets: [firebase_admin]
+    environment:
+      <<: *app_environment
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_admin
     ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
     volumes: [media:/data/media, keys:/data/keys]
     depends_on:
@@ -59,4 +64,7 @@ volumes:
   database:
   media:
   keys:
+secrets:
+  firebase_admin:
+    file: ${FIREBASE_ADMIN_CREDENTIALS:?Set FIREBASE_ADMIN_CREDENTIALS to a Firebase service-account JSON file path}
 

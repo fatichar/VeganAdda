@@ -12,7 +12,7 @@ Failure before migration restarts the existing web container. Failure after migr
 
 ## GitHub settings
 
-Create repository **Settings → Environments → Prod** before enabling deployment. Configure protection/reviewers according to your release policy. Put these secrets there (repository secrets also work):
+Create repository **Settings → Environments → Prod** before enabling deployment. Add a required reviewer and prevent bypass so a push to `master` can test and publish an image but cannot deploy to the VPS without an explicit environment approval. Put these secrets there (repository secrets also work):
 
 | Secret | Value |
 | --- | --- |
@@ -35,7 +35,7 @@ ssh-keygen -F '[51.79.223.152]:22222' -f "$env:USERPROFILE/.ssh/known_hosts"
 
 Copy the host-key line(s), not the informational comment, into `VPS_SSH_KNOWN_HOSTS`. Do not populate it with an unverified scan. A changed host key must fail deployment until investigated.
 
-GitHub supplies `GITHUB_TOKEN` automatically: build gets `packages:write`, deploy gets `packages:read`, and repository contents are read-only. No personal registry token is needed. If a pre-existing GHCR package has separate access settings, grant this repository Actions access to that package. See [GitHub's container registry authentication guidance](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). The server uses a temporary Docker credential directory removed on exit; existing registry credentials for other apps are preserved. OAuth and database secrets remain exclusively in the VPS `.env`.
+GitHub supplies `GITHUB_TOKEN` automatically: build gets `packages:write`, deploy gets `packages:read`, and repository contents are read-only. No personal registry token is needed. If a pre-existing GHCR package has separate access settings, grant this repository Actions access to that package. See [GitHub's container registry authentication guidance](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). The server uses a temporary Docker credential directory removed on exit; existing registry credentials for other apps are preserved. Firebase public settings and database credentials live in the VPS `.env`; the Admin SDK credential stays in a separate protected file mounted only into the web container.
 
 ## One-time server preparation — after deployment authorization
 
@@ -51,9 +51,9 @@ chmod 600 /opt/veganadda/.env
 
 The deployment user needs Docker access and write access to this directory. Docker access is host-privileged; protect the SSH key accordingly. The script deliberately fails if `.env` is missing, a symlink, or not mode 600. Never reuse the development database or development flags.
 
-Set Google credentials, admin Google subject, random database password, `APP_PORT=5080`, and the verified free subnet/trusted gateway. Leave `IMAGE_REF=veganadda:local`; the workflow overrides it with the tested digest on every invocation. Changing `POSTGRES_PASSWORD` later does not change the password inside an existing PostgreSQL volume; rotate it explicitly in PostgreSQL as well.
+Set Firebase web configuration, `ADMIN_FIREBASE_UID`, a private Firebase Admin service-account JSON file path, random database password, `APP_PORT=5080`, and the verified free subnet/trusted gateway. Keep the service-account file outside the deployment release and repository; Compose mounts it only into the web container. The web process runs as UID 1654, so install the file mode 0400 and assign that numeric owner (for example, `sudo install -m 0400 /secure-transfer/firebase-admin.json /opt/veganadda/firebase-admin.json && sudo chown +1654 /opt/veganadda/firebase-admin.json`). Set `FIREBASE_ADMIN_CREDENTIALS=/opt/veganadda/firebase-admin.json` in `.env`. The deployment script checks that the web user can read the mounted secret before it starts maintenance. Leave `IMAGE_REF=veganadda:local`; the workflow overrides it with the tested digest on every invocation. Changing `POSTGRES_PASSWORD` later does not change the password inside an existing PostgreSQL volume; rotate it explicitly in PostgreSQL as well.
 
-Finish DNS, certificate issuance, and the **separate** VeganAdda Nginx vhost as described in the [README](../README.md#vps-deployment-requires-explicit-authorization). CI checks loopback readiness; public HTTPS, trusted proxy handling and real Google OAuth still require staging verification. The action does not create DNS, issue certificates, modify Nginx, prune Docker images, remove volumes, or restart unrelated services.
+Finish DNS, certificate issuance, and the **separate** VeganAdda Nginx vhost as described in the [README](../README.md#vps-deployment-requires-explicit-authorization). CI checks loopback readiness; public HTTPS, trusted proxy handling and real Firebase Google sign-in still require staging verification. The action does not create DNS, issue certificates, modify Nginx, prune Docker images, remove volumes, or restart unrelated services.
 
 Once setup and deployment are authorized, push the workflow/source to master or run **Actions → Build and Deploy to VPS → Run workflow** on master. Its first actual run will validate Linux container behavior; that has not been executed on this workstation because Docker is stopped.
 
@@ -76,4 +76,4 @@ Regular backups restart web afterward; rollout's `BACKUP_KEEP_STOPPED=1` keeps t
 
 On a failed migration or readiness check, inspect the workflow log and that release's container logs; `/opt/veganadda/current` still identifies the last successful release. Do not rerun migration blindly or assume an app rollback reverses schema changes. If the previous image is compatible with the current schema, select that release's Compose file/digest and start web with `--no-deps --no-build --pull never --wait`. Otherwise restore the pre-deployment backup to a **new isolated project** with `restore.sh`, a distinct port and subnet, verify it, then switch only VeganAdda's upstream. See README backup/restore instructions.
 
-The isolated restore and a production HTTPS/Google/chat smoke test remain required launch checks. This workflow is deployment preparation, not evidence of a completed live deployment.
+The isolated restore and a production HTTPS/Firebase/chat smoke test remain required launch checks. This workflow is deployment preparation, not evidence of a completed live deployment.

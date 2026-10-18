@@ -1,18 +1,18 @@
 @page "/signin"
 @inherits Screen
 <PageTitle>Welcome · VeganAdda</PageTitle>
-<div class="auth-layout"><section class="auth-story"><span class="community-pill"><Icon Name="eco" />Rooted in a little more kindness</span><h1>Your people.<br />Your kind of place.</h1><p>Shared values. New friendships. A community that gets you.</p><div class="auth-values"><span><Icon Name="diversity_1" />Friendship</span><span><Icon Name="handshake" />Ideas & connections</span><span><Icon Name="volunteer_activism" />A kinder world</span></div><p class="small">An India-first community for vegans, 18 and over.</p></section><section class="auth-card"><span class="brand-mark"><Icon Name="eco" /></span><h2>Welcome to VeganAdda</h2><p>Find your vegan people. Sign in to create your own place in the Adda.</p><Feedback Error="@Error" />
-@if (AuthError != null) { <div class="feedback error" role="alert">@(AuthError == "configuration" ? "Google sign-in needs owner configuration before launch." : "Google sign-in couldn't be completed. Please try again.")</div> }
-@if (Session?.GoogleConfigured == true) { <button class="google-button" @onclick="Google"><Icon Name="login" />Continue with Google<Icon Name="arrow_forward" /></button> }
-else { <div class="notice"><strong>Google sign-in is being set up.</strong><p>Public browsing is available. Account access will open once Google authentication is configured.</p><a href="/">Explore the community<Icon Name="arrow_forward" /></a></div> }
-<p class="small muted">By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>. You must confirm you are 18 or older before creating a profile.</p>
-@if (Session?.Development == true) { <details class="dev-login"><summary>Development-only test accounts</summary><p class="small">Fictional fixtures for testing. These controls cannot run in production.</p><div class="test-accounts">@foreach (var name in new[] { "aarav", "ananya", "rohan", "sunita", "kabir", "new", "admin" }) { <button class="secondary" disabled="@Busy" @onclick="() => DevLogin(name)">@name</button> }</div></details> }
+<div class="auth-layout"><section class="auth-card"><h1>Find your vegan people.</h1><Feedback Error="@Error" />
+@if (AuthError != null) { <div class="feedback error" role="alert">Google sign-in couldn't be completed. Please try again.</div> }
+@if (Session?.AuthConfigured == true) { <button class="google-button" disabled="@Busy" @onclick="Google"><Icon Name="login" />Continue with Google<Icon Name="arrow_forward" /></button> }
+else { <div class="notice"><strong>Sign-in is coming soon.</strong><p>You can explore the community in the meantime.</p><a href="/">Explore the community<Icon Name="arrow_forward" /></a></div> }
+<p class="small muted">By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>. For adults 18+.</p>
+@if (Session?.Development == true) { <details class="dev-login"><summary>Development-only test accounts</summary><p class="small">Fictional accounts for local testing.</p><div class="test-accounts">@foreach (var name in new[] { "aarav", "ananya", "rohan", "sunita", "kabir", "new", "admin" }) { <button class="secondary" disabled="@Busy" @onclick="() => DevLogin(name)">@name</button> }</div></details> }
 </section></div>
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery(Name = "error")] public string? AuthError { get; set; }
     string Target => ReturnUrl is { Length: > 0 } && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") && !ReturnUrl.Contains('\\') ? ReturnUrl : "/";
-    void Google() => Nav.NavigateTo("/auth/google?returnUrl=" + E(Target), true);
-    Task DevLogin(string name) => Run(async () => { await Api.Send<Ok>("auth/dev/" + name); Nav.NavigateTo("/auth/complete?returnUrl=" + E(Target), true); });
+    Task Google() => Run(() => Platform.SignInWithGoogle(Target));
+    Task DevLogin(string name) => Run(async () => { await Api.Send<Ok>("auth/dev/" + name); var session = await Api.Get<Session>("session"); Nav.NavigateTo(session.HasProfile ? Target : "/onboarding?returnUrl=" + E(Target), true); });
 }
 

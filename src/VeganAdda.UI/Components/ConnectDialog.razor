@@ -1,8 +1,8 @@
 @if (Person != null)
 {
     <div class="modal-backdrop" @onkeydown="KeyDown"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="connect-heading" tabindex="-1" @ref="dialog"><span tabindex="0" class="focus-guard" @onfocus="() => sendButton.FocusAsync()"></span>
-        <div class="section-heading"><h2 id="connect-heading">Say hello to @Person.Name.Split(' ')[0]</h2><button class="icon-button" aria-label="Close introduction" @ref="closeButton" @onclick="Close"><Icon Name="close" /></button></div>
-        <p>A small hello can be the start of something good.</p><label for="introduction">Introduction <span class="muted">(optional)</span></label><textarea id="introduction" maxlength="300" rows="4" @bind="intro" @bind:event="oninput" placeholder="Hi! I'd love to connect over our shared interests." @ref="input"></textarea><small>@intro.Length / 300</small>
+        <div class="section-heading"><h2 id="connect-heading">Connect with @Person.Name.Split(' ')[0]</h2><button class="icon-button" aria-label="Close introduction" @ref="closeButton" @onclick="Close"><Icon Name="close" /></button></div>
+        <label for="introduction">Introduction <span class="muted">(optional)</span></label><textarea id="introduction" maxlength="300" rows="4" @bind="intro" @bind:event="oninput" placeholder="Hi! I'd love to connect over our shared interests." @ref="input"></textarea><small>@intro.Length / 300</small>
         <Feedback Error="@error" />
         <div class="actions"><button class="secondary" @onclick="Close" disabled="@busy">Cancel</button><button @ref="sendButton" @onclick="Send" disabled="@busy">@(busy ? "Sending…" : "Send request")<Icon Name="arrow_forward" /></button></div>
     <span tabindex="0" class="focus-guard" @onfocus="() => closeButton.FocusAsync()"></span></section></div>

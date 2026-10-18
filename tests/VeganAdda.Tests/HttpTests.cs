@@ -23,22 +23,34 @@ public class HttpTests : IDisposable
     private readonly DatabaseFixture f;
     private readonly WebApplicationFactory<Program> factory;
     private readonly string storage = Path.Combine(Path.GetTempPath(), "veganadda-http-" + Guid.NewGuid().ToString("N"));
+    private readonly Dictionary<string, string?> oldFirebaseEnvironment = new();
     public HttpTests(DatabaseFixture database)
     {
         f = database;
+        SetFirebaseEnvironment("Authentication__Firebase__ProjectId", "test-firebase");
+        SetFirebaseEnvironment("Authentication__Firebase__ApiKey", "public-test-key");
+        SetFirebaseEnvironment("Authentication__Firebase__AuthDomain", "test-firebase.firebaseapp.com");
+        SetFirebaseEnvironment("Authentication__Firebase__AppId", "1:test:web:test");
         factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
             b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
-            { ["ConnectionStrings:Database"] = f.Connection, ["Development:Enabled"] = "false", ["Development:Seed"] = "false", ["Storage:MediaPath"] = storage, ["Storage:KeysPath"] = Path.Combine(storage, "keys") }));
+            { ["ConnectionStrings:Database"] = f.Connection, ["Development:Enabled"] = "false", ["Development:Seed"] = "false", ["Storage:MediaPath"] = storage, ["Storage:KeysPath"] = Path.Combine(storage, "keys"), ["Authentication:Firebase:ProjectId"] = "test-firebase", ["Authentication:Firebase:ApiKey"] = "public-test-key", ["Authentication:Firebase:AuthDomain"] = "test-firebase.firebaseapp.com", ["Authentication:Firebase:AppId"] = "1:test:web:test" }));
             b.ConfigureTestServices(s =>
             {
                 s.AddAuthentication().AddScheme<AuthenticationSchemeOptions, TestAuth>("Test", _ => { });
                 s.PostConfigure<AuthenticationOptions>(o => { o.DefaultAuthenticateScheme = "Test"; o.DefaultChallengeScheme = "Test"; });
+                Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.RemoveAll<VeganAdda.Web.Services.IFirebaseIdentityVerifier>(s);
+                s.AddSingleton<VeganAdda.Web.Services.IFirebaseIdentityVerifier, TestFirebaseVerifier>();
                 Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.RemoveAll<Microsoft.EntityFrameworkCore.DbContextOptions<VeganAdda.Web.Data.CommunityDb>>(s);
                 s.AddDbContext<VeganAdda.Web.Data.CommunityDb>(o => Microsoft.EntityFrameworkCore.NpgsqlDbContextOptionsBuilderExtensions.UseNpgsql(o, f.Connection));
             });
         });
+    }
+    void SetFirebaseEnvironment(string key, string value)
+    {
+        oldFirebaseEnvironment[key] = Environment.GetEnvironmentVariable(key);
+        Environment.SetEnvironmentVariable(key, value);
     }
     HttpClient Client(Guid? id = null)
     {
@@ -60,11 +72,28 @@ public class HttpTests : IDisposable
         var html = await c.GetStringAsync("/"); Assert.Contains("Find your vegan people.", html); Assert.DoesNotContain("This screen couldn&#x27;t be loaded", html);
         Assert.Contains("no-store", (await c.GetAsync("/settings")).Headers.CacheControl!.ToString());
     }
-    [Fact] public async Task Google_return_target_is_local_and_development_routes_are_absent_when_disabled()
+    [Fact] public async Task Firebase_login_requires_csrf_rejects_invalid_tokens_and_creates_one_account_per_uid()
     {
         using var c = Client();
-        Assert.Equal("/signin?error=configuration", (await c.GetAsync("/auth/google?returnUrl=https://evil.test")).Headers.Location!.ToString());
+        var authConfig = await c.GetFromJsonAsync<FirebaseClientConfig>("/api/auth/config");
+        Assert.True(authConfig?.Configured, $"Firebase test config was {System.Text.Json.JsonSerializer.Serialize(authConfig)}");
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/auth/firebase", new FirebaseLoginInput("good-google"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await PostAllowFailure(c, "/auth/firebase", new FirebaseLoginInput("bad-token"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await PostAllowFailure(c, "/auth/firebase", new FirebaseLoginInput("other-provider"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(c, "/auth/firebase", new FirebaseLoginInput("good-google"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(c, "/auth/firebase", new FirebaseLoginInput("good-google"))).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VeganAdda.Web.Data.CommunityDb>();
+            Assert.Equal(1, await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Accounts.Where(a => a.Subject == "firebase:test-firebase:test-google-uid")));
+        }
         Assert.Equal(HttpStatusCode.MethodNotAllowed, (await c.PostAsJsonAsync("/auth/dev/aarav", new { })).StatusCode);
+    }
+    async Task<HttpResponseMessage> PostAllowFailure(HttpClient c, string path, object body)
+    {
+        var token = await c.GetFromJsonAsync<Csrf>("/api/csrf");
+        using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-CSRF-TOKEN", token!.Token); return await c.SendAsync(request);
     }
     [Fact] public async Task Static_downloads_do_not_exhaust_api_limits_but_connection_requests_are_limited()
     {
@@ -112,9 +141,18 @@ public class HttpTests : IDisposable
         await hub.StopAsync();
     }
     static string CommunityServicePair(Guid a, Guid b) => VeganAdda.Web.Services.CommunityService.Pair(a,b);
-    public void Dispose() { factory.Dispose(); if (Directory.Exists(storage)) Directory.Delete(storage, true); }
+    public void Dispose() { factory.Dispose(); foreach (var item in oldFirebaseEnvironment) Environment.SetEnvironmentVariable(item.Key, item.Value); if (Directory.Exists(storage)) Directory.Delete(storage, true); }
     record Csrf(string Token);
     record UploadResult(string Path);
+    private sealed class TestFirebaseVerifier : VeganAdda.Web.Services.IFirebaseIdentityVerifier
+    {
+        public Task<VeganAdda.Web.Services.VerifiedFirebaseIdentity?> Verify(string idToken) => Task.FromResult<VeganAdda.Web.Services.VerifiedFirebaseIdentity?>(idToken switch
+        {
+            "good-google" => new("test-google-uid", "Test Member", "google.com"),
+            "other-provider" => new("test-other-uid", "Other Provider", "password"),
+            _ => null
+        });
+    }
     private sealed class TestAuth(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options,logger,encoder)
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()

@@ -56,7 +56,8 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                 case "session":
                     var u = Viewer.HasValue ? await User() : null;
                     return new Session(u?.Id, u?.Name ?? "Visitor", u != null && await db.Profiles.AnyAsync(p => p.Id == u.Id), u?.Admin ?? false,
-                        env.IsDevelopment() && config.GetValue<bool>("Development:Enabled"), !string.IsNullOrWhiteSpace(config["Authentication:Google:ClientId"]));
+                        env.IsDevelopment() && config.GetValue<bool>("Development:Enabled"),
+                        new[] { config["Authentication:Firebase:ProjectId"], config["Authentication:Firebase:ApiKey"], config["Authentication:Firebase:AuthDomain"], config["Authentication:Firebase:AppId"] }.All(x => !string.IsNullOrWhiteSpace(x)));
                 case "people":
                     if (parts.Length > 1)
                     {

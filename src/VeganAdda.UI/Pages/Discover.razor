@@ -1,60 +1,42 @@
 @page "/"
 @inherits Screen
-<PageTitle>VeganAdda · Find your vegan people.</PageTitle>
-<div class="discovery @(Session?.Id != null ? "member-discovery" : "")">
-<section class="discovery-hero"><div class="hero-copy"><span class="community-pill"><Icon Name="eco" />A kinder kind of community</span><h1>Find your vegan people.</h1><p>Friendships, shared interests, and meaningful community connections across India. A thoughtful space to belong.</p></div><div class="segmented" aria-label="Discovery type">@foreach (var type in new[] { "People & Events", "People", "Events" }) { <button class="@(scope == type ? "selected" : "")" @onclick="() => Scope(type)" aria-pressed="@(scope == type)">@type</button> }</div></section>
-<div class="city-tabs" aria-label="Choose city"><span class="muted small">City hubs</span>@foreach (var city in Wire.Cities) { <button class="chip @(City == city ? "active" : "")" @onclick="() => ChangeCity(city)" aria-pressed="@(City == city)">@if (City == city && city != "All India") { <Icon Name="location_on" /> }@city</button> }</div>
-@if (scope != "People" && events.FirstOrDefault(e => e.Featured) is { } featured)
-{
-    <section class="spotlight"><span class="spotlight-icon"><Icon Name="festival" /></span><div><div class="eyebrow">@(featured.Demo ? "Sample gathering · development only" : "Spotlight gathering")</div><h2>@featured.Title</h2><div class="event-meta"><span><Icon Name="calendar_today" />@Date(featured.Start, featured.TimeZone)</span><span><Icon Name="location_on" />@featured.City</span><span class="badge">Community, around a shared table</span></div></div><a class="button terracotta" href="/events/@featured.Id">Explore event & attendees<Icon Name="arrow_forward" /></a></section>
-}
-@if (Session?.Id == null)
-{
-    <section class="visitor-banner"><Icon Name="info" /><div><strong>Make yourself at home.</strong><p>Browse the community. Sign in to connect, save favourites, and join a gathering.</p></div><a class="button white" href="/signin"><Icon Name="login" />Continue with Google</a></section>
-}
-<Feedback Error="@Error" Success="@Success" />
-@if (scope != "Events")
-{
+<PageTitle>Discover · VeganAdda</PageTitle>
+<div class="discovery">
+    <div class="discovery-heading">
+        <h1>Discover</h1>
+        <label class="city-picker"><Icon Name="location_on" /><span class="sr-only">City</span><select @bind="City" @bind:after="Search">@foreach (var city in Wire.Cities) { <option>@city</option> }</select></label>
+    </div>
     @if (Session?.Id != null)
     {
-        <div class="filter-bar"><label class="search-field"><Icon Name="search" /><input aria-label="Search people and interests" placeholder="Search people, passions, or interests…" @bind="search" @bind:event="oninput" @onkeydown="SearchKey" /></label><button class="secondary small-button search-submit" aria-label="Search" @onclick="Search"><Icon Name="search" /><span class="search-button-label">Search</span></button><button class="mobile-filter-button icon-button secondary" aria-label="Filters" aria-expanded="@filtersOpen" @onclick="() => filtersOpen = !filtersOpen"><Icon Name="tune" /></button><div class="filter-controls @(filtersOpen ? "open" : "")"><label class="sr-only" for="interest">Interest</label><select id="interest" @bind="interest" @bind:after="Search"><option value="">All interests</option>@foreach (var tag in new[] { "Running", "Baking", "Sanctuaries", "Design", "Hiking", "Cooking", "Volunteering", "Photography" }) { <option>@tag</option> }</select><label class="sr-only" for="intent">Looking for</label><select id="intent" @bind="intent" @bind:after="Search"><option value="">All intentions</option>@foreach (var tag in Wire.Intents.Where(x => x != "Dating" || dating)) { <option>@tag</option> }</select><button class="text-button" @onclick="Clear"><Icon Name="close" />Clear filters</button></div></div>
+        <form class="filter-bar" @onsubmit="Search" @onsubmit:preventDefault @onkeydown="FilterKey">
+            <div class="search-field"><label class="sr-only" for="people-search">Search people and interests</label><input id="people-search" type="search" enterkeyhint="search" placeholder="Search people or interests" @bind="search" @bind:event="oninput" /><button type="submit" class="icon-button search-submit" aria-label="Search"><Icon Name="search" /></button></div>
+            <button type="button" class="icon-button secondary filter-toggle" aria-label="Filters" aria-expanded="@(filtersOpen ? "true" : "false")" aria-controls="discovery-filters" @onclick="() => filtersOpen = !filtersOpen"><Icon Name="tune" />@if (interest != "" || intent != "") { <span class="filter-dot"></span> }</button>
+            <div id="discovery-filters" class="filter-controls @(filtersOpen ? "open" : "")">
+                <label class="sr-only" for="interest">Interest</label><select id="interest" @bind="interest" @bind:after="Search"><option value="">All interests</option>@foreach (var tag in new[] { "Running", "Baking", "Sanctuaries", "Design", "Hiking", "Cooking", "Volunteering", "Photography" }) { <option>@tag</option> }</select>
+                <label class="sr-only" for="intent">Looking for</label><select id="intent" @bind="intent" @bind:after="Search"><option value="">Looking for</option>@foreach (var tag in Wire.Intents.Where(x => x != "Dating" || dating)) { <option>@tag</option> }</select>
+                <button type="button" class="text-button" @onclick="Clear">Reset filters</button>
+            </div>
+        </form>
     }
-    else { <div class="public-filter-note"><Icon Name="diversity_1" /><span>Find friendship, exchange ideas, and make a difference.</span><a href="/signin">Sign in for more filters<Icon Name="arrow_forward" /></a></div> }
-    <div class="section-heading"><div><span class="eyebrow">Good people. Shared values.</span><h2>Meet the community@(City == "All India" ? "" : " in " + City)</h2><p>@total @(total == 1 ? "person" : "people") to get to know · @(Session?.Id == null ? "Public profiles, shared by choice" : "A little connection goes a long way")</p></div><span class="section-icon"><Icon Name="diversity_3" /></span></div>
-    @if (!Loaded || Busy) { <p role="status" class="loading">Finding your people…</p> }
-    else if (people.Count == 0) { <Empty Title="Your people are on their way" Text="Try another city or clear your filters. You can help this community grow by creating your profile."><button class="secondary" @onclick="Clear">Clear filters</button></Empty> }
+    <Feedback Error="@Error" Success="@Success" />
+    @if (!Loaded || Busy) { <p role="status" class="loading">Finding people…</p> }
+    else if (people.Count == 0) { <Empty Title="No people found" Text="Try another city or reset your filters."><button class="secondary" @onclick="Clear">Reset filters</button></Empty> }
     else { <div class="people-grid">@foreach (var p in people) { <PersonCard Person="p" Viewer="Session?.Id" Connect="Connect" Save="Save" /> }</div> }
     @if (total > 12) { <div class="pagination"><button class="secondary" disabled="@(page <= 1 || Busy)" @onclick="Previous">Previous</button><span>Page @(page) of @((total + 11) / 12)</span><button class="secondary" disabled="@(page * 12 >= total || Busy)" @onclick="Next">Next</button></div> }
-}
-@if (scope != "People")
-{
-    <div class="section-heading events-heading"><div><span class="eyebrow">Take the connection offline</span><h2>Gather around something good.</h2><p>Upcoming events, curated for the community.</p></div><a class="text-button" href="/events">All events<Icon Name="arrow_forward" /></a></div>
-    @if (events.Count == 0) { <Empty Icon="festival" Title="More gatherings are growing" Text="Check back soon for upcoming events in your city." /> }
-    else { <div class="events-grid">@foreach (var ev in events) { <EventCardView Event="ev" Save="SaveEvent" /> }</div> }
-}
-<section class="community-note"><div><h2>A mindful space for conscious living.</h2><p>Come as you are. Meet with kindness, respect boundaries, and build a community that feels like home. VeganAdda is for people aged 18 and over.</p></div><div class="actions"><a class="button white" href="/help">Our community guidelines</a><a class="button" href="@(Session?.Id == null ? "/signin" : "/settings")">@(Session?.Id == null ? "Join the Adda" : "Your place in the Adda")<Icon Name="arrow_forward" /></a></div></section>
-<ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
+    <ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
 </div>
 @code {
     [SupplyParameterFromQuery] public string City { get; set; } = "All India";
-    string scope = "People & Events", search = "", interest = "", intent = ""; bool dating, filtersOpen; int page = 1, total;
-    List<Person> people = []; List<EventCard> events = []; Person? connecting;
+    string search = "", interest = "", intent = ""; bool dating, filtersOpen; int page = 1, total;
+    List<Person> people = []; Person? connecting;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.HasProfile == true) await Run(async () => dating = (await Api.Get<ProfileInput>("profile")).LookingFor.Contains("Dating")); }
     protected override async Task OnParametersSetAsync() { if (string.IsNullOrEmpty(City)) City = "All India"; await Run(Refresh); }
-    protected override async Task Refresh() { var result = await Api.Get<Page<Person>>($"people?city={E(City)}&search={E(search)}&interest={E(interest)}&intent={E(intent)}&page={page}"); people = result.Items; total = result.Total; events = (await Api.Get<Page<EventCard>>("events?city=" + E(City))).Items; }
-    Task ChangeCity(string city) { City = city; page = 1; return Run(Refresh); }
-    Task Scope(string s) { scope = s; return Task.CompletedTask; }
+    protected override async Task Refresh() { var result = await Api.Get<Page<Person>>($"people?city={E(City)}&search={E(search)}&interest={E(interest)}&intent={E(intent)}&page={page}"); people = result.Items; total = result.Total; }
     Task Search() { page = 1; return Run(Refresh); }
-    Task SearchKey(KeyboardEventArgs e) => e.Key == "Enter" ? Search() : Task.CompletedTask;
+    void FilterKey(KeyboardEventArgs e) { if (e.Key == "Escape") filtersOpen = false; }
     Task Clear() { search = interest = intent = ""; City = "All India"; return Search(); }
     Task Previous() { page--; return Run(Refresh); } Task Next() { page++; return Run(Refresh); }
     Task Connect(Person p) { if (Session?.Id == null) Platform.SignIn($"/people/{p.Id}?action=connect"); else if (!Session.HasProfile) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{p.Id}?action=connect")}"); else connecting = p; return Task.CompletedTask; }
-    async Task Save(Person p) { if (!ReadyForAction($"/people/{p.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"people/{p.Id}/save"); await Refresh(); Success = p.Saved ? "Removed from your saved people." : "Saved for another hello."; }); }
-    async Task SaveEvent(EventCard ev) { if (!ReadyForAction($"/events/{ev.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"events/{ev.Id}/save"); await Refresh(); Success = "Your saved events are updated."; }); }
-    async Task Connected() { Success = "Your hello is on its way. You'll find it in sent requests."; await Run(Refresh); }
+    async Task Save(Person p) { if (!ReadyForAction($"/people/{p.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"people/{p.Id}/save"); await Refresh(); Success = p.Saved ? "Profile unsaved." : "Profile saved."; }); }
+    async Task Connected() { Success = "Request sent."; await Run(Refresh); }
 }
-
-
-
-
-

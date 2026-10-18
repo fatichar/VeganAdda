@@ -16,6 +16,8 @@ public interface ICommunityApi
 public interface IPlatform
 {
     void SignIn(string returnTo);
+    Task SignInWithGoogle(string returnTo);
+    Task ClearFirebaseSession();
     Task StartRealtime();
     Task<string> Upload(Stream stream, string filename, string contentType);
     event Action? Changed;
@@ -25,7 +27,9 @@ public class ApiException(int status, string message) : Exception(message)
     public int Status { get; } = status;
 }
 public record Ok(bool Success = true);
-public record Session(Guid? Id, string Name, bool HasProfile, bool IsAdmin, bool Development, bool GoogleConfigured);
+public record Session(Guid? Id, string Name, bool HasProfile, bool IsAdmin, bool Development, bool AuthConfigured);
+public record FirebaseClientConfig(string ApiKey, string AuthDomain, string ProjectId, string AppId, bool Configured);
+public record FirebaseLoginInput(string IdToken);
 public record Page<T>(List<T> Items, int Total, int PageNumber, int PageSize = 12);
 // This is the only profile projection returned to other people. Never add email or OAuth identity.
 public record Person(Guid Id, string Name, string City, string Bio, string Photo, string[] Interests,

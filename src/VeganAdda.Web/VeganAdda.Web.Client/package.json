@@ -1,0 +1,14 @@
+{
+  "name": "veganadda-web-auth",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/firebase-auth.js --bundle --format=esm --minify --target=es2020 --outfile=wwwroot/js/firebase-auth.js"
+  },
+  "dependencies": {
+    "firebase": "12.19.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.2"
+  }
+}

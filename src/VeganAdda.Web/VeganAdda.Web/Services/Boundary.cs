@@ -28,6 +28,8 @@ public class ServerPlatform : IPlatform
 {
     public event Action? Changed { add { } remove { } }
     public void SignIn(string returnTo) { }
+    public Task SignInWithGoogle(string returnTo) => Task.CompletedTask;
+    public Task ClearFirebaseSession() => Task.CompletedTask;
     public Task StartRealtime() => Task.CompletedTask;
     public Task<string> Upload(Stream stream, string filename, string contentType) => throw new InvalidOperationException("Uploads require an interactive client.");
 }

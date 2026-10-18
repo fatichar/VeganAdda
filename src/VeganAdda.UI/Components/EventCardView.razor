@@ -1,6 +1,6 @@
 <article class="event-card">
-    <a href="/events/@Event.Id" class="event-cover">@if (Event.Cover != "") { <img src="@Event.Cover" alt="" loading="lazy" /> } else { <Icon Name="festival" /> }<span class="badge">@(Event.Demo ? "Sample event" : Event.Featured ? "Featured gathering" : "Community gathering")</span></a>
-    <div class="event-card-body"><span class="eyebrow">@Event.City</span><h3><a href="/events/@Event.Id">@Event.Title</a></h3><p class="muted small">@ScreenDate</p><p class="clamp">@Event.Description</p><div class="actions"><a class="button small-button" href="/events/@Event.Id">Explore gathering<Icon Name="arrow_forward" /></a><button class="icon-button" aria-label="@(Event.Saved ? "Unsave event" : "Save event")" @onclick="() => Save.InvokeAsync(Event)"><Icon Name="@(Event.Saved ? "bookmark" : "bookmark_border")" /></button></div></div>
+    <a href="/events/@Event.Id" class="event-cover" aria-label="@Event.Title">@if (Event.Cover != "") { <img src="@Event.Cover" alt="" loading="lazy" /> } else { <Icon Name="festival" /> }@if (Event.Demo) { <span class="badge">Sample event</span> }</a>
+    <div class="event-card-body"><h3><a href="/events/@Event.Id">@Event.Title</a></h3><p class="muted small">@Event.City · @ScreenDate</p><div class="actions"><a class="button small-button" href="/events/@Event.Id">View event<Icon Name="arrow_forward" /></a><button class="icon-button" aria-label="@(Event.Saved ? "Unsave event" : "Save event")" @onclick="() => Save.InvokeAsync(Event)"><Icon Name="@(Event.Saved ? "bookmark" : "bookmark_border")" /></button></div></div>
 </article>
 @code {
     [Parameter, EditorRequired] public EventCard Event { get; set; } = default!;

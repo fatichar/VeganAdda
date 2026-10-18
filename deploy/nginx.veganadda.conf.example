@@ -13,7 +13,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/veganadda.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     client_max_body_size 3m;
-    # Avoid query-string logging of OAuth authorization codes and personal discovery queries.
+    # Avoid query-string logging of personal discovery terms and return targets.
     access_log off;
     location / {
         proxy_pass http://127.0.0.1:5080;

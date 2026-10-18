@@ -1,6 +1,6 @@
 # VeganAdda
 
-**Find your vegan people.** India-first, mobile-first community website for adults 18+. Blazor, ASP.NET Core, PostgreSQL/EF Core, SignalR and Google sign-in. A small modular monolith; no mobile app is included.
+**Find your vegan people.** India-first, mobile-first community website for adults 18+. Blazor, ASP.NET Core, PostgreSQL/EF Core, SignalR and Firebase Authentication (Google sign-in). A small modular monolith; no mobile app is included.
 
 ## Design and architecture
 
@@ -8,7 +8,7 @@ The Google Stitch export in `design-reference/` is read-only visual reference, n
 
 - `src/VeganAdda.UI`: reusable Razor Class Library with screens, cards, forms and responsive shell.
 - `src/VeganAdda.Contracts`: explicit DTOs plus `ICommunityApi` / `IPlatform` abstractions.
-- `src/VeganAdda.Web/VeganAdda.Web`: ASP.NET Core host, Google/cookie auth, JSON API, application modules, EF Core migrations and SignalR.
+- `src/VeganAdda.Web/VeganAdda.Web`: ASP.NET Core host, Firebase token verification and secure cookie sessions, JSON API, application modules, EF Core migrations and SignalR.
 - `src/VeganAdda.Web/VeganAdda.Web.Client`: WebAssembly transport, antiforgery, browser navigation, uploads and realtime adapter.
 - `tests/VeganAdda.Tests`: real PostgreSQL service/HTTP/SignalR tests.
 
@@ -16,10 +16,12 @@ Use **.NET 10 LTS**, with current servicing packages. Public routes prerender on
 
 ## Local development
 
-Prerequisites: .NET 10 SDK, PostgreSQL 18 (local or Docker), and a browser. No Node build is required.
+Prerequisites: .NET 10 SDK, Node.js 22/npm, PostgreSQL 18 (local or Docker), and a browser. The client build bundles Firebase's browser SDK; Rider builds it through the project target.
+
+Development reads `ConnectionStrings:Database` from `src/VeganAdda.Web/VeganAdda.Web/appsettings.Development.json`; it defaults to `127.0.0.1:5432`. EF Core applies pending migrations automatically at startup. Configure the local PostgreSQL server with the `veganadda` database and role, or override the connection string with `ConnectionStrings__Database` for your local credentials.
 
 ```powershell
-# Optional local database with Docker. Don't run if another database owns port 55432.
+# Optional Docker database (alternative to the local PostgreSQL server on port 5432).
 docker compose -f compose.dev.yaml up -d
 $env:ConnectionStrings__Database='Host=127.0.0.1;Port=55432;Database=veganadda;Username=veganadda;Password=local-development-only'
 # Explicitly enables FICTIONAL local accounts and sample events.
@@ -28,28 +30,36 @@ $env:ConnectionStrings__Database='Host=127.0.0.1;Port=55432;Database=veganadda;U
 
 Open [localhost:5080](http://localhost:5080). Sign-in page → Development-only test accounts. `new` exercises onboarding, `aarav` / `ananya` / `rohan` etc. exercise member flows, and `admin` exercises administration. Fixtures are only created in Development with `Development__Seed=true`. `Development__Enabled=true` separately enables test login. Both flags cause a hard startup failure outside Development. Production also refuses a database containing demo accounts or events. **Never use the development database in production.** Production starts empty.
 
-Without fixtures, omit `-Fixtures` and configure Google. Development applies EF migrations automatically. Outside Development, run the explicit migration command before starting the web process.
+Without fixtures, omit `-Fixtures` and configure Firebase (see below). Development applies EF migrations automatically. Outside Development, run the explicit migration command before starting the web process.
 
-This workstation has an isolated local cluster under ignored `.local/postgres`, port 55432 and a `veganadda` development database with loopback trust authentication. It was created only for this implementation; do not expose it. The machine's .NET 10.0.100 SDK intermittently fails the WebAssembly task host with parallel builds. The development script uses `-m:1 /nr:false` and builds before `dotnet run --no-build` to avoid that issue. Use a current serviced SDK for ongoing development.
+The development script uses `-m:1 /nr:false` and builds before `dotnet run --no-build` to avoid an intermittent WebAssembly task-host failure with older .NET 10 SDKs. Use a current serviced SDK for ongoing development.
 
-## Google OAuth and administrator setup
+## Firebase Authentication setup
 
-Create a **Web application** OAuth client in Google Cloud. Configure the consent screen and authorized domain `veganadda.com`. Use exact redirect URIs:
-
-- Local: `http://localhost:5080/signin-google` (or your HTTPS local origin).
-- Production: `https://veganadda.com/signin-google`.
+The app defaults to the registered Firebase Web app in `veganadda-app`. Its public web configuration is in the host's `appsettings.json` and the deployment settings in `.env.example`. Enable Google under Authentication → Sign-in method, and add `localhost`, `veganadda.com` and `www.veganadda.com` to Firebase Authentication's authorized domains. Google's OAuth consent screen must allow the intended audience/test users. To use a different Firebase project locally, override the web configuration with user-secrets:
 
 ```powershell
 dotnet user-secrets init --project src/VeganAdda.Web/VeganAdda.Web
-dotnet user-secrets set 'Authentication:Google:ClientId' 'YOUR_CLIENT_ID' --project src/VeganAdda.Web/VeganAdda.Web
-dotnet user-secrets set 'Authentication:Google:ClientSecret' 'YOUR_SECRET' --project src/VeganAdda.Web/VeganAdda.Web
+dotnet user-secrets set 'Authentication:Firebase:ProjectId' 'YOUR_PROJECT_ID' --project src/VeganAdda.Web/VeganAdda.Web
+dotnet user-secrets set 'Authentication:Firebase:ApiKey' 'YOUR_WEB_API_KEY' --project src/VeganAdda.Web/VeganAdda.Web
+dotnet user-secrets set 'Authentication:Firebase:AuthDomain' 'YOUR_PROJECT_ID.firebaseapp.com' --project src/VeganAdda.Web/VeganAdda.Web
+dotnet user-secrets set 'Authentication:Firebase:AppId' 'YOUR_WEB_APP_ID' --project src/VeganAdda.Web/VeganAdda.Web
 ```
 
-Google access/refresh tokens and email addresses are not stored. A Google subject identifies an account; the application cookie contains only its internal identifier and display name. Cookies are HttpOnly, SameSite=Lax, seven days with sliding expiry, Secure in production. Data-protection keys must persist across container replacements. OAuth state/correlation and same-origin antiforgery protect callbacks and writes. There is no cross-origin API policy.
+For local backend token verification, create a Firebase Admin service-account credential in Firebase Console → Project settings → Service accounts → Generate new private key. Keep the downloaded private JSON outside the repository. Set the VeganAdda-specific `FIREBASE_ADMIN_CREDENTIALS_VEGANADDA` variable to its path; the Development server maps it to Google's standard credential variable inside its own process, without changing your PowerShell session or other apps. A production web container receives the credential as a Docker secret; migrations do not need it. On Google-hosted infrastructure, prefer Application Default Credentials instead. The browser Firebase configuration is public client configuration, not a secret.
 
-`Authentication__AdminGoogleSubject` is an optional **exact Google subject**, never an email address. It grants admin only when that account is first created. If the account already exists, the owner can promote its known internal account through a reviewed SQL update, for example `UPDATE "Accounts" SET "Admin"=true WHERE "Id"='confirmed-account-uuid';`. Do not make public self-promotion endpoints. Admin pages are at `/admin` and linked in the admin's footer.
+```powershell
+$env:FIREBASE_ADMIN_CREDENTIALS_VEGANADDA='C:\secure\veganadda-firebase-admin.json'
+./scripts/dev.ps1
+```
 
-OAuth credentials were not supplied during implementation. Real Google consent, callback and refresh-session verification must be completed in staging.
+The browser signs in with Firebase and sends an ID token to the backend. The server verifies the signature, expiry and project through Firebase Admin, then issues VeganAdda's own HttpOnly, SameSite=Lax cookie. VeganAdda stores a project-scoped Firebase UID and display name, not an email address or Google access token. Cookies last seven days with sliding expiry and are Secure in production; data-protection keys must persist across container replacements. All writes use same-origin antiforgery protection. OTP is not enabled in this MVP; Firebase phone sign-in can be enabled later without replacing this application session/API boundary.
+
+The supplied storage bucket, messaging sender ID and Analytics measurement ID are retained in `appsettings.json` for future integrations. The current browser module initializes Authentication only; Analytics collection is not enabled.
+
+`ADMIN_FIREBASE_UID` is an optional exact Firebase UID and grants administrator access when the account is first created. Never use an email address. Admin pages are at `/admin`. Firebase account deletion is separate from VeganAdda data deletion and must be handled by the user or a later Admin SDK deletion integration.
+
+Real Firebase consent and sign-in still need staging verification with the chosen project and authorized domains.
 
 ## Behavior and security
 
@@ -63,7 +73,7 @@ OAuth credentials were not supplied during implementation. Real Google consent, 
 - All writes, uploads and sign-out validate a session-bound antiforgery header. Public pages and API/media responses are not cached. Browser HTML never renders untrusted markup. URLs accept HTTPS only, with host checks for Instagram and LinkedIn.
 - Uploads accept JPG/PNG/WebP only, max 2 MB, max 16 megapixels/6000px per side. Skia decodes, normalizes orientation, resizes to 1200px and writes fresh JPEG pixels under random storage names, discarding metadata and animation. Original filenames are not trusted. Media queries enforce visibility and ownership.
 - Limits per identity/IP: 15 connection requests/minute, 60 message sends/minute, 30 other writes/minute and 240 API reads/minute. SignalR transport has a separate allowance. Static downloads do not consume API quotas.
-- JSON console logs report operational failures without request bodies, messages, tokens or sensitive field values. Keep EF sensitive-data logging disabled. Nginx example disables access logs to avoid storing OAuth query strings. Use `/health/live` and `/health/ready` with existing monitoring.
+- JSON console logs report operational failures without request bodies, messages, tokens or sensitive field values. Keep EF sensitive-data logging disabled. Nginx example disables access logs to avoid storing query strings that could contain personal discovery terms. Use `/health/live` and `/health/ready` with existing monitoring.
 
 ## Events and Ekatva
 
@@ -89,12 +99,12 @@ See [progress and launch checklist](docs/PROGRESS.md), [visual QA](design-qa.md)
 
 The existing VPS was inspected read-only; see [inspection evidence](docs/VPS_INSPECTION.md). Existing sites and containers must remain intact. This repository provides an additive Nginx example and an isolated Compose stack, **not an applied server change**.
 
-1. Verify DNS for `veganadda.com` and `www` against the VPS IP, choose the canonical Google callback host, and obtain a certificate through the existing Certbot setup. No VeganAdda certificate was present at inspection. Do not enable an SSL vhost that references nonexistent certificate files. Bootstrap a separate HTTP challenge vhost first, issue the certificate, then enable HTTPS. Preserve all existing Certbot renewals and virtual hosts.
+1. Verify DNS for `veganadda.com` and `www` against the VPS IP, choose the canonical host, and obtain a certificate through the existing Certbot setup. No VeganAdda certificate was present at inspection. Do not enable an SSL vhost that references nonexistent certificate files. Bootstrap a separate HTTP challenge vhost first, issue the certificate, then enable HTTPS. Preserve all existing Certbot renewals and virtual hosts.
 2. After authorization, create a separate deployment directory. Copy `.env.example` to `.env`, restrict it to the deployment owner (`chmod 600 .env`), and fill real secrets. Use a strong DB password. Confirm localhost port 5080 and subnet 172.30.87.0/24 remain unused. Set `TRUSTED_PROXY_IP` to the actual host-to-container source; never trust arbitrary forwarded headers.
 3. Use the [GitHub Actions deployment guide](docs/GITHUB_DEPLOYMENT.md) for the prepared test → Linux image smoke test → GHCR → SSH workflow. It deploys a tested immutable digest after a backup and explicit migration. Configure `Prod` secrets and the VPS `.env` first. Alternatively set `IMAGE_REF` and build/pull a release manually; building in CI avoids pressure on this shared VPS.
 4. `docker compose up -d db` then `docker compose run --rm migrate`. Inspect migration exit status. `docker compose up -d web` also requires a successful migration service. Production never auto-migrates on ordinary startup.
 5. Create only `/etc/nginx/sites-available/veganadda.com`, adapted from `deploy/nginx.veganadda.conf.example`; symlink it into `sites-enabled`. The existing VPS defines `$connection_upgrade`, which the example reuses. Run `sudo nginx -t`; reload only after a successful test. Nginx terminates HTTPS; the app trusts only the explicit Docker gateway for forwarded scheme/address.
-6. Confirm readiness locally, then HTTPS public browsing, Google callback, correct Secure cookies, connection requests, message delivery/reconnect, uploads and privacy. Confirm the app observes `Request.IsHttps` behind the proxy and there are no redirect loops. Check actual proxy source before changing trusted-proxy configuration.
+6. Confirm readiness locally, then HTTPS public browsing, Firebase Google sign-in, correct Secure cookies, connection requests, message delivery/reconnect, uploads and privacy. Confirm the app observes `Request.IsHttps` behind the proxy and there are no redirect loops. Check actual proxy source before changing trusted-proxy configuration.
 7. Run the Pune pilot. Measure memory, message throughput and backups on this shared 3.7 GiB VPS. Monitor readiness with the existing Uptime Kuma instance after owner authorization. No monitoring changes were made.
 
 PostgreSQL is not host-exposed. Compose uses named persistent database, media and data-protection key volumes. The application runs as the .NET `app` user. Protect host disk, Docker access and off-host backups because persistent session keys and private data are stored there. `.NET 10` and `postgres:18-bookworm` tags receive servicing updates; resolve and record image digests for each production release. Rebuild routinely for security updates.
@@ -105,7 +115,7 @@ Rollback: keep the prior immutable application image/tag, take a backup before e
 
 `deploy/backup.sh /secure/backups` stops **only this Compose project's web service** briefly, dumps its PostgreSQL database and archives media plus data-protection keys together, then restarts the web service via a trap. Run from the deployment directory with its `.env`; CI releases use the explicit Compose environment shown in the [deployment guide](docs/GITHUB_DEPLOYMENT.md#operations-and-recovery). The rollout keeps web stopped through migration. Store the backup directory outside the repository. Encrypt and copy it off-host; owner must choose and document a retention schedule.
 
-`deploy/restore.sh /secure/backups/veganadda-TIMESTAMP veganadda-restore-check` restores into a **new** Compose project and refuses existing volumes. Use a free, non-overlapping `DOCKER_SUBNET` and separate `APP_PORT` in an isolated copy of `.env` first. It restores DB/media/keys and leaves web stopped for review. Use the backup's matching image version, run migrations only after compatibility review, start the isolated web service and test Google/media/history before any upstream switch. Restoring production OAuth credentials into a test host does not authorize real account use; prefer a staging OAuth client.
+`deploy/restore.sh /secure/backups/veganadda-TIMESTAMP veganadda-restore-check` restores into a **new** Compose project and refuses existing volumes. Use a free, non-overlapping `DOCKER_SUBNET` and separate `APP_PORT` in an isolated copy of `.env` first. It restores DB/media/keys and leaves web stopped for review. Use the backup's matching image version, run migrations only after compatibility review, start the isolated web service and test Firebase sign-in/media/history before any upstream switch. Use a staging Firebase project for test accounts.
 
 Test a restore before launch, then periodically. Keep the backup outside the source directory. Production backup/restore scripts have not been executed on the live VPS because deployment is not authorized.
 

@@ -1,9 +1,17 @@
+FROM node:22-bookworm-slim AS firebase-client
+WORKDIR /client
+COPY src/VeganAdda.Web/VeganAdda.Web.Client/package*.json ./
+RUN npm ci
+COPY src/VeganAdda.Web/VeganAdda.Web.Client/src/ ./src/
+RUN npm run build
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 COPY global.json VeganAdda.sln ./
 COPY src/ ./src/
+COPY --from=firebase-client /client/wwwroot/js/firebase-auth.js ./src/VeganAdda.Web/VeganAdda.Web.Client/wwwroot/js/firebase-auth.js
 RUN dotnet restore src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj
-RUN dotnet publish src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj -c Release --no-restore -o /out -m:1 /nr:false
+RUN dotnet publish src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj -c Release --no-restore -p:SkipFirebaseClientBuild=true -o /out -m:1 /nr:false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 USER root
