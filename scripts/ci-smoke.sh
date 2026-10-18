@@ -8,7 +8,8 @@ cleanup() {
   if (( result != 0 )); then docker logs veganadda-ci-web 2>&1 || true; fi
   docker rm -f veganadda-ci-web veganadda-ci-db > /dev/null 2>&1 || true
   docker network rm veganadda-ci > /dev/null 2>&1 || true
-  rm -f -- "$task_dir/cookies" "$task_dir/input.png" "$task_dir/output.jpg"
+  rm -f -- "$task_dir/cookies" "$task_dir/input.png" "$task_dir/output.jpg" \
+    "$task_dir/signin.headers" "$task_dir/signin.html" "$task_dir/blazor.web.js"
   rmdir -- "$task_dir" || true
   exit "$result"
 }
@@ -34,6 +35,46 @@ for attempt in {1..60}; do
   sleep 2
 done
 curl --fail --silent --show-error --max-time 10 "$origin/health/ready"
+curl --fail --silent --show-error --max-time 10 -D "$task_dir/signin.headers" \
+  "$origin/signin" -o "$task_dir/signin.html"
+boot_src=$(python3 - "$task_dir/signin.html" "$task_dir/signin.headers" <<'PY'
+from html.parser import HTMLParser
+from pathlib import Path
+import re, sys
+
+class Scripts(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.import_map_nonce = None
+        self.boot_src = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "script":
+            return
+        attributes = dict(attrs)
+        if attributes.get("type") == "importmap":
+            self.import_map_nonce = attributes.get("nonce")
+        if attributes.get("src", "").endswith("blazor.web.js"):
+            self.boot_src = attributes["src"]
+
+page = Path(sys.argv[1]).read_text(encoding="utf-8")
+headers = Path(sys.argv[2]).read_text(encoding="iso-8859-1")
+scripts = Scripts()
+scripts.feed(page)
+assert scripts.import_map_nonce, "Sign-in page import map is missing its CSP nonce"
+assert scripts.boot_src and scripts.boot_src.startswith("/"), "Sign-in page is missing the Blazor boot script"
+policy = re.search(r"(?im)^content-security-policy:\s*(.*)$", headers)
+assert policy, "Sign-in page is missing its Content-Security-Policy header"
+assert f"'nonce-{scripts.import_map_nonce}'" in policy.group(1), "CSP does not allow the sign-in page import map nonce"
+print(scripts.boot_src)
+PY
+)
+asset_type=$(curl --fail --silent --show-error --max-time 10 \
+  -o "$task_dir/blazor.web.js" -w '%{content_type}' "$origin$boot_src")
+[[ -s "$task_dir/blazor.web.js" && "$asset_type" == *javascript* ]] || {
+  echo "Blazor boot asset failed to load as JavaScript: $boot_src ($asset_type)" >&2
+  exit 1
+}
 csrf=$(curl --fail --silent --show-error -c "$task_dir/cookies" "$origin/api/csrf" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
 curl --fail --silent --show-error -b "$task_dir/cookies" -c "$task_dir/cookies" -X POST \
   -H "X-CSRF-TOKEN: $csrf" "$origin/auth/dev/aarav" > /dev/null
