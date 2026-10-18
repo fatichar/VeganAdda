@@ -56,7 +56,7 @@ class Scripts(HTMLParser):
         if attributes.get("type") == "importmap":
             self.import_map_nonce = attributes.get("nonce")
         src = attributes.get("src", "")
-        if urlsplit(src).path.rstrip("/").endswith("blazor.web.js"):
+        if re.fullmatch(r"(?:.*/)?blazor\.web(?:\.[A-Za-z0-9]+)?\.js", urlsplit(src).path):
             self.boot_src = src
 
 page = Path(sys.argv[1]).read_text(encoding="utf-8")
@@ -70,9 +70,11 @@ assert urlsplit(boot_url).netloc == "localhost:5081", "Blazor boot script must b
 policy = re.search(r"(?im)^content-security-policy:\s*(.*)$", headers)
 assert policy, "Sign-in page is missing its Content-Security-Policy header"
 assert f"'nonce-{scripts.import_map_nonce}'" in policy.group(1), "CSP does not allow the sign-in page import map nonce"
-print(urlsplit(boot_url).path)
+boot = urlsplit(boot_url)
+print(boot.path + ("?" + boot.query if boot.query else ""))
 PY
 )
+echo "Checking Blazor boot asset: $boot_src"
 asset_type=$(curl --fail --silent --show-error --max-time 10 \
   -o "$task_dir/blazor.web.js" -w '%{content_type}' "$origin$boot_src")
 [[ -s "$task_dir/blazor.web.js" && "$asset_type" == *javascript* ]] || {
