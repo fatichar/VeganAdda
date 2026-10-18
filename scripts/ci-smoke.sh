@@ -40,6 +40,7 @@ curl --fail --silent --show-error --max-time 10 -D "$task_dir/signin.headers" \
 boot_src=$(python3 - "$task_dir/signin.html" "$task_dir/signin.headers" <<'PY'
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 import re, sys
 
 class Scripts(HTMLParser):
@@ -54,19 +55,22 @@ class Scripts(HTMLParser):
         attributes = dict(attrs)
         if attributes.get("type") == "importmap":
             self.import_map_nonce = attributes.get("nonce")
-        if attributes.get("src", "").endswith("blazor.web.js"):
-            self.boot_src = attributes["src"]
+        src = attributes.get("src", "")
+        if urlsplit(src).path.rstrip("/").endswith("blazor.web.js"):
+            self.boot_src = src
 
 page = Path(sys.argv[1]).read_text(encoding="utf-8")
 headers = Path(sys.argv[2]).read_text(encoding="iso-8859-1")
 scripts = Scripts()
 scripts.feed(page)
 assert scripts.import_map_nonce, "Sign-in page import map is missing its CSP nonce"
-assert scripts.boot_src and scripts.boot_src.startswith("/"), "Sign-in page is missing the Blazor boot script"
+assert scripts.boot_src, "Sign-in page is missing the Blazor boot script"
+boot_url = urljoin("http://localhost:5081/", scripts.boot_src)
+assert urlsplit(boot_url).netloc == "localhost:5081", "Blazor boot script must be served by the app"
 policy = re.search(r"(?im)^content-security-policy:\s*(.*)$", headers)
 assert policy, "Sign-in page is missing its Content-Security-Policy header"
 assert f"'nonce-{scripts.import_map_nonce}'" in policy.group(1), "CSP does not allow the sign-in page import map nonce"
-print(scripts.boot_src)
+print(urlsplit(boot_url).path)
 PY
 )
 asset_type=$(curl --fail --silent --show-error --max-time 10 \
