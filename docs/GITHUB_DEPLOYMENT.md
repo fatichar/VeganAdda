@@ -8,6 +8,8 @@ A push to **master**, or **Run workflow** on master, runs PostgreSQL integration
 
 The runner copies Compose and operations scripts into `/opt/veganadda/releases/COMMIT_SHA`, leaving `/opt/veganadda/.env` intact. The server pulls the image, starts only VeganAdda's database, stops only VeganAdda's web container, backs up database/media/session keys, runs migrations, starts web, and checks readiness. A successful deployment updates `/opt/veganadda/current`. Concurrency and a server-side lock prevent overlapping deployments. Expect a short maintenance window during backup/migration/startup.
 
+The runtime image keeps NuGet dependencies, stable .NET browser-framework assets, other web assets, and VeganAdda application files in separate linked layers. Code-only releases can reuse the dependency and framework layers on the VPS; changes to dependencies or framework assets download their corresponding layer. The build copies project files before source files so ordinary code edits keep the NuGet restore cache.
+
 Failure before migration restarts the existing web container. Failure after migration begins leaves web stopped for review; automatically reverting the image could run incompatible code against a changed schema. Backups are under `/opt/veganadda/backups/veganadda-TIMESTAMP`. Neither Nginx nor other Compose projects are changed by this action.
 
 ## GitHub settings

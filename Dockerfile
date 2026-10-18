@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM node:22-bookworm-slim AS firebase-client
 WORKDIR /client
 COPY src/VeganAdda.Web/VeganAdda.Web.Client/package*.json ./
@@ -7,18 +8,27 @@ RUN npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
-COPY global.json VeganAdda.sln ./
+COPY global.json ./
+COPY src/VeganAdda.Contracts/VeganAdda.Contracts.csproj ./src/VeganAdda.Contracts/
+COPY src/VeganAdda.UI/VeganAdda.UI.csproj ./src/VeganAdda.UI/
+COPY src/VeganAdda.Web/VeganAdda.Web.Client/VeganAdda.Web.Client.csproj ./src/VeganAdda.Web/VeganAdda.Web.Client/
+COPY src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj ./src/VeganAdda.Web/VeganAdda.Web/
+RUN dotnet restore src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj
 COPY src/ ./src/
 COPY --from=firebase-client /client/wwwroot/js/firebase-auth.js ./src/VeganAdda.Web/VeganAdda.Web.Client/wwwroot/js/firebase-auth.js
-RUN dotnet restore src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj
 RUN dotnet publish src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj -c Release --no-restore -p:SkipFirebaseClientBuild=true -o /out -m:1 /nr:false
+COPY scripts/split-publish.sh /usr/local/bin/split-publish.sh
+RUN bash /usr/local/bin/split-publish.sh /out /layers
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends curl libfontconfig1 && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data/media /data/keys && chown -R app:app /data
 WORKDIR /app
-COPY --from=build /out ./
+COPY --link --from=build /layers/dependencies/ ./
+COPY --link --from=build /layers/framework/ ./
+COPY --link --from=build /layers/assets/ ./
+COPY --link --from=build /layers/application/ ./
 ENV ASPNETCORE_URLS=http://+:8080 ASPNETCORE_HTTPS_PORT=443 ASPNETCORE_ENVIRONMENT=Production Storage__MediaPath=/data/media Storage__KeysPath=/data/keys
 USER app
 EXPOSE 8080

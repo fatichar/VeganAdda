@@ -51,8 +51,7 @@ migration_started=true
 docker compose run -T --rm --no-deps --pull never migrate
 docker compose up -d --no-deps --no-build --pull never --wait --wait-timeout 150 web
 binding=$(docker compose port web 8080)
-[[ "$binding" =~ ^127\.0\.0\.1:[0-9]+$ ]]
-curl --fail --silent --show-error --max-time 15 "http://$binding/health/ready" > /dev/null
+bash "$release/check-ready.sh" "$binding"
 printf '%s\n' "$IMAGE_REF" > "$release/image-ref"
 ln -sfn -- "$release" "$root/current"
 successful=true

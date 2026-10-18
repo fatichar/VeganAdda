@@ -11,7 +11,7 @@ destination="$VPS_USER@$VPS_HOST"
 release="/opt/veganadda/releases/$GITHUB_SHA"
 ssh "${ssh_options[@]}" -p "$VPS_PORT" "$destination" \
   "test -d /opt/veganadda && test -r /opt/veganadda/.env && mkdir -p '$release'"
-scp "${ssh_options[@]}" -P "$VPS_PORT" compose.yaml deploy/backup.sh deploy/restore.sh deploy/rollout.sh \
+scp "${ssh_options[@]}" -P "$VPS_PORT" compose.yaml deploy/backup.sh deploy/restore.sh deploy/rollout.sh deploy/check-ready.sh \
   "$destination:$release/"
 # Token goes over SSH stdin, never in a remote command or persistent Docker config.
 printf '%s' "$GHCR_TOKEN" | ssh "${ssh_options[@]}" -p "$VPS_PORT" "$destination" \
