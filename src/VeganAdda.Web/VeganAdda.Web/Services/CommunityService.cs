@@ -106,8 +106,10 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                     return new SavedItems(savedPeople, savedEvents);
                 case "notifications":
                     var notified = await User();
-                    var notices = await db.Notifications.Where(x => x.UserId == notified.Id).OrderByDescending(x => x.Created).Take(50).Select(x => new Notice(x.Id, x.Kind, x.Text, x.Url, x.Read, x.Created)).ToListAsync();
-                    return new NotificationList(notices, await db.Notifications.CountAsync(x => x.UserId == notified.Id && !x.Read));
+                    var notifications = db.Notifications.Where(x => x.UserId == notified.Id && x.Kind != "message");
+                    var notices = await notifications.OrderByDescending(x => x.Created).Take(50).Select(x => new Notice(x.Id, x.Kind, x.Text, x.Url, x.Read, x.Created)).ToListAsync();
+                    return new NotificationList(notices, await notifications.CountAsync(x => !x.Read));
+                case "unread": return await Unread();
                 case "blocked":
                     var blocker = await User();
                     return await db.Blocks.Where(b => b.Owner == blocker.Id).Join(db.Profiles, b => b.Subject, p => p.Id, (b, p) => new AdminPerson(p.Id, p.Name, false, false, false, false)).ToListAsync();
@@ -126,7 +128,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                     return await SendMessage(parts[1], Read<MessageInput>(body));
                 case "events": return await EventAction(Guid.Parse(parts[1]), parts[2], body);
                 case "notifications":
-                    var u = await User(); await db.Notifications.Where(n => n.UserId == u.Id && !n.Read).ExecuteUpdateAsync(s => s.SetProperty(n => n.Read, true)); return new Ok();
+                    return await NotificationAction(method, parts, body);
                 case "admin":
                     if (parts[1] == "events") return await SaveEvent(Read<EventInput>(body));
                     return await Moderate(Read<ModerateInput>(body));

@@ -1,18 +1,10 @@
 @page "/connections"
-@inherits Screen
-<PageTitle>My connections · VeganAdda</PageTitle>
-<h1>Connections</h1><Feedback Error="@Error" Success="@Success" />
-@if (Session?.Id == null) { <Empty Icon="diversity_1" Title="Your connections" Text="Sign in to connect with people."><a class="button" href="/signin?returnUrl=%2Fconnections">Sign in</a></Empty> }
-else { <div class="tab-row">@foreach (var t in new[] { "Received", "Sent", "Connected" }) { <button class="chip @(tab == t ? "active" : "")" aria-pressed="@(tab == t ? "true" : "false")" @onclick="() => tab = t">@t<span class="tab-count">@Count(t)</span></button> }</div>
-@if (Filtered.Count == 0) { <Empty Icon="diversity_1" Title="@(tab == "Received" ? "No new requests" : tab == "Sent" ? "No sent requests" : "No connections yet")" Text="Find someone you'd like to meet."><a class="button secondary" href="/">Discover people<Icon Name="arrow_forward" /></a></Empty> }
-else { <div class="connections-grid">@foreach (var item in Filtered) { <article class="connection-card card"><div class="person-header"><a href="/people/@item.Person.Id" class="person-identity"><Avatar Name="@item.Person.Name" Photo="@item.Person.Photo" /><div><h3>@item.Person.Name</h3><span class="location"><Icon Name="location_on" />@item.Person.City</span></div></a>@if (item.Person.Demo) { <span class="badge">Sample profile</span> }</div><div class="tags">@foreach (var i in item.Person.Interests) { <span>#@i.Replace(" ", "")</span> }</div>@if (item.Introduction != "") { <blockquote>“@item.Introduction”</blockquote> }<div class="actions">@if (item.State == "accepted") { <a class="button small-button" href="/messages/@item.Key"><Icon Name="chat_bubble" />Message</a><button class="text-button danger" @onclick="() => removing = item">Remove</button> } else if (item.Incoming) { <button disabled="@Busy" @onclick='() => Action(item, "accept")'><Icon Name="person_add" />Accept</button><button class="secondary" disabled="@Busy" @onclick='() => Action(item, "decline")'>Decline</button> } else { <button class="secondary" disabled="@Busy" @onclick='() => Action(item, "cancel")'>Cancel request</button> }<a class="text-button" href="/people/@item.Person.Id">View profile<Icon Name="arrow_forward" /></a></div>@if (removing == item) { <div class="notice"><p>Remove this connection? Messaging will close. Both of you can still view existing history.</p><button class="danger-button" disabled="@Busy" @onclick='() => Action(item, "remove")'>Confirm removal</button><button class="text-button" @onclick="() => removing = null">Keep connection</button></div> }</article> }</div> } }
+@inject NavigationManager Nav
+<PageTitle>Messages · VeganAdda</PageTitle>
+<p role="status">Opening requests…</p>
 @code {
-    List<ConnectionItem> items = []; string tab = "Received"; ConnectionItem? removing;
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(Refresh); }
-    protected override async Task Refresh() => items = await Api.Get<List<ConnectionItem>>("connections");
-    bool IsTab(ConnectionItem x, string t) => t == "Connected" ? x.State == "accepted" : x.State == "pending" && (t == "Received" ? x.Incoming : !x.Incoming);
-    List<ConnectionItem> Filtered => items.Where(x => IsTab(x, tab)).ToList(); int Count(string t) => items.Count(x => IsTab(x, t));
-    Task Action(ConnectionItem item, string action) => Act(async () => { await Api.Send<Ok>("connections/" + action, new ConnectionInput(item.Person.Id)); removing = null; await Refresh(); Success = action == "accept" ? "You're connected. A conversation can begin." : "Your connections have been updated."; });
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) Nav.NavigateTo("/messages?tab=requests", replace: true);
+    }
 }
-
-

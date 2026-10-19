@@ -35,22 +35,22 @@ public partial class CommunityService
             {
                 // A reciprocal request is an explicit mutual connection.
                 r.State = "accepted";
-                Notice(input.PersonId, "connection", "A connection request was accepted.", "/connections");
+                Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key);
             }
             else
             {
                 r ??= new Relationship { Key = key, A = string.CompareOrdinal(me.Id.ToString(), input.PersonId.ToString()) < 0 ? me.Id : input.PersonId, B = string.CompareOrdinal(me.Id.ToString(), input.PersonId.ToString()) < 0 ? input.PersonId : me.Id };
                 if (db.Entry(r).State == EntityState.Detached) db.Relationships.Add(r);
                 r.State = "pending"; r.RequestedBy = me.Id; r.Introduction = intro;
-                Notice(input.PersonId, "request", "You have a new connection request.", "/connections");
+                Notice(input.PersonId, "request", $"{me.Name} sent you a connection request.", "/messages?tab=requests");
             }
         }
         else
         {
             if (r == null) throw Missing();
             var incoming = r.RequestedBy != me.Id;
-            if (action == "accept" && r.State == "pending" && incoming) { r.State = "accepted"; Notice(input.PersonId, "connection", "A connection request was accepted.", "/connections"); }
-            else if (action == "decline" && r.State == "pending" && incoming) r.State = "declined";
+            if (action == "accept" && r.State == "pending" && incoming) { r.State = "accepted"; Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key); }
+            else if (action == "decline" && r.State == "pending" && incoming) { r.State = "declined"; Notice(input.PersonId, "declined", $"{me.Name} declined your connection request.", "/messages?tab=requests&requests=sent"); }
             else if (action == "cancel" && r.State == "pending" && !incoming) r.State = "cancelled";
             else if (action == "remove" && r.State == "accepted") r.State = "removed";
             else throw new ApiException(409, "This connection has changed. Refresh to see its current state.");
@@ -105,7 +105,7 @@ public partial class CommunityService
             var other = r.A == me.Id ? r.B : r.A;
             var unavailable = await Blocked(me.Id, other) || !await db.Accounts.AnyAsync(a => a.Id == other && !a.Suspended);
             var p = unavailable ? null : await db.Profiles.FindAsync(other);
-            results.Add(new(r.Key, p?.Name ?? "Unavailable member", p?.Photo ?? "", latest?.Text ?? "Start a conversation", await db.Messages.CountAsync(m => m.Conversation == r.Key && m.SenderId != me.Id && m.Id > (r.A == me.Id ? r.ReadA : r.ReadB)), latest?.SentAt ?? r.Updated, await CanMessage(r)));
+            results.Add(new(r.Key, p?.Name ?? "Unavailable member", p?.Photo ?? "", latest?.Text ?? "Say hello", await db.Messages.CountAsync(m => m.Conversation == r.Key && m.SenderId != me.Id && m.Id > (r.A == me.Id ? r.ReadA : r.ReadB)), latest?.SentAt ?? r.Updated, await CanMessage(r), unavailable ? null : other));
         }
         return results.OrderByDescending(c => c.Updated).ToList();
     }
@@ -138,7 +138,6 @@ public partial class CommunityService
         var other = r.A == me.Id ? r.B : r.A;
         var message = new ChatMessage { Conversation = key, SenderId = me.Id, ClientId = input.ClientId, Text = text };
         db.Messages.Add(message); r.Updated = DateTimeOffset.UtcNow;
-        Notice(other, "message", "You have a new message.", "/messages/" + key);
         await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(me.Id, other);
         return new Message(message.Id, me.Id, input.ClientId, text, message.SentAt);
     }
@@ -149,7 +148,10 @@ public partial class CommunityService
         var r = await ConversationAccess(key);
         var max = await db.Messages.Where(m => m.Conversation == key).MaxAsync(m => (long?)m.Id) ?? 0;
         var through = Math.Clamp(input.ThroughId, 0, max);
+        var previous = r.A == me.Id ? r.ReadA : r.ReadB;
         if (r.A == me.Id) r.ReadA = Math.Max(r.ReadA, through); else r.ReadB = Math.Max(r.ReadB, through);
-        await db.SaveChangesAsync(); await tx.CommitAsync(); return new Ok();
+        await db.SaveChangesAsync(); await tx.CommitAsync();
+        if (through > previous) await changes.Changed(me.Id);
+        return new Ok();
     }
 }

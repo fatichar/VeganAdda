@@ -110,6 +110,68 @@ public class CommunityTests(DatabaseFixture f)
     }
     private async Task<(Guid A, Guid B, string Key)> Connected()
     { var a = await f.Member(); var b = await f.Member(); await f.Call(a, "connections", new ConnectionInput(b), "POST"); await f.Call(b, "connections/accept", new ConnectionInput(a), "POST"); return (a,b,CommunityService.Pair(a,b)); }
+    [Fact] public async Task Decline_notifies_requester_once_and_requests_and_acceptance_link_to_the_inbox()
+    {
+        var a = await f.Member(); var b = await f.Member();
+        await f.Call(a, "connections", new ConnectionInput(b), "POST");
+        var request = Assert.Single(Assert.IsType<NotificationList>(await f.Call(b, "notifications")).Items);
+        Assert.Equal("/messages?tab=requests", request.Url);
+        await f.Call(b, "connections/decline", new ConnectionInput(a), "POST");
+        var decline = Assert.Single(Assert.IsType<NotificationList>(await f.Call(a, "notifications")).Items);
+        Assert.Equal("declined", decline.Kind); Assert.Contains("declined", decline.Text); Assert.False(decline.Read);
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => f.Call(b, "connections/decline", new ConnectionInput(a), "POST"))).Status);
+        Assert.Single(Assert.IsType<NotificationList>(await f.Call(a, "notifications")).Items);
+        await f.Call(a, "connections", new ConnectionInput(b), "POST");
+        await f.Call(b, "connections/accept", new ConnectionInput(a), "POST");
+        var acceptance = Assert.Single(Assert.IsType<NotificationList>(await f.Call(a, "notifications")).Items, n => n.Kind == "connection");
+        Assert.Equal("/messages/" + CommunityService.Pair(a, b), acceptance.Url);
+        var chat = Assert.Single(Assert.IsType<List<Conversation>>(await f.Call(a, "conversations")));
+        Assert.Equal("Say hello", chat.Latest); Assert.Equal(b, chat.PersonId); Assert.True(chat.CanMessage);
+    }
+    [Fact] public async Task Messages_only_update_unread_badges_and_legacy_message_notices_are_hidden()
+    {
+        var (a, b, key) = await Connected(); var outsider = await f.Member();
+        await using (var db = f.Db()) { db.Notifications.Add(new() { UserId = b, Kind = "message", Text = "Legacy message", Url = "/messages/" + key }); await db.SaveChangesAsync(); }
+        var before = Assert.IsType<NotificationList>(await f.Call(b, "notifications"));
+        Message? last = null;
+        for (var i = 0; i < 3; i++) last = Assert.IsType<Message>(await f.Call(a, $"conversations/{key}/messages", new MessageInput(Guid.NewGuid(), "Hello " + i), "POST"));
+        var after = Assert.IsType<NotificationList>(await f.Call(b, "notifications"));
+        Assert.Equal(before.Unread, after.Unread); Assert.Equal(before.Items, after.Items);
+        Assert.Equal(3, Assert.IsType<UnreadCounts>(await f.Call(b, "unread")).Messages);
+        Assert.Equal(before.Unread, Assert.IsType<UnreadCounts>(await f.Call(b, "unread")).Notifications);
+        Assert.Equal(0, Assert.IsType<UnreadCounts>(await f.Call(a, "unread")).Messages);
+        Assert.Equal(0, Assert.IsType<UnreadCounts>(await f.Call(outsider, "unread")).Messages);
+        Assert.Equal(3, Assert.Single(Assert.IsType<List<Conversation>>(await f.Call(b, "conversations"))).Unread);
+        await f.Call(b, $"conversations/{key}/read", new ReadInput(last!.Id - 1), "POST");
+        Assert.Equal(1, Assert.IsType<UnreadCounts>(await f.Call(b, "unread")).Messages);
+        await f.Call(b, $"conversations/{key}/read", new ReadInput(last.Id), "POST");
+        await f.Call(b, $"conversations/{key}/read", new ReadInput(0), "POST");
+        Assert.Equal(0, Assert.IsType<UnreadCounts>(await f.Call(b, "unread")).Messages);
+        await using var verify = f.Db(); Assert.Equal(1, await verify.Notifications.CountAsync(n => n.UserId == b && n.Kind == "message"));
+    }
+    [Fact] public async Task Notification_reads_and_single_bulk_and_all_deletions_are_owner_scoped()
+    {
+        var a = await f.Member(); var b = await f.Member();
+        var own = Enumerable.Range(0, 55).Select(i => new VeganAdda.Web.Data.Notification { UserId = a, Text = "Update " + i, Kind = "request", Url = "/messages?tab=requests", Created = DateTimeOffset.UtcNow.AddMinutes(i) }).ToList();
+        var foreign = new VeganAdda.Web.Data.Notification { UserId = b, Text = "Private update", Kind = "request" };
+        await using (var db = f.Db()) { db.Notifications.AddRange(own); db.Notifications.Add(foreign); await db.SaveChangesAsync(); }
+        Assert.Equal(50, Assert.IsType<NotificationList>(await f.Call(a, "notifications")).Items.Count);
+        Assert.Equal(55, Assert.IsType<UnreadCounts>(await f.Call(a, "unread")).Notifications);
+        await f.Call(a, $"notifications/{own[0].Id}/read", null, "POST");
+        await f.Call(a, $"notifications/{own[0].Id}/read", null, "POST");
+        Assert.Equal(54, Assert.IsType<UnreadCounts>(await f.Call(a, "unread")).Notifications);
+        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => f.Call(a, $"notifications/{foreign.Id}/read", null, "POST"))).Status);
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, "notifications", new NotificationSelection([], true), "DELETE"))).Status);
+        await f.Call(a, "notifications", new NotificationSelection([own[0].Id]), "DELETE");
+        await f.Call(a, "notifications", new NotificationSelection([own[1].Id, own[2].Id, foreign.Id]), "DELETE");
+        await using (var db = f.Db()) { Assert.Equal(52, await db.Notifications.CountAsync(n => n.UserId == a)); Assert.False((await db.Notifications.FindAsync(foreign.Id))!.Read); }
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(a, "notifications", new NotificationSelection([]), "DELETE"))).Status);
+        await f.Call(a, "notifications/read", null, "POST");
+        Assert.Equal(0, Assert.IsType<UnreadCounts>(await f.Call(a, "unread")).Notifications);
+        await f.Call(a, "notifications", new NotificationSelection([], true), "DELETE");
+        Assert.Empty(Assert.IsType<NotificationList>(await f.Call(a, "notifications")).Items);
+        Assert.Single(Assert.IsType<NotificationList>(await f.Call(b, "notifications")).Items);
+    }
     [Fact] public async Task Chat_requires_membership_acceptance_and_persists_before_ack_with_duplicate_retry_prevention()
     {
         var (a,b,key) = await Connected(); var outsider = await f.Member();

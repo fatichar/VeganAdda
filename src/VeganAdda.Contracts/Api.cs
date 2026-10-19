@@ -54,7 +54,7 @@ public class ProfileInput
 public record ConnectionItem(string Key, Person Person, string State, bool Incoming, string Introduction, DateTimeOffset Updated);
 public record ConnectionInput(Guid PersonId, string Introduction = "");
 public record ReportInput(Guid PersonId, string Reason);
-public record Conversation(string Key, string Name, string Photo, string Latest, int Unread, DateTimeOffset? Updated, bool CanMessage);
+public record Conversation(string Key, string Name, string Photo, string Latest, int Unread, DateTimeOffset? Updated, bool CanMessage, Guid? PersonId = null);
 public record Message(long Id, Guid SenderId, Guid ClientId, string Text, DateTimeOffset SentAt);
 public record MessagePage(List<Message> Items, bool HasOlder, bool CanMessage, bool HasNewer = false);
 public record MessageInput(Guid ClientId, string Text);
@@ -82,6 +82,8 @@ public record AttendanceInput(bool Attending, bool Visible);
 public record SavedItems(List<Person> People, List<EventCard> Events);
 public record Notice(Guid Id, string Kind, string Text, string Url, bool Read, DateTimeOffset Created);
 public record NotificationList(List<Notice> Items, int Unread);
+public record NotificationSelection(Guid[] Ids, bool All = false);
+public record UnreadCounts(int Messages, int Notifications);
 public record ReportView(Guid Id, string Reporter, Guid SubjectId, string Subject, string Reason, bool Resolved, DateTimeOffset Created);
 public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People);
 public record AdminPerson(Guid Id, string Name, bool Suspended, bool Public, bool Consent, bool Featured);

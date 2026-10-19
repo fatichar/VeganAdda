@@ -1,0 +1,36 @@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+<form class="composer-form" @ref="form" @onsubmit="Send" @onsubmit:preventDefault>
+    <div class="composer">
+        <label for="message" class="sr-only">Your message</label>
+        <textarea id="message" rows="2" maxlength="2000" @bind="text" @bind:event="oninput" placeholder="Message…"></textarea>
+        <button type="submit" class="icon-button" aria-label="Send message" disabled="@(string.IsNullOrWhiteSpace(text) || Sending)"><Icon Name="send" /></button>
+    </div>
+    <label class="enter-send"><input type="checkbox" data-enter-send checked />Enter to send <span class="muted">· Shift+Enter for a new line</span></label>
+</form>
+@code {
+    [Parameter] public bool Sending { get; set; }
+    [Parameter] public EventCallback<string> Submitted { get; set; }
+    string text = "";
+    ElementReference form;
+    IJSObjectReference? module;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/messages.js");
+        await module.InvokeVoidAsync("attach", form);
+    }
+    async Task Send()
+    {
+        if (Sending || string.IsNullOrWhiteSpace(text)) return;
+        var draft = text; text = "";
+        await Submitted.InvokeAsync(draft);
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (module == null) return;
+        try { await module.InvokeVoidAsync("detach", form); await module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}
