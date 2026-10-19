@@ -27,7 +27,7 @@ public class ApiException(int status, string message) : Exception(message)
     public int Status { get; } = status;
 }
 public record Ok(bool Success = true);
-public record Session(Guid? Id, string Name, bool HasProfile, bool IsAdmin, bool Development, bool AuthConfigured);
+public record Session(Guid? Id, string Name, bool HasProfile, bool IsAdmin, bool Development, bool AuthConfigured, bool IsModerator = false);
 public record FirebaseClientConfig(string ApiKey, string AuthDomain, string ProjectId, string AppId, bool Configured);
 public record FirebaseLoginInput(string IdToken);
 public record Page<T>(List<T> Items, int Total, int PageNumber, int PageSize = 12);
@@ -50,6 +50,10 @@ public class ProfileInput
     public bool FeatureConsent { get; set; }
     public bool DefaultAttendeeVisible { get; set; }
     public bool AdultConfirmed { get; set; }
+    public bool Approved { get; set; }
+    public string? ReviewNote { get; set; }
+    public string? ReferralCode { get; set; }
+    public bool CanRefer { get; set; }
 }
 public record ConnectionItem(string Key, Person Person, string State, bool Incoming, string Introduction, DateTimeOffset Updated);
 public record ConnectionInput(Guid PersonId, string Introduction = "");
@@ -74,7 +78,12 @@ public class EventInput
     public string? Registration { get; set; }
     public bool Published { get; set; }
     public bool Featured { get; set; }
+    public string SubmissionStatus { get; set; } = "Draft";
+    public string? ReviewNote { get; set; }
 }
+public record EventReview(EventInput Details, string? SubmittedBy);
+public record EventReviewInput(Guid Id, bool Approve, string? Note = null);
+public record ModerationData(List<ProfileReview> Profiles, List<EventReview> Events);
 public record EventCard(Guid Id, string Title, string Cover, string Description, DateTimeOffset? Start,
     DateTimeOffset? End, string TimeZone, string City, string Venue, string Organizer, string? Registration,
     bool Featured, bool Saved, bool Attending, bool AttendeeVisible, bool Demo);
@@ -85,7 +94,10 @@ public record NotificationList(List<Notice> Items, int Unread);
 public record NotificationSelection(Guid[] Ids, bool All = false);
 public record UnreadCounts(int Messages, int Notifications);
 public record ReportView(Guid Id, string Reporter, Guid SubjectId, string Subject, string Reason, bool Resolved, DateTimeOffset Created);
-public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People);
-public record AdminPerson(Guid Id, string Name, bool Suspended, bool Public, bool Consent, bool Featured);
+public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People, List<ProfileReview> Profiles);
+public record AdminPerson(Guid Id, string Name, bool Suspended, bool Public, bool Consent, bool Featured, bool Verified = false, bool TestProfile = false, bool Moderator = false);
+public record ProfileReview(Guid Id, string Name, string City, string Bio, string[] Interests, string[] LookingFor, string Photo, string? Instagram, string? LinkedIn, string? Website, bool Public, bool TestProfile, string? ReferredBy, bool ReferrerVerified, string? ReviewNote);
+public record ProfileReviewInput(Guid Id, bool Approve, string? Note = null);
+public record ReferralInviteResult(string Code, DateTimeOffset Expires);
 public record ModerateInput(Guid Id, string Action);
 public record DeleteInput(string Confirm);

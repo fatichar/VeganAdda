@@ -1,0 +1,42 @@
+@page "/events/suggest"
+@page "/events/suggest/{Id:guid}"
+@inherits Screen
+<PageTitle>Suggest an event · VeganAdda</PageTitle>
+<div class="narrow"><a class="back-link" href="/events"><Icon Name="arrow_back" />Events</a><h1>Suggest an event</h1><Feedback Error="@Error" Success="@Success" />
+@if (Session?.Id == null) { <Empty Title="Sign in to suggest an event" Text="Event submissions are reviewed before publication."><a class="button" href="/signin?returnUrl=%2Fevents%2Fsuggest">Sign in</a></Empty> }
+else if (!Session.HasProfile) { <Empty Title="Create an approved profile first" Text="Approved community members can submit event suggestions."><a class="button" href="/onboarding?returnUrl=%2Fevents%2Fsuggest">Create profile</a></Empty> }
+else if (profile != null && !profile.Approved) { <Empty Title="Your profile is awaiting approval" Text="You can suggest an event after your profile has been approved."><a class="button secondary" href="/settings/profile">View profile status</a></Empty> }
+else if (profile != null) {
+    <p class="small muted">Submissions are checked by the community team before they appear in Events. Share public event details only.</p>
+    @if (edit != null) {
+        <form class="form-card" @onsubmit="Save" @onsubmit:preventDefault><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
+            <h2>@(edit.Id == Guid.Empty ? "Event details" : "Edit submission")</h2>
+            <label for="event-title">Event name</label><input id="event-title" required maxlength="150" @bind="edit.Title" @bind:event="oninput" />
+            <label for="event-description">Description</label><textarea id="event-description" required rows="5" maxlength="4000" @bind="edit.Description" @bind:event="oninput"></textarea>
+            <label for="event-cover">Cover image <span class="muted">(optional)</span></label><InputFile id="event-cover" OnChange="Upload" accept="image/jpeg,image/png,image/webp" />
+            @if (edit.Cover != "") { <img class="admin-cover" src="@edit.Cover" alt="Event cover preview" /> }
+            <label for="event-city">City</label><input id="event-city" required maxlength="80" @bind="edit.City" @bind:event="oninput" />
+            <label for="event-venue">Venue</label><input id="event-venue" required maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
+            <label for="event-organizer">Organizer</label><input id="event-organizer" required maxlength="150" @bind="edit.Organizer" @bind:event="oninput" />
+            <label for="event-zone">IANA time zone</label><input id="event-zone" required @bind="edit.TimeZone" @bind:event="oninput" placeholder="Asia/Kolkata" />
+            <label for="event-start">Local start date and time</label><input id="event-start" type="datetime-local" required @bind="start" />
+            <label for="event-end">Local end date and time</label><input id="event-end" type="datetime-local" required @bind="end" />
+            <label for="event-registration">Official information / registration link <span class="muted">(optional)</span></label><input id="event-registration" type="url" @bind="edit.Registration" @bind:event="oninput" placeholder="https://" />
+            <button disabled="@Busy">@(Busy ? "Submitting…" : edit.Id == Guid.Empty ? "Submit for review" : "Resubmit for review")<Icon Name="arrow_forward" /></button>
+        </fieldset></form>
+    }
+    <div class="section-heading"><h2>Your submissions</h2><button class="secondary" @onclick="NewEvent" disabled="@Busy">Suggest another</button></div>
+    @if (submissions.Count == 0) { <p class="muted">You have no event submissions yet.</p> }
+    @foreach (var item in submissions) { <article class="card admin-row"><div><strong>@item.Title</strong><small>@item.City · @item.SubmissionStatus</small>@if (item.ReviewNote != null) { <small class="error-text">@item.ReviewNote</small> }</div>@if (item.SubmissionStatus != "Pending review") { <button class="secondary small-button" @onclick="() => Edit(item)">Edit</button> }</article> }
+}
+</div>
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    ProfileInput? profile; List<EventInput> submissions = []; EventInput? edit; DateTime? start, end;
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null && Session.HasProfile) await Run(Refresh); }
+    protected override async Task Refresh() { profile = await Api.Get<ProfileInput>("profile"); submissions = await Api.Get<List<EventInput>>("event-submissions"); if (Id.HasValue) { var item = submissions.FirstOrDefault(x => x.Id == Id.Value); if (item != null && item.SubmissionStatus != "Pending review") Edit(item); } if (edit == null) NewEvent(); }
+    void NewEvent() { edit = new() { City = profile?.City ?? "Pune" }; start = end = null; }
+    void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
+    Task Save() => Run(async () => { try { var zone = TimeZoneInfo.FindSystemTimeZoneById(edit!.TimeZone); edit.Start = start.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start.Value, DateTimeKind.Unspecified), zone)) : null; edit.End = end.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end.Value, DateTimeKind.Unspecified), zone)) : null; } catch { throw new ApiException(400, "Check the time zone and local event times."); } await Api.Send<Ok>("event-submissions", edit); edit = null; await Refresh(); Success = "Your event was submitted for review."; });
+    Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 2 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 2 MB."); await using var stream = e.File.OpenReadStream(2 * 1024 * 1024); edit!.Cover = await Platform.Upload(stream, e.File.Name, e.File.ContentType); });
+}

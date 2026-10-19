@@ -124,7 +124,10 @@ public class HttpTests : IDisposable
         using var other = Client(await f.Member()); Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync(path)).StatusCode);
         var profile = await c.GetFromJsonAsync<ProfileInput>("/api/profile"); profile!.Photo = path;
         Assert.Equal(HttpStatusCode.OK,(await Post(c,"/api/profile",profile)).StatusCode);
-        using var anon = Client(); Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
+        using var anon = Client(); Assert.Equal(HttpStatusCode.NotFound,(await anon.GetAsync(path)).StatusCode);
+        using var admin = Client(await f.Member(admin: true));
+        Assert.Equal(HttpStatusCode.OK, (await Post(admin, "/api/admin/profile-review", new ProfileReviewInput(user, true))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
     }
     [Fact] public async Task SignalR_authenticates_origin_and_delivers_invalidation_after_persisted_message()
     {

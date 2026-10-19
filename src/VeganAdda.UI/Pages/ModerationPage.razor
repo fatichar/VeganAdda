@@ -1,0 +1,38 @@
+@page "/moderation"
+@inherits Screen
+<PageTitle>Community review · VeganAdda</PageTitle>
+<div class="narrow"><h1>Community review</h1><Feedback Error="@Error" Success="@Success" />
+@if (Session?.IsAdmin != true && Session?.IsModerator != true) { <Empty Icon="lock" Title="Moderator access" Text="This page is available only to the community review team." /> }
+else if (data != null) {
+    <div class="tab-row"><button class="chip @(tab == "Profiles" ? "active" : "")" @onclick='() => tab = "Profiles"'>Profiles @if (data.Profiles.Count > 0) { <span class="badge">@data.Profiles.Count</span> }</button><button class="chip @(tab == "Events" ? "active" : "")" @onclick='() => tab = "Events"'>Events @if (data.Events.Count > 0) { <span class="badge">@data.Events.Count</span> }</button></div>
+    @if (tab == "Profiles") {
+        @if (data.Profiles.Count == 0) { <Empty Icon="verified" Title="All profiles reviewed" Text="New and updated profiles will appear here." /> }
+        @foreach (var p in data.Profiles) {
+            <article class="card admin-profile-review"><div class="admin-profile-summary"><Avatar Name="@p.Name" Photo="@p.Photo" /><div><h2>@p.Name</h2><small>@p.City · @(p.Public ? "Public profile" : "Members only")</small></div></div>
+                <p>@p.Bio</p><p class="small">Interests: @(p.Interests.Length == 0 ? "None" : string.Join(", ", p.Interests)) · Looking for: @string.Join(", ", p.LookingFor)</p><div class="profile-social-review">@if (p.Instagram != null) { <a href="@p.Instagram" target="_blank" rel="noopener noreferrer">Instagram <Icon Name="open_in_new" /></a> }@if (p.LinkedIn != null) { <a href="@p.LinkedIn" target="_blank" rel="noopener noreferrer">LinkedIn <Icon Name="open_in_new" /></a> }@if (p.Website != null) { <a href="@p.Website" target="_blank" rel="noopener noreferrer">Website <Icon Name="open_in_new" /></a> }</div>
+                <p class="small">@(p.ReferredBy == null ? "No referral" : $"Referred by {p.ReferredBy}" + (p.ReferrerVerified ? " · verified" : " · referral is unverified"))</p>
+                @if (p.ReviewNote != null) { <p class="notice">Previous review: @p.ReviewNote</p> }
+                <label for="profile-note-@p.Id">Note for member if changes are needed</label><input id="profile-note-@p.Id" value="@profileNotes.GetValueOrDefault(p.Id)" @oninput="e => profileNotes[p.Id] = e.Value?.ToString() ?? string.Empty" maxlength="500" placeholder="Explain what needs updating" />
+                <div class="actions"><button disabled="@Busy" @onclick="() => ReviewProfile(p.Id, true)">Approve profile</button><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(profileNotes.GetValueOrDefault(p.Id)))" @onclick="() => ReviewProfile(p.Id, false)">Request changes</button></div>
+            </article>
+        }
+    } else {
+        @if (data.Events.Count == 0) { <Empty Icon="event_available" Title="No events to review" Text="Member event submissions will appear here." /> }
+        @foreach (var item in data.Events) { var ev = item.Details;
+            <article class="card admin-profile-review">@if (!string.IsNullOrWhiteSpace(ev.Cover)) { <img class="admin-cover" src="@ev.Cover" alt="Event cover" /> }<div><h2>@ev.Title</h2><small>Submitted by @(item.SubmittedBy ?? "Deleted member") · @ev.City</small></div><p>@ev.Description</p><p><strong>@ev.Organizer</strong> · @ev.Venue<br />@Date(ev.Start, ev.TimeZone) – @Date(ev.End, ev.TimeZone)</p>
+                @if (!string.IsNullOrWhiteSpace(ev.Registration)) { <a href="@ev.Registration" target="_blank" rel="noopener noreferrer">Official information / registration <Icon Name="open_in_new" /></a> }
+                @if (ev.ReviewNote != null) { <p class="notice">Previous review: @ev.ReviewNote</p> }
+                <label for="event-note-@ev.Id">Note for organizer if changes are needed</label><input id="event-note-@ev.Id" value="@eventNotes.GetValueOrDefault(ev.Id)" @oninput="e => eventNotes[ev.Id] = e.Value?.ToString() ?? string.Empty" maxlength="500" placeholder="Explain what needs updating" />
+                <div class="actions"><button disabled="@Busy" @onclick="() => ReviewEvent(ev.Id, true)">Approve and publish</button><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(eventNotes.GetValueOrDefault(ev.Id)))" @onclick="() => ReviewEvent(ev.Id, false)">Request changes</button></div>
+            </article>
+        }
+    }
+}
+</div>
+@code {
+    ModerationData? data; string tab = "Profiles"; Dictionary<Guid, string> profileNotes = []; Dictionary<Guid, string> eventNotes = [];
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true || Session?.IsModerator == true) await Run(Refresh); }
+    protected override async Task Refresh() => data = await Api.Get<ModerationData>("moderation");
+    Task ReviewProfile(Guid id, bool approve) => Run(async () => { await Api.Send<Ok>("moderation/profile-review", new ProfileReviewInput(id, approve, profileNotes.GetValueOrDefault(id))); profileNotes.Remove(id); await Refresh(); Success = approve ? "Profile approved." : "Changes requested."; });
+    Task ReviewEvent(Guid id, bool approve) => Run(async () => { await Api.Send<Ok>("moderation/event-review", new EventReviewInput(id, approve, eventNotes.GetValueOrDefault(id))); eventNotes.Remove(id); await Refresh(); Success = approve ? "Event approved and published." : "Changes requested."; });
+}

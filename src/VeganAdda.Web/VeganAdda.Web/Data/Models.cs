@@ -9,6 +9,9 @@ public class Account
     public string Name { get; set; } = "";
     public bool Suspended { get; set; }
     public bool Admin { get; set; }
+    public bool Moderator { get; set; }
+    public bool Verified { get; set; }
+    public bool TrustRevoked { get; set; }
     public bool Demo { get; set; }
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -25,6 +28,11 @@ public class Profile
     public string? LinkedIn { get; set; }
     public string? Website { get; set; }
     public bool Public { get; set; }
+    public bool Approved { get; set; }
+    public bool TestProfile { get; set; }
+    public string? ReviewNote { get; set; }
+    public DateTimeOffset? ReviewedAt { get; set; }
+    public Guid? ReviewedBy { get; set; }
     public bool Featured { get; set; }
     public bool FeatureConsent { get; set; }
     public bool DefaultAttendeeVisible { get; set; }
@@ -72,6 +80,12 @@ public class Gathering
     public bool Published { get; set; }
     public bool Featured { get; set; }
     public bool Demo { get; set; }
+    public Guid? SubmittedBy { get; set; }
+    public DateTimeOffset? SubmittedAt { get; set; }
+    public bool PendingReview { get; set; }
+    public string? ReviewNote { get; set; }
+    public DateTimeOffset? ReviewedAt { get; set; }
+    public Guid? ReviewedBy { get; set; }
 }
 public class Attendance
 {
@@ -104,6 +118,21 @@ public class Report
     public bool Resolved { get; set; }
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
 }
+public class Referral
+{
+    public Guid ReferredId { get; set; }
+    public Guid ReferrerId { get; set; }
+    public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
+}
+public class ReferralInvite
+{
+    public string TokenHash { get; set; } = "";
+    public Guid ReferrerId { get; set; }
+    public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset Expires { get; set; }
+    public Guid? ReferredId { get; set; }
+    public bool Revoked { get; set; }
+}
 public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(options)
 {
     public DbSet<Account> Accounts => Set<Account>();
@@ -116,6 +145,8 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<Saved> Saved => Set<Saved>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<Referral> Referrals => Set<Referral>();
+    public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Account>().HasIndex(x => x.Subject).IsUnique();
@@ -139,6 +170,14 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<Notification>().HasOne<Account>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Report>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReporterId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Report>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubjectId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<Gathering>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubmittedBy).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<Gathering>().HasIndex(x => new { x.PendingReview, x.Demo });
+        b.Entity<Referral>().HasKey(x => x.ReferredId);
+        b.Entity<Referral>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReferredId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Referral>().HasIndex(x => x.ReferrerId);
+        b.Entity<ReferralInvite>().HasKey(x => x.TokenHash);
+        b.Entity<ReferralInvite>().HasIndex(x => x.ReferrerId);
+        b.Entity<ReferralInvite>().HasIndex(x => x.ReferredId).IsUnique();
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
     }

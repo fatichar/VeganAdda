@@ -11,12 +11,13 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
     private static ApiException Missing() => new(404, "This item is no longer available.");
     private static ApiException Denied() => new(403, "You don't have access to this action.");
     private static T Read<T>(JsonElement? body) where T : class => body?.Deserialize<T>(Wire.Json) ?? throw new ApiException(400, "Please check the form and try again.");
-    private async Task<Account> User(bool profile = false, bool admin = false)
+    private async Task<Account> User(bool profile = false, bool admin = false, bool moderator = false)
     {
         var u = await db.Accounts.SingleOrDefaultAsync(x => x.Id == Viewer) ?? throw new ApiException(401, "Sign in to continue.");
         if (u.Suspended) throw new ApiException(403, "Your account is suspended. Contact the community team for help.");
         if (profile && !await db.Profiles.AnyAsync(x => x.Id == u.Id)) throw new ApiException(409, "Create your profile first.");
         if (admin && !u.Admin) throw Denied();
+        if (moderator && !u.Admin && !u.Moderator) throw Denied();
         return u;
     }
     private async Task ActiveViewer() { if (Viewer.HasValue) await User(); }
@@ -27,9 +28,38 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
     private IQueryable<Profile> VisiblePeople()
     {
         var q = db.Profiles.Where(p => db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
-        if (Viewer is not { } v) return q.Where(p => p.Public);
-        return q.Where(p => !db.Blocks.Any(b => (b.Owner == v && b.Subject == p.Id) || (b.Subject == v && b.Owner == p.Id)));
+        if (Viewer is not { } v) return q.Where(p => p.Public && p.Approved && !p.TestProfile);
+        return q.Where(p => (p.Approved || p.Id == v)
+            && (!p.TestProfile || p.Id == v || db.Accounts.Any(a => a.Id == v && a.Admin))
+            && (db.Accounts.Any(a => a.Id == v && a.Admin) || p.Id == v || !db.Profiles.Any(x => x.Id == v && x.TestProfile) || db.Accounts.Any(a => a.Id == p.Id && a.Admin))
+            && !db.Blocks.Any(b => (b.Owner == v && b.Subject == p.Id) || (b.Subject == v && b.Owner == p.Id)));
     }
+    private async Task<HashSet<Guid>> VerifiedAccounts()
+    {
+        var accounts = await db.Accounts.Select(a => new { a.Id, a.Admin, a.Verified, a.Suspended, a.TrustRevoked }).ToDictionaryAsync(a => a.Id);
+        var testProfiles = await db.Profiles.Where(p => p.TestProfile).Select(p => p.Id).ToHashSetAsync();
+        var parent = await db.Referrals.ToDictionaryAsync(r => r.ReferredId, r => r.ReferrerId);
+        var resolved = new Dictionary<Guid, bool>();
+        foreach (var start in accounts.Keys)
+        {
+            if (resolved.ContainsKey(start)) continue;
+            var path = new List<Guid>(); var seen = new HashSet<Guid>(); var current = start; var value = false;
+            while (seen.Add(current))
+            {
+                if (resolved.TryGetValue(current, out value)) break;
+                if (!accounts.TryGetValue(current, out var account) || account.Suspended || account.TrustRevoked || testProfiles.Contains(current)) { value = false; break; }
+                if (account.Verified || account.Admin) { value = true; break; }
+                path.Add(current);
+                if (!parent.TryGetValue(current, out current)) { value = false; break; }
+            }
+            foreach (var id in path) resolved[id] = value;
+            resolved[start] = value;
+        }
+        return resolved.Where(x => x.Value).Select(x => x.Key).ToHashSet();
+    }
+    private async Task<bool> IsVerified(Guid id) => (await VerifiedAccounts()).Contains(id);
+    private static string ReferralHash(string code) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(code)));
+    private static bool ValidReferralCode(string? code) => code is { Length: 20 } && code.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
     private async Task<Person> PersonDto(Profile p)
     {
         bool dating = Viewer is { } v && await db.Profiles.AnyAsync(x => x.Id == v && x.LookingFor.Contains("Dating"));
@@ -57,7 +87,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                     var u = Viewer.HasValue ? await User() : null;
                     return new Session(u?.Id, u?.Name ?? "Visitor", u != null && await db.Profiles.AnyAsync(p => p.Id == u.Id), u?.Admin ?? false,
                         env.IsDevelopment() && config.GetValue<bool>("Development:Enabled"),
-                        new[] { config["Authentication:Firebase:ProjectId"], config["Authentication:Firebase:ApiKey"], config["Authentication:Firebase:AuthDomain"], config["Authentication:Firebase:AppId"] }.All(x => !string.IsNullOrWhiteSpace(x)));
+                        new[] { config["Authentication:Firebase:ProjectId"], config["Authentication:Firebase:ApiKey"], config["Authentication:Firebase:AuthDomain"], config["Authentication:Firebase:AppId"] }.All(x => !string.IsNullOrWhiteSpace(x)), u?.Moderator ?? false);
                 case "people":
                     if (parts.Length > 1)
                     {
@@ -91,7 +121,8 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                     return new Page<Person>(dtos, total, page);
                 case "profile":
                     var me = await User(); var own = await db.Profiles.FindAsync(me.Id);
-                    return own == null ? new ProfileInput { Name = me.Name } : new ProfileInput { Name = own.Name, City = own.City, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true };
+                    var canRefer = await IsVerified(me.Id);
+                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, City = own.City, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer };
                 case "connections": return await Connections();
                 case "conversations":
                     if (parts.Length == 1) return await Conversations();
@@ -114,6 +145,8 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                     var blocker = await User();
                     return await db.Blocks.Where(b => b.Owner == blocker.Id).Join(db.Profiles, b => b.Subject, p => p.Id, (b, p) => new AdminPerson(p.Id, p.Name, false, false, false, false)).ToListAsync();
                 case "admin": return await Admin();
+                case "moderation": return new ModerationData(await ProfileQueue(includeTestProfiles: false), await EventQueue(includeTestEvents: false));
+                case "event-submissions": return await MyEventSubmissions();
             }
         }
         else if (method is "POST" or "DELETE")
@@ -127,11 +160,18 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                     if (parts[2] == "read") return await MarkRead(parts[1], Read<ReadInput>(body));
                     return await SendMessage(parts[1], Read<MessageInput>(body));
                 case "events": return await EventAction(Guid.Parse(parts[1]), parts[2], body);
+                case "event-submissions": return await SaveEventSubmission(Read<EventInput>(body));
                 case "notifications":
                     return await NotificationAction(method, parts, body);
                 case "admin":
                     if (parts[1] == "events") return await SaveEvent(Read<EventInput>(body));
+                    if (parts[1] == "profile-review") return await ReviewProfile(Read<ProfileReviewInput>(body));
                     return await Moderate(Read<ModerateInput>(body));
+                case "moderation":
+                    if (parts.Length > 1 && parts[1] == "profile-review") return await ReviewProfile(Read<ProfileReviewInput>(body), moderator: true);
+                    if (parts.Length > 1 && parts[1] == "event-review") return await ReviewEvent(Read<EventReviewInput>(body), moderator: true);
+                    throw Missing();
+                case "referrals": return await CreateReferralInvite();
                 case "account":
                     if (method != "DELETE" || Read<DeleteInput>(body).Confirm != "DELETE") throw new ApiException(400, "Confirm permanent deletion by typing DELETE.");
                     return await DeleteAccount();
@@ -168,14 +208,51 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         var instagram = Url(input.Instagram, "instagram.com"); var linkedIn = Url(input.LinkedIn, "linkedin.com"); var website = Url(input.Website); var photo = Photo(input.Photo);
         await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
         var p = await db.Profiles.FindAsync(me.Id);
+        var isNewProfile = p == null;
         if (p == null) { p = new Profile { Id = me.Id, AdultConfirmedAt = DateTimeOffset.UtcNow }; db.Profiles.Add(p); }
+        var reviewChanged = isNewProfile || p.Name != name || p.City != city || p.Bio != bio || p.Photo != photo
+            || !p.Interests.SequenceEqual(interests) || !p.LookingFor.SequenceEqual(input.LookingFor.Distinct())
+            || p.Instagram != instagram || p.LinkedIn != linkedIn || p.Website != website || p.Public != input.Public;
+        if (!string.IsNullOrWhiteSpace(input.ReferralCode) && !await db.Referrals.AnyAsync(r => r.ReferredId == me.Id))
+        {
+            if (!ValidReferralCode(input.ReferralCode)) throw new ApiException(400, "This referral link is invalid or expired.");
+            var inviteHash = ReferralHash(input.ReferralCode!);
+            await PairLock("referral-invite:" + inviteHash);
+            var invite = await db.ReferralInvites.SingleOrDefaultAsync(i => i.TokenHash == inviteHash);
+            if (invite == null || invite.Revoked || invite.ReferredId.HasValue || invite.Expires <= DateTimeOffset.UtcNow || invite.ReferrerId == me.Id || !await IsVerified(invite.ReferrerId) || !await db.Profiles.AnyAsync(p => p.Id == invite.ReferrerId && p.Approved && !p.TestProfile))
+                throw new ApiException(400, "This referral link is invalid or expired.");
+            var parent = await db.Referrals.ToDictionaryAsync(r => r.ReferredId, r => r.ReferrerId);
+            var ancestor = invite.ReferrerId;
+            var visited = new HashSet<Guid>();
+            while (visited.Add(ancestor))
+            {
+                if (ancestor == me.Id) throw new ApiException(400, "This referral link is invalid or expired.");
+                if (!parent.TryGetValue(ancestor, out ancestor)) break;
+            }
+            invite.ReferredId = me.Id;
+            db.Referrals.Add(new() { ReferredId = me.Id, ReferrerId = invite.ReferrerId });
+        }
         p.Name = name; p.City = city; p.Bio = bio; p.LookingFor = input.LookingFor.Distinct().ToArray(); p.Interests = interests;
         p.Instagram = instagram; p.LinkedIn = linkedIn; p.Website = website;
         // A photo must belong to this account (or be its existing development fixture).
         if (photo != "" && photo != p.Photo && !System.IO.File.Exists(System.IO.Path.Combine(config["Storage:MediaPath"] ?? "uploads", photo[7..] + ".owner-" + me.Id.ToString("N")))) throw Denied();
         p.Photo = photo; p.Public = input.Public; p.FeatureConsent = input.FeatureConsent; p.DefaultAttendeeVisible = input.DefaultAttendeeVisible;
+        if (reviewChanged) { p.Approved = false; p.ReviewNote = null; p.ReviewedAt = null; p.ReviewedBy = null; }
         if (!p.Public || !p.FeatureConsent) p.Featured = false;
         me.Name = name;
         await db.SaveChangesAsync(); await tx.CommitAsync(); return new Ok();
+    }
+    private async Task<object> CreateReferralInvite()
+    {
+        var me = await User(true);
+        if (!await IsVerified(me.Id) || !await db.Profiles.AnyAsync(p => p.Id == me.Id && p.Approved && !p.TestProfile)) throw Denied();
+        var now = DateTimeOffset.UtcNow;
+        if (await db.ReferralInvites.CountAsync(i => i.ReferrerId == me.Id && !i.Revoked && !i.ReferredId.HasValue && i.Expires > now) >= 5)
+            throw new ApiException(429, "Use or let an earlier referral link expire before creating another.");
+        var raw = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(15)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var expires = now.AddDays(30);
+        db.ReferralInvites.Add(new() { TokenHash = ReferralHash(raw), ReferrerId = me.Id, Expires = expires });
+        await db.SaveChangesAsync();
+        return new ReferralInviteResult(raw, expires);
     }
 }

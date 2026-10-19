@@ -23,6 +23,10 @@ public partial class CommunityService
     {
         var me = await User(true); var input = Read<ConnectionInput>(body);
         if (input.PersonId == me.Id) throw new ApiException(400, "You cannot connect with yourself.");
+        var meIsTest = await db.Profiles.AnyAsync(p => p.Id == me.Id && p.TestProfile);
+        var targetIsTest = await db.Profiles.AnyAsync(p => p.Id == input.PersonId && p.TestProfile);
+        var targetIsAdmin = await db.Accounts.AnyAsync(a => a.Id == input.PersonId && a.Admin);
+        if (meIsTest && !targetIsTest && !targetIsAdmin) throw Denied();
         var key = Pair(me.Id, input.PersonId);
         await using var tx = await db.Database.BeginTransactionAsync(); await PairLock(key);
         if (!await VisiblePeople().AnyAsync(p => p.Id == input.PersonId)) throw Missing();
@@ -62,6 +66,10 @@ public partial class CommunityService
     {
         var me = await User(true);
         if (id == me.Id) throw new ApiException(400, "Choose another member.");
+        var meIsTest = await db.Profiles.AnyAsync(p => p.Id == me.Id && p.TestProfile);
+        var targetIsTest = await db.Profiles.AnyAsync(p => p.Id == id && p.TestProfile);
+        var targetIsAdmin = await db.Accounts.AnyAsync(a => a.Id == id && a.Admin);
+        if (meIsTest && action != "unblock" && !targetIsTest && !targetIsAdmin) throw Denied();
         await using var tx = await db.Database.BeginTransactionAsync(); await PairLock(Pair(me.Id, id));
         if (action == "unblock")
         {
@@ -94,17 +102,36 @@ public partial class CommunityService
         return await db.Relationships.SingleOrDefaultAsync(r => r.Key == key && (r.A == me.Id || r.B == me.Id)) ?? throw Missing();
     }
     private async Task<bool> CanMessage(Relationship r)
-        => r.State == "accepted" && !await Blocked(r.A, r.B) && await db.Accounts.CountAsync(a => (a.Id == r.A || a.Id == r.B) && !a.Suspended) == 2;
+    {
+        if (r.State != "accepted" || await Blocked(r.A, r.B) || await db.Accounts.CountAsync(a => (a.Id == r.A || a.Id == r.B) && !a.Suspended) != 2) return false;
+        var testA = await db.Profiles.AnyAsync(p => p.Id == r.A && p.TestProfile);
+        var testB = await db.Profiles.AnyAsync(p => p.Id == r.B && p.TestProfile);
+        var adminA = await db.Accounts.AnyAsync(a => a.Id == r.A && a.Admin);
+        var adminB = await db.Accounts.AnyAsync(a => a.Id == r.B && a.Admin);
+        return !(testA && !testB && !adminB) && !(testB && !testA && !adminA);
+    }
+    private async Task<bool> HiddenTestConversation(Relationship r, Guid viewer)
+    {
+        if (await db.Accounts.AnyAsync(a => a.Id == viewer && a.Admin)) return false;
+        var testA = await db.Profiles.AnyAsync(p => p.Id == r.A && p.TestProfile);
+        var testB = await db.Profiles.AnyAsync(p => p.Id == r.B && p.TestProfile);
+        if (!testA && !testB) return false;
+        var other = r.A == viewer ? r.B : r.A;
+        return !await db.Accounts.AnyAsync(a => a.Id == other && a.Admin);
+    }
     private async Task<object> Conversations()
     {
         var me = await User(true); var results = new List<Conversation>();
         foreach (var r in await db.Relationships.Where(r => r.A == me.Id || r.B == me.Id).ToListAsync())
         {
+            if (await HiddenTestConversation(r, me.Id)) continue;
             var latest = await db.Messages.Where(m => m.Conversation == r.Key).OrderByDescending(m => m.Id).FirstOrDefaultAsync();
             if (latest == null && r.State != "accepted") continue;
             var other = r.A == me.Id ? r.B : r.A;
             var unavailable = await Blocked(me.Id, other) || !await db.Accounts.AnyAsync(a => a.Id == other && !a.Suspended);
+            var isAdmin = await db.Accounts.AnyAsync(a => a.Id == me.Id && a.Admin);
             var p = unavailable ? null : await db.Profiles.FindAsync(other);
+            if (p?.TestProfile == true && other != me.Id && !isAdmin) p = null;
             results.Add(new(r.Key, p?.Name ?? "Unavailable member", p?.Photo ?? "", latest?.Text ?? "Say hello", await db.Messages.CountAsync(m => m.Conversation == r.Key && m.SenderId != me.Id && m.Id > (r.A == me.Id ? r.ReadA : r.ReadB)), latest?.SentAt ?? r.Updated, await CanMessage(r), unavailable ? null : other));
         }
         return results.OrderByDescending(c => c.Updated).ToList();
@@ -112,6 +139,7 @@ public partial class CommunityService
     private async Task<object> Messages(string key, long before, long? after)
     {
         var r = await ConversationAccess(key);
+        if (await HiddenTestConversation(r, Viewer!.Value)) throw Missing();
         if (after.HasValue)
         {
             var missed = await db.Messages.Where(m => m.Conversation == key && m.Id > after.Value).OrderBy(m => m.Id).Take(41).ToListAsync();

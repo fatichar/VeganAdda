@@ -138,3 +138,5 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
     .chat-menu>.icon-button { width:32px;min-width:32px; }
     .chat-header .chat-menu { margin-left:auto; }
 }
+.admin-profile-review{display:grid;gap:12px;margin:16px 0}.admin-profile-summary{display:flex;align-items:center;gap:12px}.admin-profile-summary h2{margin:0}.profile-social-review{display:flex;flex-wrap:wrap;gap:12px}.profile-social-review a{display:inline-flex;align-items:center;gap:4px}
+.event-suggest{margin-bottom:16px}

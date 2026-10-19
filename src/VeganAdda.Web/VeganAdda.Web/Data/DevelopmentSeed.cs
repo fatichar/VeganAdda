@@ -29,7 +29,7 @@ public static class DevelopmentSeed
         };
         for (int i = 0; i < 5; i++) db.Profiles.Add(new()
         {
-            Id = accounts[i].Id, Name = names[i], City = i == 4 ? "Delhi NCR" : i == 1 || i == 3 ? "Bengaluru" : "Pune", Bio = bios[i], Public = true,
+            Id = accounts[i].Id, Name = names[i], City = i == 4 ? "Delhi NCR" : i == 1 || i == 3 ? "Bengaluru" : "Pune", Bio = bios[i], Public = true, Approved = true, TestProfile = true,
             FeatureConsent = true, Featured = i == 1, AdultConfirmedAt = DateTimeOffset.UtcNow,
             LookingFor = i == 2 ? ["Friendship", "Activism", "Dating"] : ["Friendship", "Business & networking"],
             Interests = i == 1 ? ["Design", "Running", "Zero waste", "Rescues"] : i == 2 ? ["Tech", "Sanctuaries", "Hiking"] : i == 3 ? ["Baking", "Gardening", "Heritage food"] : i == 4 ? ["Photography", "Music", "Coffee"] : ["Cooking", "Running", "Volunteering"],

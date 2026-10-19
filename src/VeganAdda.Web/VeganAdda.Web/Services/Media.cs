@@ -65,8 +65,12 @@ public static class Media
             if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[a-f0-9]{32}\.(jpg|png|webp)$")) return Results.NotFound();
             var url = "/media/" + name; var id = actor.Id;
             if (id.HasValue && !await db.Accounts.AnyAsync(a => a.Id == id && !a.Suspended)) return Results.NotFound();
-            var visible = await db.Profiles.AnyAsync(p => p.Photo == url && (id.HasValue || p.Public) && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended) && (!id.HasValue || !db.Blocks.Any(b => (b.Owner == id && b.Subject == p.Id) || (b.Subject == id && b.Owner == p.Id))))
-                || await db.Events.AnyAsync(e => e.Cover == url && e.Published)
+            var isAdmin = id.HasValue && await db.Accounts.AnyAsync(a => a.Id == id && a.Admin && !a.Suspended);
+            var isModerator = id.HasValue && await db.Accounts.AnyAsync(a => a.Id == id && (a.Admin || a.Moderator) && !a.Suspended);
+            var visible = await db.Profiles.AnyAsync(p => p.Photo == url && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended)
+                && ((id.HasValue && p.Id == id) || isAdmin || (isModerator && !p.Approved && !p.TestProfile) || (p.Approved && (!p.TestProfile || isAdmin) && (id.HasValue || p.Public)
+                    && (!id.HasValue || !db.Blocks.Any(b => (b.Owner == id && b.Subject == p.Id) || (b.Subject == id && b.Owner == p.Id))))))
+                || await db.Events.AnyAsync(e => e.Cover == url && (e.Published || (e.PendingReview && ((isAdmin && !e.Demo) || (isModerator && !e.Demo)))))
                 || (id.HasValue && (File.Exists(Path.Combine(root, name + ".owner-" + id.Value.ToString("N"))) || await db.Accounts.AnyAsync(a => a.Id == id && a.Admin)));
             var file = Path.Combine(root, name);
             return visible && File.Exists(file) ? Results.File(file, name.EndsWith(".jpg") ? "image/jpeg" : name.EndsWith(".png") ? "image/png" : "image/webp") : Results.NotFound();

@@ -34,7 +34,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     public async Task<Guid> Member(bool pub = true, bool dating = false, bool admin = false)
     {
         await using var db = Db(); var u = new Account { Subject = Guid.NewGuid().ToString(), Name = "Test Member", Admin = admin };
-        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", Public = pub, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
+        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", Public = pub, Approved = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
     }
     public async Task DisposeAsync()
     {

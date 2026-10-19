@@ -4,7 +4,7 @@
 <span class="eyebrow">Care for the community</span><h1>Community administration</h1><Feedback Error="@Error" Success="@Success" />
 @if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
 else if (data != null) {
-    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => tab = t">@t</button> }</div>
+    <div class="tab-row">@foreach (var t in new[] { "Events", "Profiles", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => tab = t">@t@if (t == "Profiles" && data.Profiles.Count > 0) { <span class="badge">@data.Profiles.Count</span> }</button> }</div>
     @if (tab == "Events") {
         <div class="admin-events"><aside class="card"><button @onclick="NewEvent"><Icon Name="add" />Create event</button>@foreach (var item in data.Events) { <button class="admin-event-link secondary" @onclick="() => Edit(item)">@item.Title<span class="badge">@(item.Published ? "Published" : "Draft")</span></button> }</aside>
         @if (edit != null) {
@@ -27,10 +27,22 @@ else if (data != null) {
             </fieldset></form>
         }</div>
     }
+    else if (tab == "Profiles") {
+        @if (data.Profiles.Count == 0) { <Empty Icon="verified" Title="All profiles reviewed" Text="New and updated profiles will appear here." /> }
+        @foreach (var p in data.Profiles) {
+            <article class="card admin-profile-review"><div class="admin-profile-summary"><Avatar Name="@p.Name" Photo="@p.Photo" /><div><h2>@p.Name</h2><small>@p.City · @(p.Public ? "Public profile" : "Members only")@(p.TestProfile ? " · Test profile" : "")</small></div></div>
+                <p>@p.Bio</p><p class="small">Interests: @(p.Interests.Length == 0 ? "None" : string.Join(", ", p.Interests)) · Looking for: @string.Join(", ", p.LookingFor)</p><div class="profile-social-review">@if (p.Instagram != null) { <a href="@p.Instagram" target="_blank" rel="noopener noreferrer">Instagram <Icon Name="open_in_new" /></a> }@if (p.LinkedIn != null) { <a href="@p.LinkedIn" target="_blank" rel="noopener noreferrer">LinkedIn <Icon Name="open_in_new" /></a> }@if (p.Website != null) { <a href="@p.Website" target="_blank" rel="noopener noreferrer">Website <Icon Name="open_in_new" /></a> }</div>
+                <p class="small">@(p.ReferredBy == null ? "No referral" : $"Referred by {p.ReferredBy}" + (p.ReferrerVerified ? " · verified" : " · referral is unverified"))</p>
+                @if (p.ReviewNote != null) { <p class="notice">Previous review: @p.ReviewNote</p> }
+                <label for="review-@p.Id">Note for member if changes are needed</label><input id="review-@p.Id" value="@reviewNotes.GetValueOrDefault(p.Id)" @oninput="e => reviewNotes[p.Id] = e.Value?.ToString() ?? string.Empty" maxlength="500" placeholder="Explain what needs updating" />
+                <div class="actions"><button disabled="@Busy" @onclick="() => ReviewProfile(p.Id, true)">Approve profile</button><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(reviewNotes.GetValueOrDefault(p.Id)))" @onclick="() => ReviewProfile(p.Id, false)">Request changes</button></div>
+            </article>
+        }
+    }
     else if (tab == "Members") {
-        <p class="muted">Showing up to 200 members. Only consenting public profiles can be featured.</p><div class="admin-rows">
+        <p class="muted">Showing up to 200 members. Revoking a member's verification also revokes verification for everyone they referred.</p><div class="admin-rows">
         @foreach (var p in data.People) {
-            <article class="card admin-row"><div><strong>@p.Name</strong><small>@(p.Suspended ? "Suspended" : "Active") · @(p.Public ? "Public" : "Members only") · @(p.Consent ? "Feature consent" : "No feature consent")</small></div><div class="actions"><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button><button class="secondary small-button danger" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button></div></article>
+            <article class="card admin-row"><div><strong>@p.Name</strong><small>@(p.Suspended ? "Suspended" : "Active") · @(p.Public ? "Public" : "Members only") · @(p.Verified ? "Verified" : "Unverified")@(p.TestProfile ? " · Test profile" : "")@(p.Moderator ? " · Moderator" : "")</small></div><div class="actions"><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Moderator ? "revoke-moderator" : "grant-moderator")'>@(p.Moderator ? "Remove moderator" : "Make moderator")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Verified ? "unverify" : "verify")'>@(p.Verified ? "Revoke verification" : "Verify")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.TestProfile ? "normal-profile" : "test-profile")'>@(p.TestProfile ? "Mark real" : "Mark test")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button><button class="secondary small-button danger" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button></div></article>
         }</div>
     }
     else {
@@ -42,13 +54,14 @@ else if (data != null) {
     }
 }
 @code {
-    AdminData? data; EventInput? edit; string tab = "Events"; DateTime? start, end;
+    AdminData? data; EventInput? edit; string tab = "Events"; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(Refresh); }
     protected override async Task Refresh() => data = await Api.Get<AdminData>("admin");
     void NewEvent() { edit = new(); start = end = null; }
     void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
     Task SaveEvent() => Run(async () => { try { var zone = TimeZoneInfo.FindSystemTimeZoneById(edit!.TimeZone); edit.Start = start.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start.Value, DateTimeKind.Unspecified), zone)) : null; edit.End = end.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end.Value, DateTimeKind.Unspecified), zone)) : null; } catch { throw new ApiException(400, "Check the time zone and local event times."); } await Api.Send<Ok>("admin/events", edit); await Refresh(); Success = "Event saved."; });
     Task Moderate(Guid id, string action) => Run(async () => { await Api.Send<Ok>("admin/moderate", new ModerateInput(id, action)); await Refresh(); Success = "Community record updated."; });
+    Task ReviewProfile(Guid id, bool approve) => Run(async () => { var note = reviewNotes.GetValueOrDefault(id); await Api.Send<Ok>("admin/profile-review", new ProfileReviewInput(id, approve, note)); reviewNotes.Remove(id); await Refresh(); Success = approve ? "Profile approved." : "Changes requested."; });
     Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 2 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 2 MB."); await using var stream = e.File.OpenReadStream(2 * 1024 * 1024); edit!.Cover = await Platform.Upload(stream, e.File.Name, e.File.ContentType); });
 }
 
