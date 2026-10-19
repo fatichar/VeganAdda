@@ -1,0 +1,117 @@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="location-action">
+    <button type="button" class="secondary" disabled="@(loading || locating)" @onclick="Locate"><Icon Name="my_location" />@(locating ? "Finding location…" : "Use my location")</button>
+    <small>Shares coordinates with BigDataCloud. VeganAdda saves only country, state and city.</small>
+</div>
+@if (status != "") { <p class="small location-status" role="status">@status</p> }
+@if (loadFailed) { <button type="button" class="text-button" @onclick="Initialize">Retry location lists</button> }
+<label for="country">Country</label>
+<select @key="countryOptions" id="country" required autocomplete="country-name" @bind:get="Model.Country" @bind:set="CountryChanged" disabled="@(loading || locating)">
+    <option value="">Choose country</option>
+    @if (Model.Country != "" && !countryOptions.Any(c => c.Name == Model.Country)) { <option value="@Model.Country">@Model.Country</option> }
+    @foreach (var c in countryOptions) { <option value="@c.Name">@c.Name</option> }
+</select>
+<label for="state">State / union territory</label>
+<select @key="stateOptions" id="state" required autocomplete="address-level1" @bind:get='customState ? "__other__" : Model.State' @bind:set="StateChanged" disabled="@(loading || locating || Model.Country == "")">
+    <option value="">Choose state / region</option>
+    @if (Model.State != "" && !stateOptions.Any(s => s.Name == Model.State)) { <option value="@Model.State">@Model.State</option> }
+    @foreach (var s in stateOptions) { <option value="@s.Name">@s.Name</option> }
+    <option value="__other__">Other state / region</option>
+</select>
+@if (customState) { <label for="other-state" class="sr-only">State / region name</label><input id="other-state" required maxlength="80" placeholder="State / region name" @bind="Model.State" @bind:event="oninput" @bind:after="ClearCity" /> }
+<label for="city">City</label>
+<select @key="Cities" id="city" required autocomplete="address-level2" @bind:get='customCity ? "__other__" : Model.City' @bind:set="CityChanged" disabled="@(loading || locating || Model.State == "")">
+    <option value="">Choose city</option>
+    @if (Model.City != "" && !Cities.Contains(Model.City)) { <option value="@Model.City">@Model.City</option> }
+    @foreach (var city in Cities) { <option value="@city">@city</option> }
+    <option value="__other__">Other city</option>
+</select>
+@if (customCity) { <label for="other-city" class="sr-only">City name</label><input id="other-city" required maxlength="80" placeholder="City name" @bind="Model.City" @bind:event="oninput" /> }
+<small class="location-credit">Location lists: <a href="/_content/VeganAdda.UI/data/locations/README.md" target="_blank" rel="noopener">CSC · ODbL</a></small>
+
+@code {
+    [Parameter, EditorRequired] public ProfileInput Model { get; set; } = default!;
+    [Parameter] public EventCallback<bool> BusyChanged { get; set; }
+    IJSObjectReference? data, geolocation;
+    CountryOption[] countryOptions = [];
+    StateOption[] stateOptions = [];
+    string status = "";
+    bool loading = true, locating, loadFailed, customState, customCity;
+    string[] Cities => stateOptions.FirstOrDefault(s => s.Name == Model.State)?.Cities ?? [];
+    public record CountryOption(string Code, string Name);
+    public record StateOption(string Code, string Name, string[] Cities);
+    public record Place(string Country, string State, string City, string Error = "", string CountryCode = "", string StateCode = "");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) { await Initialize(); StateHasChanged(); }
+    }
+    async Task Initialize()
+    {
+        loading = true; loadFailed = false; status = "";
+        await BusyChanged.InvokeAsync(true);
+        try
+        {
+            data ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/location-data.js");
+            countryOptions = await data.InvokeAsync<CountryOption[]>("countries");
+            if (string.IsNullOrWhiteSpace(Model.Country)) Model.Country = "India";
+            await LoadStates();
+        }
+        catch (JSException) { loadFailed = true; status = "Location lists couldn't be loaded. Please retry."; }
+        finally { loading = false; await BusyChanged.InvokeAsync(false); }
+    }
+    async Task LoadStates()
+    {
+        var country = countryOptions.FirstOrDefault(c => c.Name == Model.Country);
+        stateOptions = country == null || data == null ? [] : await data.InvokeAsync<StateOption[]>("states", country.Code);
+    }
+    async Task CountryChanged(string? value)
+    {
+        Model.Country = value ?? ""; Model.State = ""; Model.City = "";
+        customState = customCity = false;
+        stateOptions = []; status = ""; loadFailed = false; loading = true; await BusyChanged.InvokeAsync(true);
+        try { await LoadStates(); }
+        catch (JSException) { loadFailed = true; status = "States couldn't be loaded. Please retry."; }
+        finally { loading = false; await BusyChanged.InvokeAsync(false); }
+    }
+    void ClearCity() { Model.City = ""; customCity = false; }
+    void StateChanged(string? value)
+    {
+        customState = value == "__other__";
+        Model.State = customState ? "" : value ?? ""; ClearCity(); status = "";
+    }
+    void CityChanged(string? value)
+    {
+        customCity = value == "__other__";
+        Model.City = customCity ? "" : value ?? "";
+    }
+    async Task Locate()
+    {
+        if (loading || locating || data == null) return;
+        locating = true; status = "Allow location access in your browser if prompted.";
+        await BusyChanged.InvokeAsync(true);
+        try
+        {
+            geolocation ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/location.js");
+            var detected = await geolocation.InvokeAsync<Place>("locate");
+            if (detected.Country != "" || detected.CountryCode != "")
+            {
+                var place = await data.InvokeAsync<Place>("resolve", detected);
+                customState = customCity = false;
+                Model.Country = place.Country; Model.State = place.State; Model.City = place.City;
+                await LoadStates();
+            }
+            status = detected.Error != "" ? detected.Error : "Check your location, then save your profile.";
+        }
+        catch (JSException) { status = "Location lookup failed. Choose your country, state and city below."; }
+        finally { locating = false; await BusyChanged.InvokeAsync(false); }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        try { if (data != null) await data.DisposeAsync(); if (geolocation != null) await geolocation.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}

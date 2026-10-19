@@ -34,11 +34,13 @@ public record Page<T>(List<T> Items, int Total, int PageNumber, int PageSize = 1
 // This is the only profile projection returned to other people. Never add email or OAuth identity.
 public record Person(Guid Id, string Name, string City, string Bio, string Photo, string[] Interests,
     string[] LookingFor, string? Instagram, string? LinkedIn, string? Website, bool Featured,
-    bool Saved, string Relationship, bool Demo = false);
+    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "");
 public class ProfileInput
 {
     public string Name { get; set; } = "";
-    public string City { get; set; } = "Pune";
+    public string City { get; set; } = "";
+    public string Country { get; set; } = "India";
+    public string State { get; set; } = "";
     public string Bio { get; set; } = "";
     public string Photo { get; set; } = "";
     public string[] Interests { get; set; } = [];
@@ -96,7 +98,7 @@ public record UnreadCounts(int Messages, int Notifications);
 public record ReportView(Guid Id, string Reporter, Guid SubjectId, string Subject, string Reason, bool Resolved, DateTimeOffset Created);
 public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People, List<ProfileReview> Profiles);
 public record AdminPerson(Guid Id, string Name, bool Suspended, bool Public, bool Consent, bool Featured, bool Verified = false, bool TestProfile = false, bool Moderator = false);
-public record ProfileReview(Guid Id, string Name, string City, string Bio, string[] Interests, string[] LookingFor, string Photo, string? Instagram, string? LinkedIn, string? Website, bool Public, bool TestProfile, string? ReferredBy, bool ReferrerVerified, string? ReviewNote);
+public record ProfileReview(Guid Id, string Name, string City, string Bio, string[] Interests, string[] LookingFor, string Photo, string? Instagram, string? LinkedIn, string? Website, bool Public, bool TestProfile, string? ReferredBy, bool ReferrerVerified, string? ReviewNote, string Country = "India", string State = "");
 public record ProfileReviewInput(Guid Id, bool Approve, string? Note = null);
 public record ReferralInviteResult(string Code, DateTimeOffset Expires);
 public record ModerateInput(Guid Id, string Action);

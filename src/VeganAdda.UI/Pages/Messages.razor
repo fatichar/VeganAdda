@@ -1,6 +1,8 @@
 @page "/messages"
 @page "/messages/{Key}"
 @inherits Screen
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 <PageTitle>Messages · VeganAdda</PageTitle>
 <h1 class="sr-only">Messages</h1>
 <Feedback Error="@Error" Success="@Success" />
@@ -27,8 +29,7 @@ else
                 @foreach (var c in Chats)
                 {
                     <a class="conversation @(c.Key == Key ? "selected" : "") @(c.Unread > 0 ? "has-unread" : "")" href="/messages/@c.Key" @key="c.Key">
-                        <Avatar Name="@c.Name" Photo="@c.Photo" /><div><strong>@c.Name</strong><p>@c.Latest</p><small>@Date(c.Updated)</small></div>
-                        @if (c.Unread > 0) { <span class="count" aria-label="@($"{c.Unread} unread messages")">@c.Unread</span> }
+                        <Avatar Name="@c.Name" Photo="@c.Photo" /><div class="conversation-copy"><div class="conversation-top"><strong>@c.Name</strong><small title="@Date(c.Updated)">@InboxTimestamp.Format(c.Updated, DateTimeOffset.UtcNow)</small></div><div class="conversation-preview"><p>@c.Latest</p>@if (c.Unread > 0) { <span class="count" aria-label="@($"{c.Unread} unread messages")">@c.Unread</span> }</div></div>
                     </a>
                 }
             </aside>
@@ -65,7 +66,7 @@ else
                             <button class="text-button" @onclick='() => confirmAction = ""'>Cancel</button>
                         </div>
                     }
-                    <div class="message-history" aria-live="polite">
+                    <div class="message-history" aria-live="polite" @ref="historyElement">
                         @if (SelectedRequest is { } introduction)
                         {
                             <div class="request-introduction">
@@ -114,6 +115,8 @@ else
     MessagePage? messagePage;
     string loadedKey = "", confirmAction = "";
     bool sending, refreshing, refreshAgain, hasOlder, menuOpen;
+    bool scrollToLatest;
+    ElementReference historyElement;
     readonly CancellationTokenSource stop = new();
     readonly Dictionary<Guid, PendingMessage> pending = new();
     Conversation? Selected => conversations.FirstOrDefault(c => c.Key == Key);
@@ -127,7 +130,17 @@ else
         if (Key != loadedKey) { history.Clear(); messagePage = null; hasOlder = false; confirmAction = ""; menuOpen = false; loadedKey = Key ?? ""; }
         if (Session?.Id != null) await Run(Refresh);
     }
-    protected override async Task OnAfterRenderAsync(bool first) { await base.OnAfterRenderAsync(first); if (first) _ = Poll(); }
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        await base.OnAfterRenderAsync(first);
+        if (first) _ = Poll();
+        if (scrollToLatest && messagePage != null)
+        {
+            scrollToLatest = false;
+            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/messages.js");
+            await module.InvokeVoidAsync("scrollToLatest", historyElement);
+        }
+    }
     async Task Poll()
     {
         try { using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20)); while (await timer.WaitForNextTickAsync(stop.Token)) { await InvokeAsync(async () => { await Run(Refresh); await Platform.StartRealtime(); StateHasChanged(); }); } }
@@ -149,7 +162,7 @@ else
                 {
                     result = await Api.Get<MessagePage>($"conversations/{key}/messages");
                     if (Key != key) return;
-                    hasOlder = result.HasOlder; history = result.Items;
+                    hasOlder = result.HasOlder; history = result.Items; scrollToLatest = true;
                 }
                 else
                 {
@@ -186,11 +199,11 @@ else
     }
     async Task SendPending(PendingMessage item)
     {
-        if (sending) return; item.Failed = false; sending = true;
+        if (sending) return; item.Failed = false; sending = true; scrollToLatest = true; StateHasChanged();
         try
         {
             var result = await Api.Send<Message>($"conversations/{item.Key}/messages", new MessageInput(item.Id, item.Text)); pending.Remove(item.Id);
-            if (item.Key == Key) history = history.Append(result).DistinctBy(m => m.Id).OrderBy(m => m.Id).ToList();
+            if (item.Key == Key) { history = history.Append(result).DistinctBy(m => m.Id).OrderBy(m => m.Id).ToList(); scrollToLatest = true; }
             await Refresh(); Error = "";
         }
         catch (Exception e) { item.Failed = true; Error = e is ApiException ? e.Message : "Message couldn't be sent. Retry when your connection returns."; }

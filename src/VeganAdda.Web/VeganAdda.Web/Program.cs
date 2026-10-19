@@ -93,7 +93,8 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Frame-Options"] = "DENY";
     var cspNonce = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
     ctx.Items["VeganAdda.CspNonce"] = cspNonce;
-    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com ws: wss:; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    // The free reverse-geocoding endpoint can redirect to BigDataCloud's api-bdc.io host.
+    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.bigdatacloud.net https://api-bdc.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com ws: wss:; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     if (!ctx.Request.Path.StartsWithSegments("/_framework") && !ctx.Request.Path.StartsWithSegments("/_content")) ctx.Response.Headers.CacheControl = "no-cache, no-store";
     try { await next(); }
     catch (ApiException ex) when (!ctx.Response.HasStarted) { ctx.Response.StatusCode = ex.Status; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }

@@ -72,6 +72,17 @@ public class HttpTests : IDisposable
         var html = await c.GetStringAsync("/"); Assert.Contains("Find your vegan people.", html); Assert.DoesNotContain("This screen couldn&#x27;t be loaded", html);
         Assert.Contains("no-store", (await c.GetAsync("/settings")).Headers.CacheControl!.ToString());
     }
+    [Fact] public async Task Location_lookup_policy_allows_the_providers_redirect_host()
+    {
+        using var client = Client();
+        using var response = await client.GetAsync("/settings/profile");
+        var policy = response.Headers.GetValues("Content-Security-Policy").Single();
+        var connect = policy.Split(';', StringSplitOptions.TrimEntries).Single(d => d.StartsWith("connect-src "));
+        var origins = connect.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains("https://api.bigdatacloud.net", origins);
+        Assert.Contains("https://api-bdc.io", origins);
+        Assert.DoesNotContain("*", connect);
+    }
     [Fact] public async Task Firebase_login_requires_csrf_rejects_invalid_tokens_and_creates_one_account_per_uid()
     {
         using var c = Client();

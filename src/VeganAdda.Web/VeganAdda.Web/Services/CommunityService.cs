@@ -68,7 +68,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         return new(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
             p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), p.Instagram, p.LinkedIn, p.Website,
             p.Featured && p.Public && p.FeatureConsent, Viewer.HasValue && await db.Saved.AnyAsync(x => x.UserId == Viewer && x.TargetId == p.Id && x.Kind == "person"),
-            p.Id == Viewer ? "self" : state, await db.Accounts.Where(a => a.Id == p.Id).Select(a => a.Demo).SingleAsync());
+            p.Id == Viewer ? "self" : state, await db.Accounts.Where(a => a.Id == p.Id).Select(a => a.Demo).SingleAsync(), p.Country, p.State);
     }
     private void Notice(Guid user, string kind, string text, string url) => db.Notifications.Add(new() { UserId = user, Kind = kind, Text = text, Url = url });
     public async Task<object> Execute(string method, string path, JsonElement? body)
@@ -122,7 +122,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                 case "profile":
                     var me = await User(); var own = await db.Profiles.FindAsync(me.Id);
                     var canRefer = await IsVerified(me.Id);
-                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, City = own.City, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer };
+                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, City = own.City, Country = own.Country, State = own.State, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer };
                 case "connections": return await Connections();
                 case "conversations":
                     if (parts.Length == 1) return await Conversations();
@@ -202,6 +202,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         var me = await User();
         if (!input.AdultConfirmed) throw new ApiException(400, "You must confirm that you are at least 18 years old.");
         var name = Text(input.Name, 80, true); var city = Text(input.City, 80, true); var bio = Text(input.Bio, 1000);
+        var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
         if (input.LookingFor == null || input.LookingFor.Any(x => !Wire.Intents.Contains(x))) throw new ApiException(400, "Choose supported intentions.");
         if (input.Interests == null || input.Interests.Length > 10) throw new ApiException(400, "Choose up to 10 interests.");
         var interests = input.Interests.Select(x => Text(x, 40, true)).Distinct().ToArray();
@@ -210,7 +211,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         var p = await db.Profiles.FindAsync(me.Id);
         var isNewProfile = p == null;
         if (p == null) { p = new Profile { Id = me.Id, AdultConfirmedAt = DateTimeOffset.UtcNow }; db.Profiles.Add(p); }
-        var reviewChanged = isNewProfile || p.Name != name || p.City != city || p.Bio != bio || p.Photo != photo
+        var reviewChanged = isNewProfile || p.Name != name || p.City != city || p.Country != country || p.State != state || p.Bio != bio || p.Photo != photo
             || !p.Interests.SequenceEqual(interests) || !p.LookingFor.SequenceEqual(input.LookingFor.Distinct())
             || p.Instagram != instagram || p.LinkedIn != linkedIn || p.Website != website || p.Public != input.Public;
         if (!string.IsNullOrWhiteSpace(input.ReferralCode) && !await db.Referrals.AnyAsync(r => r.ReferredId == me.Id))
@@ -232,7 +233,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
             invite.ReferredId = me.Id;
             db.Referrals.Add(new() { ReferredId = me.Id, ReferrerId = invite.ReferrerId });
         }
-        p.Name = name; p.City = city; p.Bio = bio; p.LookingFor = input.LookingFor.Distinct().ToArray(); p.Interests = interests;
+        p.Name = name; p.City = city; p.Country = country; p.State = state; p.Bio = bio; p.LookingFor = input.LookingFor.Distinct().ToArray(); p.Interests = interests;
         p.Instagram = instagram; p.LinkedIn = linkedIn; p.Website = website;
         // A photo must belong to this account (or be its existing development fixture).
         if (photo != "" && photo != p.Photo && !System.IO.File.Exists(System.IO.Path.Combine(config["Storage:MediaPath"] ?? "uploads", photo[7..] + ".owner-" + me.Id.ToString("N")))) throw Denied();

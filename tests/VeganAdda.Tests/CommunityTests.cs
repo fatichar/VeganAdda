@@ -34,7 +34,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     public async Task<Guid> Member(bool pub = true, bool dating = false, bool admin = false)
     {
         await using var db = Db(); var u = new Account { Subject = Guid.NewGuid().ToString(), Name = "Test Member", Admin = admin };
-        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", Public = pub, Approved = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
+        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", State = "Maharashtra", Public = pub, Approved = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
     }
     public async Task DisposeAsync()
     {
@@ -83,6 +83,24 @@ public class CommunityTests(DatabaseFixture f)
         Assert.Throws<ApiException>(() => CommunityService.Url("javascript:alert(1)"));
         Assert.Throws<ApiException>(() => CommunityService.Url("https://instagram.com.evil.test/a", "instagram.com"));
         Assert.Throws<ApiException>(() => CommunityService.Photo("/media/../../keys/file"));
+    }
+    [Fact] public async Task Profile_location_is_required_persisted_and_sent_for_review()
+    {
+        var id = await f.Member();
+        var profile = (ProfileInput)await f.Call(id, "profile");
+        Assert.Equal("India", profile.Country);
+        Assert.Equal("Maharashtra", profile.State);
+        profile.State = " ";
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "profile", profile, "POST"))).Status);
+        profile.State = "Karnataka"; profile.Country = "";
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "profile", profile, "POST"))).Status);
+        profile.Country = "India"; profile.City = "Bengaluru";
+        await f.Call(id, "profile", profile, "POST");
+        var saved = (ProfileInput)await f.Call(id, "profile");
+        Assert.Equal("Karnataka", saved.State); Assert.Equal("Bengaluru", saved.City); Assert.False(saved.Approved);
+        await using var db = f.Db();
+        var stored = await db.Profiles.FindAsync(id);
+        Assert.Equal("India", stored!.Country); Assert.Equal("Karnataka", stored.State);
     }
     [Fact] public async Task Requests_prevent_self_and_duplicate_and_serialize_simultaneous_reciprocals()
     {

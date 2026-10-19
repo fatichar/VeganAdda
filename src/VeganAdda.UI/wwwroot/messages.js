@@ -1,6 +1,10 @@
 const preference = "veganadda.enterToSend";
 const listeners = new WeakMap();
 
+export function scrollToLatest(history) {
+    if (history) history.scrollTop = history.scrollHeight;
+}
+
 export function attach(form) {
     if (listeners.has(form)) return;
     const checkbox = form.querySelector("[data-enter-send]");

@@ -72,7 +72,7 @@ public partial class CommunityService
             var referral = await db.Referrals.FindAsync(p.Id);
             var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
             profileReviews.Add(new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
-                referral == null ? null : referrer?.Name ?? "Deleted member", referral != null && verifiedAccounts.Contains(referral.ReferrerId), p.ReviewNote));
+                referral == null ? null : referrer?.Name ?? "Deleted member", referral != null && verifiedAccounts.Contains(referral.ReferrerId), p.ReviewNote, p.Country, p.State));
         }
         return profileReviews;
     }
