@@ -3,7 +3,7 @@
 <PageTitle>Discover · VeganAdda</PageTitle>
 <div class="discovery">
     <div class="discovery-heading">
-        <h1>Discover</h1>
+        <h1 class="sr-only">Discover</h1>
         <label class="city-picker"><Icon Name="location_on" /><span class="sr-only">City</span><select @bind="City" @bind:after="Search">@foreach (var city in Wire.Cities) { <option>@city</option> }</select></label>
     </div>
     @if (Session?.Id != null)

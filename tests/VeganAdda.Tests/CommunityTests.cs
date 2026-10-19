@@ -115,7 +115,7 @@ public class CommunityTests(DatabaseFixture f)
         var a = await f.Member(); var b = await f.Member();
         await f.Call(a, "connections", new ConnectionInput(b), "POST");
         var request = Assert.Single(Assert.IsType<NotificationList>(await f.Call(b, "notifications")).Items);
-        Assert.Equal("/messages?tab=requests", request.Url);
+        Assert.Equal("/messages/" + CommunityService.Pair(a, b), request.Url);
         await f.Call(b, "connections/decline", new ConnectionInput(a), "POST");
         var decline = Assert.Single(Assert.IsType<NotificationList>(await f.Call(a, "notifications")).Items);
         Assert.Equal("declined", decline.Kind); Assert.Contains("declined", decline.Text); Assert.False(decline.Read);

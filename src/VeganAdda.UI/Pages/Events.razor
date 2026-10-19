@@ -1,7 +1,7 @@
 @page "/events"
 @inherits Screen
 <PageTitle>Community gatherings · VeganAdda</PageTitle>
-<div class="discovery-heading"><h1>Events</h1><label class="city-picker"><Icon Name="location_on" /><span class="sr-only">City</span><select @bind="City" @bind:after="Filter">@foreach (var city in Wire.Cities) { <option>@city</option> }</select></label></div><Feedback Error="@Error" Success="@Success" />
+<div class="discovery-heading"><h1 class="sr-only">Events</h1><label class="city-picker"><Icon Name="location_on" /><span class="sr-only">City</span><select @bind="City" @bind:after="Filter">@foreach (var city in Wire.Cities) { <option>@city</option> }</select></label></div><Feedback Error="@Error" Success="@Success" />
 @if (!Loaded || Busy) { <p class="loading" role="status">Loading events…</p> }
 else if (items.Count == 0) { <Empty Icon="festival" Title="No upcoming events" Text="Check back soon for events in your city." /> }
 else { <div class="events-grid">@foreach (var ev in items) { <EventCardView Event="ev" Save="Save" /> }</div> }

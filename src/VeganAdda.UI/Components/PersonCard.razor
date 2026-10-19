@@ -6,7 +6,7 @@
     <div class="person-footer">@if (Person.Demo) { <span class="muted small">Sample profile</span> }
         @if (Person.Relationship == "self") { <a class="button small-button secondary" href="/settings">Your profile</a> }
         else if (Person.Relationship == "connected") { <a class="button small-button" href="/messages/@Pair"><Icon Name="chat_bubble" />Message</a> }
-        else if (Person.Relationship is "sent" or "received") { <a class="button small-button secondary" href="@(Person.Relationship == "sent" ? "/messages?tab=requests&requests=sent" : "/messages?tab=requests")">@(Person.Relationship == "sent" ? "Request sent" : "View request")</a> }
+        else if (Person.Relationship is "sent" or "received") { <a class="button small-button secondary" href="/messages/@Pair">@(Person.Relationship == "sent" ? "Request sent" : "View request")</a> }
         else { <button class="small-button" @onclick="() => Connect.InvokeAsync(Person)"><Icon Name="person_add" />Connect</button> }
     </div>
 </article>

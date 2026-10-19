@@ -2,7 +2,7 @@
 @page "/messages/{Key}"
 @inherits Screen
 <PageTitle>Messages · VeganAdda</PageTitle>
-<h1>Messages</h1>
+<h1 class="sr-only">Messages</h1>
 <Feedback Error="@Error" Success="@Success" />
 @if (Session?.Id == null)
 {
@@ -10,52 +10,21 @@
 }
 else
 {
-    <nav class="tab-row inbox-tabs" aria-label="Messages">
-        <a class="chip @(!ShowRequests ? "active" : "")" href="/messages" aria-current="@(!ShowRequests ? "page" : null)">Chats @if (TotalUnread > 0) { <span class="tab-count">@TotalUnread</span> }</a>
-        <a class="chip @(ShowRequests ? "active" : "")" href="/messages?tab=requests" aria-current="@(ShowRequests ? "page" : null)">Requests @if (IncomingCount > 0) { <span class="tab-count">@IncomingCount</span> }</a>
-    </nav>
-    @if (ShowRequests)
-    {
-        <nav class="tab-row request-tabs" aria-label="Connection requests">
-            <a class="chip @(!ShowSent ? "active" : "")" href="/messages?tab=requests">Received <span class="tab-count">@IncomingCount</span></a>
-            <a class="chip @(ShowSent ? "active" : "")" href="/messages?tab=requests&amp;requests=sent">Sent <span class="tab-count">@connections.Count(c => c.State == "pending" && !c.Incoming)</span></a>
-        </nav>
-        @if (Requests.Count == 0)
-        {
-            <Empty Icon="person_add" Title="@(ShowSent ? "No sent requests" : "No new requests")" Text="Find someone you'd like to meet."><a class="button secondary" href="/">Discover people<Icon Name="arrow_forward" /></a></Empty>
-        }
-        else
-        {
-            <div class="connections-grid">
-                @foreach (var item in Requests)
-                {
-                    <article class="connection-card card" @key="item.Key">
-                        <div class="person-header"><a href="/people/@item.Person.Id" class="person-identity"><Avatar Name="@item.Person.Name" Photo="@item.Person.Photo" /><div><h3>@item.Person.Name</h3><span class="location"><Icon Name="location_on" />@item.Person.City</span></div></a></div>
-                        @if (item.Introduction != "") { <blockquote>“@item.Introduction”</blockquote> }
-                        <div class="actions">
-                            @if (item.Incoming)
-                            {
-                                <button disabled="@Busy" @onclick='() => ConnectionAction(item, "accept")'>Accept</button>
-                                <button class="secondary" disabled="@Busy" @onclick='() => ConnectionAction(item, "decline")'>Decline</button>
-                            }
-                            else { <button class="secondary" disabled="@Busy" @onclick='() => ConnectionAction(item, "cancel")'>Cancel request</button> }
-                            <a class="text-button" href="/people/@item.Person.Id">View profile<Icon Name="arrow_forward" /></a>
-                        </div>
-                    </article>
-                }
-            </div>
-        }
-    }
-    else
-    {
         <div class="chat-layout @(Key != null ? "has-conversation" : "")">
-            <aside class="conversation-list" aria-label="Chats">
-                <h2>Chats</h2>
-                @if (conversations.Count == 0)
+            <aside class="conversation-list" aria-label="Messages">
+                @if (conversations.Count == 0 && Requests.Count == 0)
                 {
-                    <Empty Icon="chat_bubble" Title="No chats yet" Text="Accept a request or discover someone new."><a href="/messages?tab=requests" class="button secondary">View requests</a></Empty>
+                    <Empty Icon="chat_bubble" Title="No messages yet" Text="Connect with someone to start chatting."><a href="/" class="button secondary">Discover people</a></Empty>
                 }
-                @foreach (var c in conversations)
+                @foreach (var request in Requests)
+                {
+                    <a class="conversation conversation-request @(request.Incoming ? "incoming-request" : "sent-request") @(request.Key == Key ? "selected" : "")" href="/messages/@request.Key" aria-current="@(request.Key == Key ? "page" : null)" @key="request.Key">
+                        <Avatar Name="@request.Person.Name" Photo="@request.Person.Photo" />
+                        <div><strong>@request.Person.Name</strong><span class="request-label">@(request.Incoming ? "Connection request" : "Request sent")</span>@if (request.Introduction != "") { <p>@request.Introduction</p> }</div>
+                        <Icon Name="@(request.Incoming ? "person_add" : "schedule")" />
+                    </a>
+                }
+                @foreach (var c in Chats)
                 {
                     <a class="conversation @(c.Key == Key ? "selected" : "") @(c.Unread > 0 ? "has-unread" : "")" href="/messages/@c.Key" @key="c.Key">
                         <Avatar Name="@c.Name" Photo="@c.Photo" /><div><strong>@c.Name</strong><p>@c.Latest</p><small>@Date(c.Updated)</small></div>
@@ -70,9 +39,9 @@ else
                 {
                     <div class="chat-header">
                         <a class="icon-button mobile-back" href="/messages" aria-label="Back to chats"><Icon Name="arrow_back" /></a>
-                        <Avatar Name="@(Selected?.Name ?? "Conversation")" Photo="@(Selected?.Photo ?? "")" />
-                        <div class="chat-heading"><h2>@(Selected?.Name ?? "Conversation")</h2><small>@(messagePage.CanMessage ? "Connected" : "Messaging is closed · history remains available")</small></div>
-                        @if (Selected?.PersonId is { } personId)
+                        <Avatar Name="@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")" Photo="@(SelectedRequest?.Person.Photo ?? Selected?.Photo ?? "")" />
+                        <div class="chat-heading"><h2>@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")</h2><small>@(SelectedRequest is { } currentRequest ? (currentRequest.Incoming ? "Connection request" : "Request sent") : messagePage.CanMessage ? "Connected" : "Messaging is closed · history remains available")</small></div>
+                        @if (SelectedPersonId is { } personId)
                         {
                             <div class="chat-menu" @onkeydown="MenuKeyDown">
                                 <button class="icon-button" aria-label="Chat options" aria-expanded="@menuOpen" aria-controls="chat-options" @onclick="() => menuOpen = !menuOpen"><Icon Name="more_vert" /></button>
@@ -97,6 +66,13 @@ else
                         </div>
                     }
                     <div class="message-history" aria-live="polite">
+                        @if (SelectedRequest is { } introduction)
+                        {
+                            <div class="request-introduction">
+                                @if (introduction.Introduction != "") { <p>@introduction.Introduction</p> }
+                                else { <p>@(introduction.Incoming ? $"{introduction.Person.Name} would like to connect." : $"Your connection request to {introduction.Person.Name} is pending.")</p> }
+                            </div>
+                        }
                         @if (hasOlder) { <button class="secondary older" @onclick="Older" disabled="@Busy">Load earlier messages</button> }
                         @foreach (var message in history)
                         {
@@ -107,7 +83,21 @@ else
                             <div class="message-row mine"><div class="message-bubble">@item.Text</div><small>@(item.Failed ? "Failed to send" : "Sending…")</small>@if (item.Failed) { <button class="text-button" @onclick="() => SendPending(item)">Retry message</button> }</div>
                         }
                     </div>
-                    @if (messagePage.CanMessage)
+                    @if (SelectedRequest is { } selectedRequest)
+                    {
+                        <div class="request-actions">
+                            <div class="actions">
+                                @if (selectedRequest.Incoming)
+                                {
+                                    <button disabled="@Busy" @onclick='() => ConnectionAction(selectedRequest, "accept")'>Accept</button>
+                                    <button class="secondary" disabled="@Busy" @onclick='() => ConnectionAction(selectedRequest, "decline")'>Decline</button>
+                                }
+                                else { <button class="secondary" disabled="@Busy" @onclick='() => ConnectionAction(selectedRequest, "cancel")'>Cancel request</button> }
+                                <a class="text-button" href="/people/@selectedRequest.Person.Id">View profile</a>
+                            </div>
+                        </div>
+                    }
+                    else if (messagePage.CanMessage)
                     {
                         <MessageComposer @key="Key" Sending="@sending" Submitted="SendText" />
                     }
@@ -115,12 +105,9 @@ else
                 }
             </section>
         </div>
-    }
 }
 @code {
     [Parameter] public string? Key { get; set; }
-    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
-    [SupplyParameterFromQuery(Name = "requests")] public string? RequestDirection { get; set; }
     List<Conversation> conversations = [];
     List<ConnectionItem> connections = [];
     List<Message> history = [];
@@ -130,11 +117,10 @@ else
     readonly CancellationTokenSource stop = new();
     readonly Dictionary<Guid, PendingMessage> pending = new();
     Conversation? Selected => conversations.FirstOrDefault(c => c.Key == Key);
-    bool ShowRequests => Key == null && Tab == "requests";
-    bool ShowSent => RequestDirection == "sent";
-    int TotalUnread => conversations.Sum(c => c.Unread);
-    int IncomingCount => connections.Count(c => c.State == "pending" && c.Incoming);
-    List<ConnectionItem> Requests => connections.Where(c => c.State == "pending" && c.Incoming != ShowSent).ToList();
+    ConnectionItem? SelectedRequest => connections.FirstOrDefault(c => c.State == "pending" && c.Key == Key);
+    Guid? SelectedPersonId => SelectedRequest?.Person.Id ?? Selected?.PersonId;
+    List<ConnectionItem> Requests => connections.Where(c => c.State == "pending").OrderByDescending(c => c.Incoming).ThenByDescending(c => c.Updated).ToList();
+    IEnumerable<Conversation> Chats => conversations.Where(c => !connections.Any(r => r.State == "pending" && r.Key == c.Key));
     class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; }
     protected override async Task OnParametersSetAsync()
     {
@@ -214,12 +200,13 @@ else
     {
         await Api.Send<Ok>("connections/" + action, new ConnectionInput(item.Person.Id)); await Refresh();
         if (action == "accept") Nav.NavigateTo("/messages/" + item.Key);
+        else if (Key == item.Key) Nav.NavigateTo("/messages");
     });
     void Ask(string action) { menuOpen = false; confirmAction = action; }
     void MenuKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") menuOpen = false; }
     Task ConfirmAction() => Act(async () =>
     {
-        if (Selected?.PersonId is not { } id) return;
+        if (SelectedPersonId is not { } id) return;
         if (confirmAction == "block") await Api.Send<Ok>($"people/{id}/block");
         else await Api.Send<Ok>("connections/remove", new ConnectionInput(id));
         confirmAction = ""; await Refresh();

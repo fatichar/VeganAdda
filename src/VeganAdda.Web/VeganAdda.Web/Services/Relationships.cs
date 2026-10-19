@@ -42,7 +42,7 @@ public partial class CommunityService
                 r ??= new Relationship { Key = key, A = string.CompareOrdinal(me.Id.ToString(), input.PersonId.ToString()) < 0 ? me.Id : input.PersonId, B = string.CompareOrdinal(me.Id.ToString(), input.PersonId.ToString()) < 0 ? input.PersonId : me.Id };
                 if (db.Entry(r).State == EntityState.Detached) db.Relationships.Add(r);
                 r.State = "pending"; r.RequestedBy = me.Id; r.Introduction = intro;
-                Notice(input.PersonId, "request", $"{me.Name} sent you a connection request.", "/messages?tab=requests");
+                Notice(input.PersonId, "request", $"{me.Name} sent you a connection request.", "/messages/" + key);
             }
         }
         else
@@ -50,7 +50,7 @@ public partial class CommunityService
             if (r == null) throw Missing();
             var incoming = r.RequestedBy != me.Id;
             if (action == "accept" && r.State == "pending" && incoming) { r.State = "accepted"; Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key); }
-            else if (action == "decline" && r.State == "pending" && incoming) { r.State = "declined"; Notice(input.PersonId, "declined", $"{me.Name} declined your connection request.", "/messages?tab=requests&requests=sent"); }
+            else if (action == "decline" && r.State == "pending" && incoming) { r.State = "declined"; Notice(input.PersonId, "declined", $"{me.Name} declined your connection request.", "/messages"); }
             else if (action == "cancel" && r.State == "pending" && !incoming) r.State = "cancelled";
             else if (action == "remove" && r.State == "accepted") r.State = "removed";
             else throw new ApiException(409, "This connection has changed. Refresh to see its current state.");
