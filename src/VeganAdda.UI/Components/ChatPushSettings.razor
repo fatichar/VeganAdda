@@ -1,0 +1,41 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@if (ShowControls)
+{
+<div class="actions" aria-label="Chat notifications">
+    @if (state is "enabled" or "off")
+    {
+        <button class="text-button" disabled="@busy" @onclick="Toggle">@(state == "enabled" ? "Turn off chat notifications" : "Enable chat notifications")</button>
+    }
+    else if (state == "blocked") { <span class="small muted">Allow notifications in your browser settings to enable chat alerts.</span> }
+    else if (state == "unsupported") { <span class="small muted">Chat alerts need a supported browser. On iPhone, add VeganAdda to your Home Screen first.</span> }
+    @if (error != "") { <span role="status" class="small muted">@error</span> }
+</div>
+}
+@code {
+    [Parameter] public bool ShowControls { get; set; }
+    string state = "", error = "";
+    bool busy;
+    IJSObjectReference? module;
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-push.js");
+            state = await module.InvokeAsync<string>("refresh");
+        }
+        catch (JSException) { error = "Chat notification settings are unavailable. Refresh to try again."; }
+        StateHasChanged();
+    }
+    async Task Toggle()
+    {
+        if (module == null) return;
+        busy = true; error = "";
+        try { state = await module.InvokeAsync<string>(state == "enabled" ? "disable" : "enable"); }
+        catch (JSException) { error = "Could not update chat notifications. Please try again."; }
+        finally { busy = false; }
+    }
+    public async ValueTask DisposeAsync() { if (module != null) await module.DisposeAsync(); }
+}

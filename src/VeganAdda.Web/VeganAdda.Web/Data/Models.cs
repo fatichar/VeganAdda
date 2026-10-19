@@ -59,6 +59,8 @@ public class Block
 }
 public class ChatMessage
 {
+    public bool PushPending { get; set; }
+    public int PushAttempts { get; set; }
     public long Id { get; set; }
     public string Conversation { get; set; } = "";
     public Guid SenderId { get; set; }
@@ -137,6 +139,7 @@ public class ReferralInvite
 }
 public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(options)
 {
+    public DbSet<PushDevice> PushDevices => Set<PushDevice>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<Relationship> Relationships => Set<Relationship>();
@@ -182,5 +185,15 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ReferralInvite>().HasIndex(x => x.ReferredId).IsUnique();
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
+        b.Entity<PushDevice>().HasIndex(x => x.Token).IsUnique();
+        b.Entity<PushDevice>().Property(x => x.Token).HasMaxLength(4096);
+        b.Entity<PushDevice>().HasOne<Account>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
     }
+}
+public class PushDevice
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public string Token { get; set; } = "";
+    public DateTimeOffset Updated { get; set; } = DateTimeOffset.UtcNow;
 }

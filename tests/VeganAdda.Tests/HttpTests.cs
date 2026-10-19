@@ -38,6 +38,8 @@ public class HttpTests : IDisposable
             { ["ConnectionStrings:Database"] = f.Connection, ["Development:Enabled"] = "false", ["Development:Seed"] = "false", ["Storage:MediaPath"] = storage, ["Storage:KeysPath"] = Path.Combine(storage, "keys"), ["Authentication:Firebase:ProjectId"] = "test-firebase", ["Authentication:Firebase:ApiKey"] = "public-test-key", ["Authentication:Firebase:AuthDomain"] = "test-firebase.firebaseapp.com", ["Authentication:Firebase:AppId"] = "1:test:web:test" }));
             b.ConfigureTestServices(s =>
             {
+                var pushWorker = s.FirstOrDefault(d => d.ImplementationType == typeof(VeganAdda.Web.Services.ChatPushWorker));
+                if (pushWorker != null) s.Remove(pushWorker);
                 s.AddAuthentication().AddScheme<AuthenticationSchemeOptions, TestAuth>("Test", _ => { });
                 s.PostConfigure<AuthenticationOptions>(o => { o.DefaultAuthenticateScheme = "Test"; o.DefaultChallengeScheme = "Test"; });
                 Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.RemoveAll<VeganAdda.Web.Services.IFirebaseIdentityVerifier>(s);
@@ -82,6 +84,34 @@ public class HttpTests : IDisposable
         Assert.Contains("https://api.bigdatacloud.net", origins);
         Assert.Contains("https://api-bdc.io", origins);
         Assert.DoesNotContain("*", connect);
+    }
+    [Fact] public async Task Push_registration_requires_identity_csrf_and_moves_token_to_one_owner()
+    {
+        SetFirebaseEnvironment("Push__SenderId", "test-sender");
+        SetFirebaseEnvironment("Push__VapidKey", "public-test-vapid");
+        var a = await f.Member(); var b = await f.Member();
+        using var anon = Client(); using var first = Client(a); using var second = Client(b);
+        var registration = new { token = "test-token-" + Guid.NewGuid().ToString("N") };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anon.GetAsync("/api/push/device")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anon.PostAsJsonAsync("/api/push/device", registration)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await first.PostAsJsonAsync("/api/push/device", registration)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(first, "/api/push/device", registration)).StatusCode);
+        Assert.True((await first.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/push/device")).GetProperty("enabled").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, (await Post(second, "/api/push/device", registration)).StatusCode);
+        Assert.False((await first.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/push/device")).GetProperty("enabled").GetBoolean());
+        Assert.True((await second.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/push/device")).GetProperty("enabled").GetBoolean());
+        Assert.Equal(HttpStatusCode.BadRequest, (await second.DeleteAsync("/api/push/device")).StatusCode);
+        var csrf = await second.GetFromJsonAsync<Csrf>("/api/csrf");
+        using var delete = new HttpRequestMessage(HttpMethod.Delete, "/api/push/device"); delete.Headers.Add("X-CSRF-TOKEN", csrf!.Token);
+        Assert.Equal(HttpStatusCode.OK, (await second.SendAsync(delete)).StatusCode);
+        Assert.False((await second.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/push/device")).GetProperty("enabled").GetBoolean());
+        await Post(second, "/api/push/device", registration);
+        await Post(second, "/auth/signout", new { });
+        Assert.False((await second.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/push/device")).GetProperty("enabled").GetBoolean());
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAllowFailure(first, "/api/push/device", new { token = new string('a', 2001) })).StatusCode);
+        var sw = await anon.GetAsync("/firebase-messaging-sw.js");
+        Assert.Equal("application/javascript", sw.Content.Headers.ContentType!.MediaType);
+        Assert.Contains("/js/push-worker.js", await sw.Content.ReadAsStringAsync());
     }
     [Fact] public async Task Firebase_login_requires_csrf_rejects_invalid_tokens_and_creates_one_account_per_uid()
     {

@@ -27,6 +27,8 @@ services:
       Authentication__Firebase__ApiKey: ${FIREBASE_API_KEY:?Set FIREBASE_API_KEY}
       Authentication__Firebase__AuthDomain: ${FIREBASE_AUTH_DOMAIN:?Set FIREBASE_AUTH_DOMAIN}
       Authentication__Firebase__AppId: ${FIREBASE_APP_ID:?Set FIREBASE_APP_ID}
+      Push__SenderId: ${FIREBASE_MESSAGING_SENDER_ID:-}
+      Push__VapidKey: ${FIREBASE_WEB_PUSH_VAPID_KEY:-}
       Authentication__AdminFirebaseUid: ${ADMIN_FIREBASE_UID:-}
       Hosting__TrustedProxy: ${TRUSTED_PROXY_IP:-172.30.87.1}
       AllowedHosts: veganadda.com;www.veganadda.com;localhost

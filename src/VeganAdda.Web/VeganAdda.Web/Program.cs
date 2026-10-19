@@ -36,6 +36,8 @@ builder.Services.AddScoped<IActor, HttpActor>(); builder.Services.AddScoped<Comm
 builder.Services.AddScoped<ICommunityApi, ServerApi>(); builder.Services.AddScoped<IPlatform, ServerPlatform>();
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
 builder.Services.AddSingleton<IFirebaseIdentityVerifier, FirebaseIdentityVerifier>();
+builder.Services.AddHostedService<ChatPushWorker>();
+builder.Services.AddSingleton<IChatPushSender, FirebaseChatPushSender>();
 builder.Services.AddRazorComponents().AddInteractiveWebAssemblyComponents();
 builder.Services.AddSignalR(o => { o.EnableDetailedErrors = false; o.MaximumReceiveMessageSize = 4096; });
 builder.Services.AddAuthorization();
@@ -94,7 +96,7 @@ app.Use(async (ctx, next) =>
     var cspNonce = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
     ctx.Items["VeganAdda.CspNonce"] = cspNonce;
     // The free reverse-geocoding endpoint can redirect to BigDataCloud's api-bdc.io host.
-    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.bigdatacloud.net https://api-bdc.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com ws: wss:; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.bigdatacloud.net https://api-bdc.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com ws: wss:; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     if (!ctx.Request.Path.StartsWithSegments("/_framework") && !ctx.Request.Path.StartsWithSegments("/_content")) ctx.Response.Headers.CacheControl = "no-cache, no-store";
     try { await next(); }
     catch (ApiException ex) when (!ctx.Response.HasStarted) { ctx.Response.StatusCode = ex.Status; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
@@ -133,7 +135,14 @@ app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforge
     await ctx.SignInAsync(Principal(account));
     return Results.Ok(new Ok());
 });
-app.MapPost("/auth/signout", async (HttpContext ctx, IAntiforgery csrf) => { await csrf.ValidateRequestAsync(ctx); await ctx.SignOutAsync(); return Results.Ok(new Ok()); });
+app.MapChatPush();
+app.MapPost("/auth/signout", async (HttpContext ctx, IAntiforgery csrf, CommunityDb db) => {
+    await csrf.ValidateRequestAsync(ctx);
+    if (Guid.TryParse(ctx.Request.Cookies[ChatPushEndpoints.DeviceCookie], out var device) && Guid.TryParse(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier), out var user))
+        await db.PushDevices.Where(d => d.Id == device && d.UserId == user).ExecuteDeleteAsync();
+    ctx.Response.Cookies.Delete(ChatPushEndpoints.DeviceCookie);
+    await ctx.SignOutAsync(); return Results.Ok(new Ok());
+});
 if (dev && builder.Configuration.GetValue<bool>("Development:Enabled"))
 {
     app.MapPost("/auth/dev/{persona}", async (string persona, HttpContext ctx, CommunityDb db, IAntiforgery csrf) =>

@@ -14,6 +14,8 @@
     <Exec Command="npm run build" WorkingDirectory="$(MSBuildProjectDirectory)" />
     <ItemGroup>
       <Content Include="$(MSBuildProjectDirectory)/wwwroot/js/firebase-auth.js" CopyToOutputDirectory="PreserveNewest" />
+      <Content Include="$(MSBuildProjectDirectory)/wwwroot/js/chat-push.js" CopyToOutputDirectory="PreserveNewest" />
+      <Content Include="$(MSBuildProjectDirectory)/wwwroot/js/push-worker.js" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 

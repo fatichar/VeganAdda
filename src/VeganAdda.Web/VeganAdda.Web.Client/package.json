@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/firebase-auth.js --bundle --format=esm --minify --target=es2020 --outfile=wwwroot/js/firebase-auth.js"
+    "build": "esbuild src/firebase-auth.js src/chat-push.js --bundle --format=esm --minify --target=es2020 --outdir=wwwroot/js && esbuild src/push-worker.js --bundle --format=iife --minify --target=es2020 --outfile=wwwroot/js/push-worker.js"
   },
   "dependencies": {
     "firebase": "12.19.0"

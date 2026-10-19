@@ -116,6 +116,12 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
+                    b.Property<int>("PushAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("PushPending")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("SenderId")
                         .HasColumnType("uuid");
 
@@ -353,6 +359,33 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Profiles");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.PushDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<DateTimeOffset>("Updated")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushDevices");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.Referral", b =>
                 {
                     b.Property<Guid>("ReferredId")
@@ -556,6 +589,15 @@ namespace VeganAdda.Web.Data.Migrations
                     b.HasOne("VeganAdda.Web.Data.Account", null)
                         .WithOne()
                         .HasForeignKey("VeganAdda.Web.Data.Profile", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.PushDevice", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

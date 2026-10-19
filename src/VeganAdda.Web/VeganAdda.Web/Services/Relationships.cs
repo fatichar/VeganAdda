@@ -164,7 +164,7 @@ public partial class CommunityService
             return new Message(previous.Id, previous.SenderId, previous.ClientId, previous.Text, previous.SentAt);
         }
         var other = r.A == me.Id ? r.B : r.A;
-        var message = new ChatMessage { Conversation = key, SenderId = me.Id, ClientId = input.ClientId, Text = text };
+        var message = new ChatMessage { Conversation = key, SenderId = me.Id, ClientId = input.ClientId, Text = text, PushPending = true };
         db.Messages.Add(message); r.Updated = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(me.Id, other);
         return new Message(message.Id, me.Id, input.ClientId, text, message.SentAt);
