@@ -156,4 +156,9 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .location-credit a{text-decoration:underline}
 .location-status{margin:10px 0;overflow-wrap:anywhere}
 .brand-logo{display:block;width:112px;height:auto}
+.referral-invite{display:grid;gap:16px;padding:20px 22px}
+.referral-invite>p{margin:0}
+.referral-invite>button{justify-self:start;max-width:100%}
+.referral-result{min-width:0}
+@media(max-width:767px){.referral-invite{padding:18px 15px}}
 @media(max-width:767px){.brand-logo{width:88px}}

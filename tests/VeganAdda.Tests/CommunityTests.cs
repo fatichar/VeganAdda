@@ -59,6 +59,40 @@ public class PostgresCollection : ICollectionFixture<DatabaseFixture>;
 [Collection("Postgres")]
 public class CommunityTests(DatabaseFixture f)
 {
+    [Theory]
+    [InlineData(true, true, false, false, true)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(false, true, false, false, false)]
+    [InlineData(true, true, true, false, false)]
+    [InlineData(true, true, false, true, false)]
+    public async Task Referral_visibility_matches_creation_permission(bool verified, bool approved, bool testProfile, bool trustRevoked, bool allowed)
+    {
+        var id = await f.Member();
+        await using (var db = f.Db())
+        {
+            var account = (await db.Accounts.FindAsync(id))!;
+            account.Verified = verified; account.TrustRevoked = trustRevoked;
+            var profile = (await db.Profiles.FindAsync(id))!;
+            profile.Approved = approved; profile.TestProfile = testProfile;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(allowed, Assert.IsType<ProfileInput>(await f.Call(id, "profile")).CanRefer);
+        if (allowed)
+        {
+            var invite = Assert.IsType<ReferralInviteResult>(await f.Call(id, "referrals/invite", null, "POST"));
+            Assert.Equal(20, invite.Code.Length);
+            Assert.InRange(invite.Expires, DateTimeOffset.UtcNow.AddDays(29), DateTimeOffset.UtcNow.AddDays(31));
+            await using var db = f.Db();
+            Assert.Single(await db.ReferralInvites.Where(i => i.ReferrerId == id).ToListAsync());
+        }
+        else
+        {
+            Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "referrals/invite", null, "POST"))).Status);
+            await using var db = f.Db();
+            Assert.False(await db.ReferralInvites.AnyAsync(i => i.ReferrerId == id));
+        }
+    }
+
     [Fact] public async Task Public_projection_omits_private_profiles_and_dating_even_on_direct_lookup()
     {
         var hidden = await f.Member(false, true); var visible = await f.Member(true, true);

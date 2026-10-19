@@ -58,6 +58,8 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         return resolved.Where(x => x.Value).Select(x => x.Key).ToHashSet();
     }
     private async Task<bool> IsVerified(Guid id) => (await VerifiedAccounts()).Contains(id);
+    private async Task<bool> CanCreateReferral(Guid id) => await IsVerified(id)
+        && await db.Profiles.AnyAsync(p => p.Id == id && p.Approved && !p.TestProfile);
     private static string ReferralHash(string code) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(code)));
     private static bool ValidReferralCode(string? code) => code is { Length: 20 } && code.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
     private async Task<Person> PersonDto(Profile p)
@@ -121,7 +123,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                     return new Page<Person>(dtos, total, page);
                 case "profile":
                     var me = await User(); var own = await db.Profiles.FindAsync(me.Id);
-                    var canRefer = await IsVerified(me.Id);
+                    var canRefer = await CanCreateReferral(me.Id);
                     return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, City = own.City, Country = own.Country, State = own.State, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer };
                 case "connections": return await Connections();
                 case "conversations":
@@ -246,7 +248,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
     private async Task<object> CreateReferralInvite()
     {
         var me = await User(true);
-        if (!await IsVerified(me.Id) || !await db.Profiles.AnyAsync(p => p.Id == me.Id && p.Approved && !p.TestProfile)) throw Denied();
+        if (!await CanCreateReferral(me.Id)) throw new ApiException(403, "Referrals require a verified account and an approved community profile.");
         var now = DateTimeOffset.UtcNow;
         if (await db.ReferralInvites.CountAsync(i => i.ReferrerId == me.Id && !i.Revoked && !i.ReferredId.HasValue && i.Expires > now) >= 5)
             throw new ApiException(429, "Use or let an earlier referral link expire before creating another.");
