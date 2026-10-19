@@ -140,3 +140,6 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 }
 .admin-profile-review{display:grid;gap:12px;margin:16px 0}.admin-profile-summary{display:flex;align-items:center;gap:12px}.admin-profile-summary h2{margin:0}.profile-social-review{display:flex;flex-wrap:wrap;gap:12px}.profile-social-review a{display:inline-flex;align-items:center;gap:4px}
 .event-suggest{margin-bottom:16px}
+.site-header .brand{flex-shrink:0}
+.brand-logo{display:block;width:112px;height:auto}
+@media(max-width:767px){.brand-logo{width:88px}}
