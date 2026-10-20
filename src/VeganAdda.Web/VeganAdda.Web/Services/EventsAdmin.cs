@@ -52,12 +52,11 @@ public partial class CommunityService
         var events = await db.Events.OrderBy(e => e.Start).Select(e => new EventInput { Id = e.Id, Title = e.Title, Cover = e.Cover, Description = e.Description, Start = e.Start, End = e.End, TimeZone = e.TimeZone, City = e.City, Venue = e.Venue, Organizer = e.Organizer, Registration = e.Registration, Published = e.Published, Featured = e.Featured, SubmissionStatus = e.PendingReview ? "Pending review" : e.Published ? "Approved" : e.ReviewNote != null ? "Changes requested" : "Draft", ReviewNote = e.ReviewNote }).ToListAsync();
         var reports = await db.Reports.OrderByDescending(r => r.Created).Take(100).Select(r => new ReportView(r.Id, r.ReporterId == null ? "Deleted account" : "Member", r.SubjectId ?? Guid.Empty, r.SubjectId == null ? "Deleted account" : db.Accounts.Where(a => a.Id == r.SubjectId).Select(a => a.Name).FirstOrDefault() ?? "Unavailable", r.Reason, r.Resolved, r.Created)).ToListAsync();
         var accounts = await db.Accounts.OrderBy(a => a.Name).Take(200).ToListAsync();
-        var verifiedAccounts = await VerifiedAccounts();
         var people = new List<AdminPerson>();
         foreach (var a in accounts)
         {
             var profile = await db.Profiles.FindAsync(a.Id);
-            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, verifiedAccounts.Contains(a.Id), profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan));
+            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, profile?.Approved ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null));
         }
         return new AdminData(events, reports, people, await ProfileQueue(includeTestProfiles: true));
     }
@@ -71,8 +70,10 @@ public partial class CommunityService
         {
             var referral = await db.Referrals.FindAsync(p.Id);
             var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
+            var referrerCanRefer = referral != null && verifiedAccounts.Contains(referral.ReferrerId)
+                && await db.Profiles.AnyAsync(p => p.Id == referral.ReferrerId && p.Approved && !p.TestProfile);
             profileReviews.Add(new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
-                referral == null ? null : referrer?.Name ?? "Deleted member", referral != null && verifiedAccounts.Contains(referral.ReferrerId), p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending));
+                referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending));
         }
         return profileReviews;
     }
@@ -157,6 +158,8 @@ public partial class CommunityService
     private async Task<object> Moderate(ModerateInput input)
     {
         var me = await User(admin: true);
+        if (input.Action == "approve") return await ReviewProfile(new(input.Id, true));
+        if (input.Action == "revoke-approval") return await ReviewProfile(new(input.Id, false, "Approval revoked by an administrator."));
         var affected = new HashSet<Guid> { input.Id };
         if (input.Action == "resolve")
         {
@@ -216,7 +219,12 @@ public partial class CommunityService
         profile.ReviewNote = input.Approve ? null : CommunityService.Text(input.Note, 500, true);
         profile.ReviewedBy = reviewer.Id; profile.ReviewedAt = DateTimeOffset.UtcNow;
         if (input.Approve) profile.VeganVerificationPending = false;
-        if (!input.Approve) profile.Featured = false;
+        if (!input.Approve)
+        {
+            profile.Featured = false;
+            var account = await db.Accounts.FindAsync(profile.Id) ?? throw Missing();
+            account.Moderator = false;
+        }
         Notice(profile.Id, input.Approve ? "profile-approved" : "profile-review", input.Approve ? "Your profile was approved and is ready to be discovered." : "Your profile needs an update before it can be approved: " + profile.ReviewNote, "/settings/profile");
         await db.SaveChangesAsync();
         await tx.CommitAsync();
