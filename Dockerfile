@@ -16,9 +16,12 @@ COPY src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj ./src/VeganAdda.Web/Ve
 RUN dotnet restore src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj
 COPY src/ ./src/
 COPY --from=firebase-client /client/wwwroot/js/firebase-auth.js ./src/VeganAdda.Web/VeganAdda.Web.Client/wwwroot/js/firebase-auth.js
-RUN dotnet publish src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj -c Release --no-restore -p:SkipFirebaseClientBuild=true -o /out -m:1 /nr:false
 COPY scripts/split-publish.sh /usr/local/bin/split-publish.sh
-RUN bash /usr/local/bin/split-publish.sh /out /layers
+# Keep only the split output in this cache layer, not a second publish copy
+# plus compiler intermediates. Earlier restore layers remain reusable.
+RUN dotnet publish src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj -c Release --no-restore -p:SkipFirebaseClientBuild=true -o /out -m:1 /nr:false \
+    && bash /usr/local/bin/split-publish.sh /out /layers \
+    && rm -rf /out /source/src
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 USER root
