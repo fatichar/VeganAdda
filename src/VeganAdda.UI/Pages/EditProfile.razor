@@ -13,6 +13,7 @@ else if (model != null) {
 <form @onsubmit="Save" @onsubmit:preventDefault class="form-card"><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)"><div class="profile-photo-field"><Avatar Name="@model.Name" Photo="@model.Photo" Size="large" /><div><label for="photo">Profile photo <span class="muted">(optional)</span></label><InputFile id="photo" OnChange="Upload" accept="image/jpeg,image/png,image/webp" /><small>JPG, PNG or WebP · up to 2 MB</small>@if (model.Photo != "") { <button type="button" class="text-button" @onclick="() => model.Photo = string.Empty">Remove photo</button> }</div></div>
 <fieldset class="vegan-status">
     <legend>Vegan status</legend>
+    <p class="small muted">VeganAdda is a community for vegans. Non-vegan members are welcome, with limited access to some features.</p>
     <label class="check-row"><input type="radio" name="vegan-status" required checked="@(model.IsVegan == true)" @onchange="() => model.IsVegan = true" /><span>I am a vegan</span></label>
     <label class="check-row"><input type="radio" name="vegan-status" required checked="@(model.IsVegan == false)" @onchange="() => model.IsVegan = false" /><span>I am not a vegan but interested in meeting vegans</span></label>
 </fieldset>

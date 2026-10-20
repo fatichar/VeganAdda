@@ -1,7 +1,7 @@
 @page "/signin"
 @inherits Screen
 <PageTitle>Welcome · VeganAdda</PageTitle>
-<div class="auth-layout"><section class="auth-card"><h1>Find your vegan people.</h1><Feedback Error="@Error" />
+<div class="auth-layout"><section class="auth-card"><h1>Find your vegan people.</h1><p class="auth-intro">VeganAdda is a community built for vegans to meet, connect, and take part in community life. If you are not vegan but interested in meeting vegans, you are welcome to join. Some features are reserved for vegan members, so non-vegan accounts have restricted access.</p><Feedback Error="@Error" />
 @if (AuthError != null) { <div class="feedback error" role="alert">Google sign-in couldn't be completed. Please try again.</div> }
 @if (Session?.AuthConfigured == true) { <button class="google-button" disabled="@Busy" @onclick="Google"><Icon Name="login" />Continue with Google<Icon Name="arrow_forward" /></button> }
 else { <div class="notice"><strong>Sign-in is coming soon.</strong><p>You can explore the community in the meantime.</p><a href="/">Explore the community<Icon Name="arrow_forward" /></a></div> }

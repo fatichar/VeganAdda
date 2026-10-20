@@ -53,6 +53,7 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .auth-layout{display:block;max-width:440px;margin:24px auto;padding:24px 0}
 .auth-card{padding:28px;background:transparent;border-radius:0}
 .auth-card h1{font-size:2rem;line-height:1.2;margin-bottom:28px}
+.auth-intro{font-size:1rem;line-height:1.65;color:var(--text);margin-bottom:24px}
 .site-footer>.brand{display:none}
 .tab-row{margin:24px 0}
 .settings-row>div strong{font-weight:600}
