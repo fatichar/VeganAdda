@@ -6,7 +6,7 @@
 @if (Session?.AuthConfigured == true) { <button class="google-button" disabled="@Busy" @onclick="Google"><Icon Name="login" />Continue with Google<Icon Name="arrow_forward" /></button> }
 else { <div class="notice"><strong>Sign-in is coming soon.</strong><p>You can explore the community in the meantime.</p><a href="/">Explore the community<Icon Name="arrow_forward" /></a></div> }
 <p class="small muted">By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>. For adults 18+.</p>
-@if (Session?.Development == true) { <details class="dev-login"><summary>Development-only test accounts</summary><p class="small">Fictional accounts for local testing.</p><div class="test-accounts">@foreach (var name in new[] { "aarav", "ananya", "rohan", "sunita", "kabir", "new", "admin" }) { <button class="secondary" disabled="@Busy" @onclick="() => DevLogin(name)">@name</button> }</div></details> }
+@if (Session?.Development == true) { <details class="dev-login"><summary>Development-only test accounts</summary><p class="small">Fictional accounts for local testing. Choose any profile to sign in without Google.</p><div class="test-accounts">@foreach (var name in new[] { "aarav", "ananya", "rohan", "sunita", "kabir", "new", "meera", "dev", "isha", "arjun", "admin" }) { <button class="secondary" disabled="@Busy" @onclick="() => DevLogin(name)">@name</button> }</div></details> }
 </section></div>
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
@@ -15,4 +15,3 @@ else { <div class="notice"><strong>Sign-in is coming soon.</strong><p>You can ex
     Task Google() => Run(() => Platform.SignInWithGoogle(Target));
     Task DevLogin(string name) => Run(async () => { await Api.Send<Ok>("auth/dev/" + name); var session = await Api.Get<Session>("session"); Nav.NavigateTo(session.HasProfile ? Target : "/onboarding?returnUrl=" + E(Target), true); });
 }
-
