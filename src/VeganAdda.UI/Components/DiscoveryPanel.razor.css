@@ -1,0 +1,5 @@
+.discovery-backdrop{z-index:100;overflow-y:auto}
+.discovery-panel{max-width:480px;width:100%;max-height:calc(100dvh - 48px);overflow-y:auto;overscroll-behavior:contain}
+.discovery-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+.discovery-panel-heading h2{margin:0;font-size:1.35rem}
+@media(max-width:767px){.discovery-backdrop{padding:0;align-items:flex-end}.discovery-panel{max-width:none;border-radius:22px 22px 0 0;padding:24px 20px max(24px,env(safe-area-inset-bottom));max-height:90dvh}}

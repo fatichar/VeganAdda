@@ -1,3 +1,76 @@
+# Birth details follow-up - 2026-10-20
+
+**final result: passed**
+
+- Birth month and year are required in both profile UI and server validation. Day is optional. Existing profiles without birth details must fill month/year on their next save; missing data is not fabricated.
+- Month-only values use month end internally for conservative age calculations. The precision flag prevents a placeholder day from being returned or treated as a birthday.
+- Existing full dates retain their known day through the OptionalBirthDay migration. The migration was applied to the existing local fixture database and existing values were verified in the profile response.
+- Adding an optional day enables Birthday today highlighting on Discover cards and profile views. Member-facing responses omit birth year, month, day, date and precision flag.
+- New form retains existing fonts, cream/forest palette and native accessible controls. Month/year share a row on mobile and stack at 320px. Optional day and birthday explanation are explicit.
+- Browser checks: required fields, day omitted save/reload, leap-day invalidation, real birthday badge, zero horizontal overflow at 320/390/1440, no console/page errors. Used the local fictional QA member and restored its original birth details afterward.
+- Full suite: 90 passed. Build succeeded; EF model/migration consistency and whitespace checks passed.
+- Evidence directory: C:/Users/pravi/.codex/visualizations/2026/10/20/01a157fb-6127-7c13-8b88-60a67d36d4b9/. Files: birth-details-small.png, birth-details-mobile.png, birth-details-desktop.png, birthday-highlight-mobile.png. Harness: birth-details-qa.cjs.
+
+---
+
+# Discover redesign QA - 2026-10-20
+
+**final result: passed**
+
+Scope: the selected Discover mock, implemented in the existing Blazor application, with working country/state/city, nearby radius, age, intention, interest, and non-vegan filters. This pass covers the existing member-data fallback as well as responsive behavior; it does not claim pixel identity with fictional mock content.
+
+## Source and rendered evidence
+
+- Selected source: C:/Users/pravi/.codex/generated_images/01a157fb-6127-7c13-8b88-60a67d36d4b9/exec-b68044b3-5a51-4eac-bd26-d6beb2280827.png (853 x 1844).
+- Local implementation: http://localhost:5093/ using the isolated veganadda_discover_qa fixture database.
+- Source normalized to 390 x 843; actual browser capture at 390 x 844 CSS pixels, deviceScaleFactor 1. One-pixel ratio difference is intentional; no stretching.
+- Combined comparison opened and inspected: C:/Users/pravi/.codex/visualizations/2026/10/20/01a157fb-6127-7c13-8b88-60a67d36d4b9/discover-comparison.png.
+- Same evidence directory contains discover-mobile.png, discover-desktop.png, discover-filters-mobile.png, discover-place-mobile.png and discover-radius-mobile.png.
+- In-app browser used for live desktop inspection and filtering; isolated Playwright test harness used for simulated browser locations, viewport checks and automated interaction evidence.
+
+## Fidelity and intentional differences
+
+- Typography: retained locally hosted Plus Jakarta Sans and Material Symbols, with readable body text and existing forest heading weights. Mock labels and control hierarchy preserved.
+- Layout: city control and Near me share the top row; search and Filters share the next row; active filter chips precede people. Single-column mobile cards, existing responsive desktop grid, full-width card action, mobile bottom sheets and existing bottom navigation.
+- Colors: existing cream, forest green, soft neutral and mint tokens retained. Focus outlines remain visible.
+- Imagery: existing logo reused. Member-supplied photos render above card content; members without a photo retain initials. Fixture members have no photos, so the photographed fictional mock cards are intentionally represented by initials. No mock portraits or invented ages were added to production data. Photo-present visual polish remains a follow-up data-state check.
+- Content: real profile names/bios/interests and adult ages replace mock copy; the local-only fixture banner and sample labels remain visible. An age chip is present in the comparison because it demonstrates the requested age filter. Preserved privacy and missing-data explanations.
+
+## Findings and repairs
+
+1. The first rendered pass exposed a missing scoped-stylesheet link, leaving dialog headings and age controls stacked incorrectly. Added the generated stylesheet in App.razor; recaptured and inspected the corrected panels.
+2. Age values entered through the in-app browser did not reliably apply with change-only binding. Changed age inputs to update on input. Re-tested actual filtered rows and cancellation of draft edits.
+3. Moved discovery card styling after the base shared rules so mobile card padding is applied consistently. Rebuilt and reran all interaction checks against the final output.
+
+No unresolved P0/P1/P2 findings within the tested scope. Remaining P3/follow-up: verify uploaded-photo crops with representative member photos and screen-reader behavior on physical devices.
+
+## Checks
+
+| Check | Result |
+| --- | --- |
+| Page identity, nonblank rendering, no framework overlay | Passed |
+| Default member city and global fallback | Passed |
+| Country/state/city optional, parent changes clear children, manual names supported | Passed |
+| Age and mutual dating filters, invalid age feedback, chips and draft cancellation | Passed |
+| Non-vegan profiles excluded by default; explicit inclusion works | Passed |
+| Radius request in POST body; no coordinates in URL | Passed |
+| Search never updates any saved profile fields | Passed (entire profile JSON compared before/after) |
+| Permission denial gives location-picker alternative; no saved-coordinate fallback | Passed with simulated browser location/denial |
+| Radius boundaries, antimeridian/poles, unknown coordinates, visibility/blocks, pagination | Passed in PostgreSQL integration tests |
+| Focus trap, Escape, trigger focus restoration | Passed |
+| 320, 390, 1440 CSS widths, panels and main screen | Passed; no horizontal overflow |
+| Browser console/page errors | None |
+| Full test suite and final build | 77 passed, zero failures |
+| EF model/migration consistency and whitespace check | Passed |
+
+Key commands: serialized dotnet test with MSBUILDDISABLENODEREUSE=1 and SkipFirebaseClientBuild=true; discovery-qa.cjs through the bundled Node/Playwright runtime; dotnet ef migrations has-pending-model-changes; git diff --check. Node scripts and screenshots remain outside tracked source.
+
+New BirthDate migration and the preceding precise-coordinate migration were exercised on a fresh test database. Existing production database was not modified. Preview remains local and uses fictional fixtures.
+
+---
+
+# Previous QA record (historical)
+
 # VeganAdda visual and interaction QA
 
 **final result: passed**

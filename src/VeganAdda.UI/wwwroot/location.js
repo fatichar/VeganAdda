@@ -1,5 +1,6 @@
-export async function locate() {
-    const failure = error => ({ country: "", state: "", city: "", countryCode: "", stateCode: "", error });
+export async function locate(savePreciseLocation = false) {
+    let coordinates = {};
+    const failure = error => ({ country: "", state: "", city: "", countryCode: "", stateCode: "", error, ...coordinates });
     if (!window.isSecureContext || !navigator.geolocation)
         return failure("Automatic location needs HTTPS (or localhost). Choose your location below.");
     let position, positionTimer;
@@ -8,13 +9,16 @@ export async function locate() {
             // Browser timeouts can exclude the permission prompt. Bound the whole wait.
             positionTimer = setTimeout(() => reject({ code: 3 }), 20000);
             navigator.geolocation.getCurrentPosition(resolve, reject,
-                { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 });
+                { enableHighAccuracy: savePreciseLocation, timeout: 20000, maximumAge: savePreciseLocation ? 0 : 60000 });
         });
     } catch (error) {
         return failure(error.code === 1 ? "Location permission was denied. Allow it in your browser's site settings, or choose your location below."
             : error.code === 3 ? "Your device took too long to find a location. Try again or choose your location below."
             : "Your device couldn't determine its location. Check device location settings, or choose your location below.");
     } finally { clearTimeout(positionTimer); }
+    // Return coordinates to the profile model only after explicit opt-in, including
+    // when address lookup fails after a successful device location capture.
+    if (savePreciseLocation) coordinates = { latitude: position.coords.latitude, longitude: position.coords.longitude };
     let blockedByPolicy = false, requestTimedOut = false;
     const policyViolation = event => {
         if (event.effectiveDirective === "connect-src" && /^https:\/\/(api\.bigdatacloud\.net|api-bdc\.io)(\/|$)/.test(event.blockedURI)) blockedByPolicy = true;
@@ -33,7 +37,7 @@ export async function locate() {
         try { place = await response.json(); }
         catch { return failure("The location service returned an unexpected response. Try again or choose your location below."); }
         const country = place.countryName || "", state = place.principalSubdivision || "", city = place.city || place.locality || "";
-        return { country, state, city, countryCode: place.countryCode || "", stateCode: place.principalSubdivisionCode || "",
+        return { country, state, city, countryCode: place.countryCode || "", stateCode: place.principalSubdivisionCode || "", ...coordinates,
             error: !country || !state || !city ? "Only part of your location was found. Choose the remaining fields below." : "" };
     } catch {
         return failure(blockedByPolicy ? "This running app's security policy blocks location lookup. Restart VeganAdda and reload this page."

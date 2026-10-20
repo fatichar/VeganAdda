@@ -1,6 +1,8 @@
-<article class="person-card">
-    <div class="person-header"><a class="person-identity" href="/people/@Person.Id"><Avatar Name="@Person.Name" Photo="@Person.Photo" /><div><h3>@Person.Name</h3><span class="location"><Icon Name="location_on" />@Person.City</span>@if (Person.IsVegan == false) { <span class="badge">Not vegan</span> } else if (Person.VeganVerificationPending) { <span class="badge">Vegan status under review</span> }</div></a><button class="icon-button" aria-label="@((Person.Saved ? "Unsave " : "Save ") + Person.Name)" @onclick="() => Save.InvokeAsync(Person)"><Icon Name="@(Person.Saved ? "bookmark" : "bookmark_border")" /></button></div>
+<article class="person-card @(Discovery ? "discovery-person-card" : "")">
+    @if (Discovery && !string.IsNullOrWhiteSpace(Person.Photo)) { <a href="/people/@Person.Id" tabindex="-1" aria-hidden="true"><img class="discovery-person-photo" src="@Person.Photo" alt="" loading="lazy" /></a> }
+    <div class="person-header"><a class="person-identity" href="/people/@Person.Id"><Avatar Name="@Person.Name" Photo="@Person.Photo" /><div><h3>@Person.Name@if (Person.Age.HasValue) { <text>, @Person.Age</text> }</h3><span class="location"><Icon Name="location_on" />@Person.City@if (Discovery && Person.State != "") { <text>, @Person.State</text> }</span>@if (Person.IsVegan == false) { <span class="badge">Not vegan</span> } else if (Person.VeganVerificationPending) { <span class="badge">Vegan status under review</span> }</div></a><button class="icon-button" aria-label="@((Person.Saved ? "Unsave " : "Save ") + Person.Name)" @onclick="() => Save.InvokeAsync(Person)"><Icon Name="@(Person.Saved ? "bookmark" : "bookmark_border")" /></button></div>
     @if (!string.IsNullOrWhiteSpace(Person.Bio)) { <p class="bio">@Person.Bio</p> }
+    @if (Person.IsBirthday) { <p class="birthday-highlight"><Icon Name="cake" />Birthday today</p> }
     @if (Person.Interests.Length > 0) { <div class="tags">@foreach (var i in Person.Interests.Take(3)) { <span>@i</span> }</div> }
     @if (Person.LookingFor.Length > 0) { <p class="person-intentions"><span class="sr-only">Looking for: </span>@string.Join(" · ", Person.LookingFor)</p> }
     <div class="person-footer">@if (Person.Demo) { <span class="muted small">Sample profile</span> }
@@ -12,6 +14,7 @@
 </article>
 @code {
     [Parameter, EditorRequired] public Person Person { get; set; } = default!;
+    [Parameter] public bool Discovery { get; set; }
     [Parameter] public Guid? Viewer { get; set; }
     [Parameter] public EventCallback<Person> Connect { get; set; }
     [Parameter] public EventCallback<Person> Save { get; set; }

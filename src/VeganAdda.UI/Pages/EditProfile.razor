@@ -19,6 +19,7 @@ else if (model != null) {
 </fieldset>
 @if (model.IsVegan == false) { <p class="small muted">Non-vegan members can connect with vegans and appear when someone includes non-vegan profiles in discovery. They cannot submit events or moderate.</p> }
 <label for="name">Your name</label><input id="name" required maxlength="80" autocomplete="name" @bind="model.Name" @bind:event="oninput" placeholder="Name" />
+<BirthDetails Model="@model" />
 <LocationPicker Model="@model" BusyChanged="value => locationBusy = value" />
 <fieldset><legend>What are you looking for?</legend>@foreach (var intention in Wire.Intents) { <label class="check-row"><input type="checkbox" checked="@model.LookingFor.Contains(intention)" @onchange="e => Intent(intention, e)" /><Icon Name="@(intention == "Dating" ? "favorite_border" : intention == "Activism" ? "volunteer_activism" : intention == "Friendship" ? "diversity_1" : "handshake")" /><span>@intention @if (intention == "Dating") { <small>Private opt-in · visible only to other members who opt in</small> }</span></label> }</fieldset>
 <label for="bio">About you <span class="muted">(optional)</span></label><textarea id="bio" rows="4" maxlength="1000" @bind="model.Bio" @bind:event="oninput" placeholder="Your passions, favourite plant-based spots, or what brings you here…"></textarea>

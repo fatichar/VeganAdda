@@ -1,0 +1,4 @@
+.birth-details{margin:22px 0}
+.birth-month-year{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:16px}
+.birth-details>small{margin-top:8px}
+@media(max-width:360px){.birth-month-year{grid-template-columns:minmax(0,1fr)}}

@@ -34,9 +34,31 @@ public record Page<T>(List<T> Items, int Total, int PageNumber, int PageSize = 1
 // This is the only profile projection returned to other people. Never add email or OAuth identity.
 public record Person(Guid Id, string Name, string City, string Bio, string Photo, string[] Interests,
     string[] LookingFor, string? Instagram, string? LinkedIn, string? Website, bool Featured,
-    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerificationPending = false);
+    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerificationPending = false, int? Age = null, bool IsBirthday = false);
+public class DiscoveryInput
+{
+    public string Country { get; set; } = "";
+    public string State { get; set; } = "";
+    public string City { get; set; } = "";
+    public string Search { get; set; } = "";
+    public string Interest { get; set; } = "";
+    public string Intent { get; set; } = "";
+    public bool IncludeNonVegan { get; set; }
+    public int? MinAge { get; set; }
+    public int? MaxAge { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public int? RadiusKm { get; set; }
+    public int Page { get; set; } = 1;
+}
 public class ProfileInput
 {
+    public int? BirthYear { get; set; }
+    public int? BirthMonth { get; set; }
+    public int? BirthDay { get; set; }
+    public bool SavePreciseLocation { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
     public string Name { get; set; } = "";
     public string City { get; set; } = "";
     public string Country { get; set; } = "India";

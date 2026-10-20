@@ -1,4 +1,5 @@
 @font-face{font-family:Jakarta;src:url('fonts/jakarta-400.ttf');font-weight:400;font-display:swap}
+.birthday-highlight{display:flex;align-items:center;gap:7px;color:var(--forest);background:#e4ece3;width:fit-content;border-radius:999px;padding:4px 12px;font-size:.8rem;font-weight:600}
 @font-face{font-family:Jakarta;src:url('fonts/jakarta-500.ttf');font-weight:500;font-display:swap}
 @font-face{font-family:Jakarta;src:url('fonts/jakarta-600.ttf');font-weight:600;font-display:swap}
 @font-face{font-family:Jakarta;src:url('fonts/jakarta-700.ttf');font-weight:700;font-display:swap}
@@ -171,3 +172,12 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 @media(max-width:767px){.brand-logo{width:88px}}
 
 .admin-entry{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--soft);color:var(--forest);font-size:.82rem;font-weight:650}.admin-entry .material-symbols-outlined{font-size:19px}.admin-entry:hover{background:#e9eee7}
+
+/* Discovery uses the shared card and type system, with photos when supplied by members. */
+.discovery-panel-actions{display:flex;justify-content:space-between;gap:12px;margin-top:24px;align-items:center}
+.discovery-person-photo{display:block;width:100%;aspect-ratio:2.5;object-fit:cover;border-radius:10px;margin-bottom:14px}
+.discovery-person-card:has(.discovery-person-photo) .person-identity>.avatar{display:none}
+.discovery-person-card .person-header h3{font-size:1.25rem}
+.discovery-person-card .person-footer{display:flex;flex-wrap:wrap;gap:8px}
+.discovery-person-card .person-footer>.button,.discovery-person-card .person-footer>button{width:100%;margin-left:0}
+@media(max-width:767px){.discovery-person-card{padding:10px}.discovery-person-card .person-header,.discovery-person-card .bio,.discovery-person-card .tags,.discovery-person-card .person-intentions,.discovery-person-card .person-footer{margin-left:8px;margin-right:8px}.discovery-person-card .person-footer{padding-bottom:8px}}

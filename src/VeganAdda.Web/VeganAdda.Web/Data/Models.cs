@@ -17,6 +17,13 @@ public class Account
 }
 public class Profile
 {
+    // Month-only birth details use month end for conservative age calculations.
+    // The stored day is an actual birthday only when HasExactBirthDate is true.
+    public DateOnly? BirthDate { get; set; }
+    public bool HasExactBirthDate { get; set; }
+    // Private coordinates: never include in member-facing or moderation projections.
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
     public string City { get; set; } = "";

@@ -70,7 +70,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         return new(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
             p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), p.Instagram, p.LinkedIn, p.Website,
             p.Featured && p.Public && p.FeatureConsent, Viewer.HasValue && await db.Saved.AnyAsync(x => x.UserId == Viewer && x.TargetId == p.Id && x.Kind == "person"),
-            p.Id == Viewer ? "self" : state, await db.Accounts.Where(a => a.Id == p.Id).Select(a => a.Demo).SingleAsync(), p.Country, p.State, p.IsVegan, p.VeganVerificationPending);
+            p.Id == Viewer ? "self" : state, await db.Accounts.Where(a => a.Id == p.Id).Select(a => a.Demo).SingleAsync(), p.Country, p.State, p.IsVegan, p.VeganVerificationPending, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate));
     }
     private void Notice(Guid user, string kind, string text, string url) => db.Notifications.Add(new() { UserId = user, Kind = kind, Text = text, Url = url });
     public async Task<object> Execute(string method, string path, JsonElement? body)
@@ -97,38 +97,11 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                         var p = await VisiblePeople(includeRelatedProfiles: true).SingleOrDefaultAsync(p => p.Id == Guid.Parse(parts[1])) ?? throw Missing();
                         return await PersonDto(p);
                     }
-                    var people = VisiblePeople();
-                    var includeNonVegan = Q("includeNonVegan") == "true";
-                    if (includeNonVegan && !Viewer.HasValue) throw new ApiException(401, "Sign in to include non-vegan profiles.");
-                    people = includeNonVegan ? people.Where(p => p.IsVegan != null) : people.Where(p => p.IsVegan == true);
-                    if (Q("city") is { Length: > 0 } city && city != "All India") people = people.Where(p => p.City == city);
-                    // Advanced search and intent filtering require an authenticated profile.
-                    if (Viewer.HasValue)
-                    {
-                        if (Q("search").Trim() is { Length: > 0 } search)
-                        { var term = "%" + search.Replace("%", "").Replace("_", "") + "%"; people = people.Where(p => EF.Functions.ILike(p.Name, term) || EF.Functions.ILike(p.Bio, term) || p.Interests.Any(i => EF.Functions.ILike(i, term))); }
-                        if (Q("interest") is { Length: > 0 } interest) people = people.Where(p => p.Interests.Contains(interest));
-                        if (Q("intent") is { Length: > 0 } intent)
-                        {
-                            if (!Wire.Intents.Contains(intent)) throw new ApiException(400, "Choose a supported intention.");
-                            if (intent == "Dating" && !await db.Profiles.AnyAsync(p => p.Id == Viewer && p.LookingFor.Contains("Dating"))) throw Denied();
-                            people = people.Where(p => p.LookingFor.Contains(intent));
-                        }
-                        if (Guid.TryParse(Q("event"), out var eventId))
-                        {
-                            if (!await db.Events.AnyAsync(e => e.Id == eventId && e.Published)) throw Missing();
-                            people = people.Where(p => db.Attendance.Any(a => a.EventId == eventId && a.UserId == p.Id && a.Visible));
-                        }
-                    }
-                    else if (Q("intent") != "" || Q("event") != "" || Q("search") != "" || Q("interest") != "") throw new ApiException(401, "Sign in to use member filters.");
-                    var total = await people.CountAsync();
-                    var rows = await people.OrderByDescending(p => p.Featured && p.Public && p.FeatureConsent).ThenBy(p => p.Name).ThenBy(p => p.Id).Skip((page - 1) * 12).Take(12).ToListAsync();
-                    var dtos = new List<Person>(); foreach (var p in rows) dtos.Add(await PersonDto(p));
-                    return new Page<Person>(dtos, total, page);
+                    return await SearchPeople(new DiscoveryInput { Country = Q("country"), State = Q("state"), City = Q("city"), Search = Q("search"), Interest = Q("interest"), Intent = Q("intent"), IncludeNonVegan = Q("includeNonVegan") == "true", MinAge = ParseAge(Q("minAge")), MaxAge = ParseAge(Q("maxAge")), Page = page }, Q("event"));
                 case "profile":
                     var me = await User(); var own = await db.Profiles.FindAsync(me.Id);
                     var canRefer = await CanCreateReferral(me.Id);
-                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, City = own.City, Country = own.Country, State = own.State, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, VeganVerificationPending = own.VeganVerificationPending };
+                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, BirthYear = own.BirthDate?.Year, BirthMonth = own.BirthDate?.Month, BirthDay = own.HasExactBirthDate ? own.BirthDate?.Day : null, City = own.City, Country = own.Country, State = own.State, SavePreciseLocation = own.Latitude.HasValue && own.Longitude.HasValue, Latitude = own.Latitude, Longitude = own.Longitude, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, VeganVerificationPending = own.VeganVerificationPending };
                 case "connections": return await Connections();
                 case "conversations":
                     if (parts.Length == 1) return await Conversations();
@@ -167,7 +140,9 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
             {
                 case "profile": return await SaveProfile(Read<ProfileInput>(body));
                 case "connections": return await ConnectionAction(parts.Length > 1 ? parts[1] : "request", body);
-                case "people": return await PersonAction(Guid.Parse(parts[1]), parts[2], body);
+                case "people":
+                    if (method == "POST" && parts.Length == 2 && parts[1] == "search") return await SearchPeople(Read<DiscoveryInput>(body));
+                    return await PersonAction(Guid.Parse(parts[1]), parts[2], body);
                 case "conversations":
                     if (parts[2] == "read") return await MarkRead(parts[1], Read<ReadInput>(body));
                     return await SendMessage(parts[1], Read<MessageInput>(body));
@@ -214,8 +189,12 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         var me = await User();
         if (input.IsVegan is null) throw new ApiException(400, "Choose whether you are vegan or interested in meeting vegans.");
         if (!input.AdultConfirmed) throw new ApiException(400, "You must confirm that you are at least 18 years old.");
+        var birthDate = ReadBirthDetails(input);
         var name = Text(input.Name, 80, true); var city = Text(input.City, 80, true); var bio = Text(input.Bio, 1000);
         var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
+        if (input.SavePreciseLocation && (input.Latitude is not double latitude || !double.IsFinite(latitude) || latitude < -90 || latitude > 90
+            || input.Longitude is not double longitude || !double.IsFinite(longitude) || longitude < -180 || longitude > 180))
+            throw new ApiException(400, "Use my location to capture a valid precise location, or turn off saving precise location.");
         if (input.LookingFor == null || input.LookingFor.Any(x => !Wire.Intents.Contains(x))) throw new ApiException(400, "Choose supported intentions.");
         if (input.Interests == null || input.Interests.Length > 10) throw new ApiException(400, "Choose up to 10 interests.");
         var interests = input.Interests.Select(x => Text(x, 40, true)).Distinct().ToArray();
@@ -225,7 +204,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         var isNewProfile = p == null;
         if (p == null) { p = new Profile { Id = me.Id, AdultConfirmedAt = DateTimeOffset.UtcNow }; db.Profiles.Add(p); }
         var needsVeganVerification = p.IsVegan == false && input.IsVegan == true;
-        var reviewChanged = isNewProfile || p.Name != name || p.City != city || p.Country != country || p.State != state || p.Bio != bio || p.Photo != photo
+        var reviewChanged = isNewProfile || p.BirthDate != birthDate || p.Name != name || p.City != city || p.Country != country || p.State != state || p.Bio != bio || p.Photo != photo
             || !p.Interests.SequenceEqual(interests) || !p.LookingFor.SequenceEqual(input.LookingFor.Distinct())
             || p.Instagram != instagram || p.LinkedIn != linkedIn || p.Website != website || p.Public != input.Public || p.IsVegan != input.IsVegan;
         if (!string.IsNullOrWhiteSpace(input.ReferralCode) && !await db.Referrals.AnyAsync(r => r.ReferredId == me.Id))
@@ -248,6 +227,10 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
             db.Referrals.Add(new() { ReferredId = me.Id, ReferrerId = invite.ReferrerId });
         }
         p.Name = name; p.City = city; p.Country = country; p.State = state; p.Bio = bio; p.LookingFor = input.LookingFor.Distinct().ToArray(); p.Interests = interests;
+        p.BirthDate = birthDate;
+        p.HasExactBirthDate = input.BirthDay.HasValue;
+        p.Latitude = input.SavePreciseLocation ? input.Latitude : null;
+        p.Longitude = input.SavePreciseLocation ? input.Longitude : null;
         p.Instagram = instagram; p.LinkedIn = linkedIn; p.Website = website;
         // A photo must belong to this account (or be its existing development fixture).
         if (photo != "" && photo != p.Photo && !System.IO.File.Exists(System.IO.Path.Combine(config["Storage:MediaPath"] ?? "uploads", photo[7..] + ".owner-" + me.Id.ToString("N")))) throw Denied();

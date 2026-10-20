@@ -1,0 +1,37 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@if (Open)
+{
+    <div class="modal-backdrop discovery-backdrop" @onclick="Closed" @onkeydown="KeyDown">
+        <section class="modal discovery-panel" role="dialog" aria-modal="true" aria-labelledby="discovery-panel-title" tabindex="-1" @ref="panel" @onclick:stopPropagation>
+            <span tabindex="0" class="focus-guard" @onfocus='() => Focus("last")'></span>
+            <div class="discovery-panel-heading"><h2 id="discovery-panel-title">@Title</h2><button class="icon-button" aria-label="Close panel" @onclick="Closed"><Icon Name="close" /></button></div>
+            @ChildContent
+            <span tabindex="0" class="focus-guard" @onfocus='() => Focus("first")'></span>
+        </section>
+    </div>
+}
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback Closed { get; set; }
+    ElementReference panel; bool wasOpen;
+    IJSObjectReference? module;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open == wasOpen) return;
+        module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
+        if (Open) await module.InvokeVoidAsync("openPanel", panel);
+        else await module.InvokeVoidAsync("closePanel");
+        wasOpen = Open;
+    }
+    async Task Focus(string edge) { if (module != null) await module.InvokeVoidAsync("focusPanel", panel, edge); }
+    async Task KeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") await Closed.InvokeAsync(); }
+    public async ValueTask DisposeAsync()
+    {
+        try { if (module != null) { await module.InvokeVoidAsync("closePanel"); await module.DisposeAsync(); } }
+        catch (JSDisconnectedException) { }
+    }
+}

@@ -284,6 +284,9 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
 
+                    b.Property<DateOnly?>("BirthDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("City")
                         .IsRequired()
                         .HasMaxLength(600)
@@ -303,6 +306,9 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<bool>("Featured")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("HasExactBirthDate")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Instagram")
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
@@ -311,12 +317,18 @@ namespace VeganAdda.Web.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.Property<bool?>("IsVegan")
+                        .HasColumnType("boolean");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision");
+
                     b.Property<string>("LinkedIn")
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
-                    b.Property<bool?>("IsVegan")
-                        .HasColumnType("boolean");
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision");
 
                     b.PrimitiveCollection<string[]>("LookingFor")
                         .IsRequired()
@@ -345,15 +357,15 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<Guid?>("ReviewedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("VeganVerificationPending")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
                     b.Property<bool>("TestProfile")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("VeganVerificationPending")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Website")

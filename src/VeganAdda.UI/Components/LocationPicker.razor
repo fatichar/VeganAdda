@@ -3,8 +3,14 @@
 @inject IJSRuntime JS
 
 <div class="location-action">
+    <label class="check-row"><input type="checkbox" checked="@Model.SavePreciseLocation" @onchange="PreciseLocationChanged" disabled="@(loading || locating)" aria-describedby="precise-location-help" /><span>Save precise location <span class="muted">(optional)</span></span></label>
+    <small id="precise-location-help">Helps nearby members find you by distance. Your coordinates are private and aren't shown to other members. Uncheck and save your profile to remove them.</small>
     <button type="button" class="secondary" disabled="@(loading || locating)" @onclick="Locate"><Icon Name="my_location" />@(locating ? "Finding location…" : "Use my location")</button>
-    <small>Shares coordinates with BigDataCloud. VeganAdda saves only country, state and city.</small>
+    <small>Location lookup shares coordinates with BigDataCloud. VeganAdda saves country, state and city, plus coordinates only if you opt in and save your profile.</small>
+    @if (Model.SavePreciseLocation)
+    {
+        <small role="status">@(Model.Latitude.HasValue && Model.Longitude.HasValue ? "Precise location ready. Save your profile to keep it." : "Select Use my location before saving your profile.")</small>
+    }
 </div>
 @if (status != "") { <p class="small location-status" role="status">@status</p> }
 @if (loadFailed) { <button type="button" class="text-button" @onclick="Initialize">Retry location lists</button> }
@@ -29,7 +35,7 @@
     @foreach (var city in Cities) { <option value="@city">@city</option> }
     <option value="__other__">Other city</option>
 </select>
-@if (customCity) { <label for="other-city" class="sr-only">City name</label><input id="other-city" required maxlength="80" placeholder="City name" @bind="Model.City" @bind:event="oninput" /> }
+@if (customCity) { <label for="other-city" class="sr-only">City name</label><input id="other-city" required maxlength="80" placeholder="City name" @bind="Model.City" @bind:event="oninput" @bind:after="ClearCoordinates" /> }
 <small class="location-credit">Location lists: <a href="/_content/VeganAdda.UI/data/locations/README.md" target="_blank" rel="noopener">CSC · ODbL</a></small>
 
 @code {
@@ -43,7 +49,14 @@
     string[] Cities => stateOptions.FirstOrDefault(s => s.Name == Model.State)?.Cities ?? [];
     public record CountryOption(string Code, string Name);
     public record StateOption(string Code, string Name, string[] Cities);
-    public record Place(string Country, string State, string City, string Error = "", string CountryCode = "", string StateCode = "");
+    public record Place(string Country, string State, string City, string Error = "", string CountryCode = "", string StateCode = "", double? Latitude = null, double? Longitude = null);
+
+    void PreciseLocationChanged(ChangeEventArgs e)
+    {
+        Model.SavePreciseLocation = e.Value is true;
+        ClearCoordinates();
+    }
+    void ClearCoordinates() { Model.Latitude = null; Model.Longitude = null; }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -71,13 +84,14 @@
     async Task CountryChanged(string? value)
     {
         Model.Country = value ?? ""; Model.State = ""; Model.City = "";
+        ClearCoordinates();
         customState = customCity = false;
         stateOptions = []; status = ""; loadFailed = false; loading = true; await BusyChanged.InvokeAsync(true);
         try { await LoadStates(); }
         catch (JSException) { loadFailed = true; status = "States couldn't be loaded. Please retry."; }
         finally { loading = false; await BusyChanged.InvokeAsync(false); }
     }
-    void ClearCity() { Model.City = ""; customCity = false; }
+    void ClearCity() { Model.City = ""; customCity = false; ClearCoordinates(); }
     void StateChanged(string? value)
     {
         customState = value == "__other__";
@@ -87,6 +101,7 @@
     {
         customCity = value == "__other__";
         Model.City = customCity ? "" : value ?? "";
+        ClearCoordinates();
     }
     async Task Locate()
     {
@@ -96,7 +111,11 @@
         try
         {
             geolocation ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/location.js");
-            var detected = await geolocation.InvokeAsync<Place>("locate");
+            var detected = await geolocation.InvokeAsync<Place>("locate", Model.SavePreciseLocation);
+            if (Model.SavePreciseLocation && detected.Latitude.HasValue && detected.Longitude.HasValue)
+            {
+                Model.Latitude = detected.Latitude; Model.Longitude = detected.Longitude;
+            }
             if (detected.Country != "" || detected.CountryCode != "")
             {
                 var place = await data.InvokeAsync<Place>("resolve", detected);
