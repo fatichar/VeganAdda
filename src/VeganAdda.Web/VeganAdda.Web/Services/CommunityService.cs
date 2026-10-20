@@ -97,7 +97,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                         var p = await VisiblePeople(includeRelatedProfiles: true).SingleOrDefaultAsync(p => p.Id == Guid.Parse(parts[1])) ?? throw Missing();
                         return await PersonDto(p);
                     }
-                    return await SearchPeople(new DiscoveryInput { Country = Q("country"), State = Q("state"), City = Q("city"), Search = Q("search"), Interest = Q("interest"), Intent = Q("intent"), IncludeNonVegan = Q("includeNonVegan") == "true", MinAge = ParseAge(Q("minAge")), MaxAge = ParseAge(Q("maxAge")), Page = page }, Q("event"));
+                    return await SearchPeople(new DiscoveryInput { Event = Q("event"), CheckedIn = Q("checkedIn") == "true", Country = Q("country"), State = Q("state"), City = Q("city"), Search = Q("search"), Interest = Q("interest"), Intent = Q("intent"), IncludeNonVegan = Q("includeNonVegan") == "true", MinAge = ParseAge(Q("minAge")), MaxAge = ParseAge(Q("maxAge")), Page = page });
                 case "profile":
                     var me = await User(); var own = await db.Profiles.FindAsync(me.Id);
                     var canRefer = await CanCreateReferral(me.Id);
@@ -106,7 +106,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                 case "conversations":
                     if (parts.Length == 1) return await Conversations();
                     return await Messages(parts[1], long.TryParse(Q("before"), out var before) ? before : long.MaxValue, long.TryParse(Q("after"), out var after) ? after : null);
-                case "events": return await EventQuery(parts.Length > 1 ? Guid.Parse(parts[1]) : null, Q("city"), page);
+                case "events": return await EventQuery(parts.Length > 1 ? Guid.Parse(parts[1]) : null, Q("city"), page, Q("includePast") == "true", Q("country"), Q("state"));
                 case "saved":
                     var saver = await User(true);
                     var personIds = db.Saved.Where(s => s.UserId == saver.Id && s.Kind == "person").Select(s => s.TargetId);

@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\VeganAdda.UI\VeganAdda.UI.csproj" />
     <ProjectReference Include="..\..\VeganAdda.Contracts\VeganAdda.Contracts.csproj" />
+    <EmbeddedResource Include="..\..\VeganAdda.UI\wwwroot\data\locations\*.json" LogicalName="EventLocations.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

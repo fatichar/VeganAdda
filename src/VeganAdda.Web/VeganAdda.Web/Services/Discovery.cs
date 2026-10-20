@@ -33,11 +33,11 @@ public partial class CommunityService
         return today < birth.AddYears(years) ? years - 1 : years;
     }
 
-    private async Task<Page<Person>> SearchPeople(DiscoveryInput input, string eventFilter = "")
+    private async Task<Page<Person>> SearchPeople(DiscoveryInput input)
     {
         var nearby = input.Latitude.HasValue || input.Longitude.HasValue || input.RadiusKm.HasValue;
         if (!Viewer.HasValue && (nearby || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan
-            || !string.IsNullOrEmpty(input.Search) || !string.IsNullOrEmpty(input.Interest) || !string.IsNullOrEmpty(input.Intent) || eventFilter != ""))
+            || !string.IsNullOrEmpty(input.Search) || !string.IsNullOrEmpty(input.Interest) || !string.IsNullOrEmpty(input.Intent) || !string.IsNullOrEmpty(input.Event) || input.CheckedIn))
             throw new ApiException(401, "Sign in to use member filters.");
         if (input.MinAge is < 18 or > 120 || input.MaxAge is < 18 or > 120 || input.MinAge > input.MaxAge)
             throw new ApiException(400, "Choose an age range between 18 and 120.");
@@ -84,10 +84,18 @@ public partial class CommunityService
             if (input.Intent == "Dating" && !await db.Profiles.AnyAsync(p => p.Id == Viewer && p.LookingFor.Contains("Dating"))) throw Denied();
             people = people.Where(p => p.LookingFor.Contains(input.Intent));
         }
-        if (Guid.TryParse(eventFilter, out var eventId))
+        if (input.CheckedIn && string.IsNullOrEmpty(input.Event)) throw new ApiException(400, "Choose an event to find checked-in members.");
+        if (!string.IsNullOrEmpty(input.Event))
         {
+            if (!Guid.TryParse(input.Event, out var eventId)) throw new ApiException(400, "Choose a valid event.");
             if (!await db.Events.AnyAsync(e => e.Id == eventId && e.Published)) throw Missing();
             people = people.Where(p => db.Attendance.Any(a => a.EventId == eventId && a.UserId == p.Id && a.Visible));
+            if (input.CheckedIn)
+            {
+                var now = DateTimeOffset.UtcNow;
+                people = people.Where(p => db.Attendance.Any(a => a.EventId == eventId && a.UserId == p.Id && a.CheckedInUntil > now)
+                    && db.Events.Any(e => e.Id == eventId && e.Start <= now && e.End > now));
+            }
         }
         var page = Math.Clamp(input.Page, 1, 10000);
         var total = await people.CountAsync();

@@ -1,19 +1,20 @@
 @page "/events"
 @inherits Screen
 <PageTitle>Community gatherings · VeganAdda</PageTitle>
-<div class="discovery-heading"><h1 class="sr-only">Events</h1><label class="city-picker"><Icon Name="location_on" /><span class="sr-only">City</span><select @bind="City" @bind:after="Filter">@foreach (var city in Wire.Cities) { <option>@city</option> }</select></label></div><a class="button secondary event-suggest" href="/events/suggest"><Icon Name="add" />Suggest an event</a><Feedback Error="@Error" Success="@Success" />
+<div class="discovery-heading"><h1 class="sr-only">Events</h1><LocationFilter Country="@country" State="@state" City="@city" Profile="profile" Selected="PlaceSelected" ApplyLabel="Show events" /></div><a class="button secondary event-suggest" href="/events/suggest"><Icon Name="add" />Suggest an event</a><Feedback Error="@Error" Success="@Success" />
 @if (!Loaded || Busy) { <p class="loading" role="status">Loading events…</p> }
 else if (items.Count == 0) { <Empty Icon="festival" Title="No upcoming events" Text="Check back soon for events in your city." /> }
 else { <div class="events-grid">@foreach (var ev in items) { <EventCardView Event="ev" Save="Save" /> }</div> }
 <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
 <a href="/help" class="text-button suggest-event">Suggest an event<Icon Name="arrow_forward" /></a>
 @code {
-    [SupplyParameterFromQuery] public string City { get; set; } = "All India";
+    [SupplyParameterFromQuery] public string? City { get; set; }
+    string country = "", state = "", city = ""; string? lastCity; ProfileInput? profile;
     List<EventCard> items = []; int page = 1, total;
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); }
-    protected override Task OnParametersSetAsync() => Run(Refresh);
-    protected override async Task Refresh() { var result = await Api.Get<Page<EventCard>>($"events?city={E(City)}&page={page}"); items = result.Items; total = result.Total; }
-    Task Filter() { page = 1; return Run(Refresh); }
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.HasProfile == true) await Run(async () => profile = await Api.Get<ProfileInput>("profile")); }
+    protected override Task OnParametersSetAsync() { if (City != lastCity) { lastCity = City; country = state = ""; city = City == "All India" ? "" : City ?? ""; page = 1; } return Run(Refresh); }
+    protected override async Task Refresh() { var result = await Api.Get<Page<EventCard>>($"events?country={E(country)}&state={E(state)}&city={E(city)}&page={page}"); items = result.Items; total = result.Total; }
+    Task PlaceSelected(DiscoveryInput place) { country = place.Country; state = place.State; city = place.City; page = 1; return Run(Refresh); }
     Task SetPage(int value) { page = value; return Run(Refresh); }
     async Task Save(EventCard ev) { if (!ReadyForAction($"/events/{ev.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"events/{ev.Id}/save"); await Refresh(); Success = "Your saved events are updated."; }); }
 }

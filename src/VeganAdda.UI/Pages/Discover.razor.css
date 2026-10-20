@@ -1,24 +1,12 @@
-.discovery-heading{justify-content:space-between;margin-bottom:12px}
-.discovery-location{background:var(--surface);color:var(--green);border:1px solid var(--line);border-radius:14px;min-width:0;max-width:64%;padding:10px 14px;gap:8px}
-.discovery-location>span:not(.material-symbols-outlined){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.near-me-button{padding:10px 14px;gap:7px;white-space:nowrap;background:transparent;border-color:#c9d8cd}
-.near-me-button.active{background:#e4ece3}
+.discovery-heading{justify-content:flex-end;margin-bottom:12px}
 .discovery .filter-bar{margin-bottom:18px;gap:10px}
 .discovery .filter-toggle{border-radius:12px;width:48px;height:48px}
 .discovery-chips{display:flex;flex-wrap:wrap;gap:8px;margin:-3px 0 18px}
 .discovery-chip{min-height:36px;padding:6px 12px;gap:6px;background:#e4ece3;color:var(--forest);font-size:.8rem;font-weight:500}
 .discovery-chip .material-symbols-outlined{font-size:17px}
 .discovery-scope{color:var(--muted);margin:0 0 18px}
-.discovery-location-menu{display:grid}
-.location-menu-row{background:transparent;color:var(--forest);border-radius:0;padding:18px 0;text-align:left;justify-content:flex-start;border-bottom:1px solid var(--line)}
-.location-menu-row:last-child{border:0}
-.location-menu-row>span:not(.material-symbols-outlined){flex:1}
-.location-menu-row small{font-weight:400;margin-top:4px}
 .radius-labels{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;margin:0 0 24px}
 input[type=range]{padding:10px 0;accent-color:var(--forest);border:0;background:transparent}
 .discovery-filter-form>label{margin-top:20px}
 .discovery-filter-form fieldset{margin:0 0 20px}
-.age-range{display:flex;align-items:end;gap:12px;margin-bottom:8px}
-.age-range>div{flex:1;min-width:0}
-.age-range>span{align-self:center;padding-top:25px}
-@media(max-width:767px){.discovery-location{font-size:.88rem;padding:9px 12px}.near-me-button{font-size:.8rem;padding:9px 12px}.discovery .people-grid{gap:14px}.discovery-scope{font-size:.72rem}}
+@media(max-width:767px){.discovery .people-grid{gap:14px}.discovery-scope{font-size:.72rem}}

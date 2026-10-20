@@ -1,0 +1,19 @@
+<div class="dual-age">
+    <output class="age-summary" aria-live="polite">@(Min == null && Max == null ? "Any age" : $"{Lower}–{Upper}")</output>
+    <div class="age-track">
+        <svg class="age-track-visual" viewBox="0 0 102 44" preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2="102" y1="22" y2="22" /><line class="age-fill" x1="@(Lower - 18)" x2="@(Upper - 18)" y1="22" y2="22" /></svg>
+        <input class="minimum-age" type="range" min="18" max="120" step="1" @bind:get="Lower" @bind:set="MinimumChanged" @bind:event="oninput" aria-label="Minimum age" aria-valuemax="@Upper" />
+        <input class="maximum-age" type="range" min="18" max="120" step="1" @bind:get="Upper" @bind:set="MaximumChanged" @bind:event="oninput" aria-label="Maximum age" aria-valuemin="@Lower" />
+    </div>
+    <div class="age-labels"><span>18</span><span>120</span></div>
+</div>
+@code {
+    [Parameter] public int? Min { get; set; }
+    [Parameter] public EventCallback<int?> MinChanged { get; set; }
+    [Parameter] public int? Max { get; set; }
+    [Parameter] public EventCallback<int?> MaxChanged { get; set; }
+    int Lower => Min ?? 18;
+    int Upper => Max ?? 120;
+    async Task MinimumChanged(int proposed) { var value = Math.Clamp(proposed, 18, Upper); Min = value == 18 ? null : value; await MinChanged.InvokeAsync(Min); }
+    async Task MaximumChanged(int proposed) { var value = Math.Clamp(proposed, Lower, 120); Max = value == 120 ? null : value; await MaxChanged.InvokeAsync(Max); }
+}

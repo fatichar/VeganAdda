@@ -6,8 +6,7 @@
 <div class="discovery">
     <h1 class="sr-only">Discover</h1>
     <div class="discovery-heading">
-        <button type="button" class="discovery-location" @onclick='() => OpenPanel("location")' aria-haspopup="dialog"><Icon Name="location_on" /><span>@LocationLabel</span><Icon Name="expand_more" /></button>
-        <button type="button" class="secondary near-me-button @(nearby ? "active" : "")" @onclick="OpenNearby" aria-haspopup="dialog"><Icon Name="my_location" />Near me</button>
+        <LocationFilter Country="@country" State="@state" City="@city" OverrideLabel="@(nearby ? $"Near me · {radius} km" : null)" Profile="profile" Selected="PlaceSelected" NearbyRequested="OpenNearby" />
     </div>
     @if (Session?.Id != null)
     {
@@ -18,6 +17,8 @@
         @if (HasFilters)
         {
             <div class="discovery-chips" aria-label="Active filters">
+                @if (eventId != "") { <button class="discovery-chip" aria-label="Remove event filter" @onclick='() => RemoveFilter("event")'>@(selectedEvent?.Title ?? "Event")<Icon Name="close" /></button> }
+                @if (checkedIn) { <button class="discovery-chip" aria-label="Remove check-in filter" @onclick='() => RemoveFilter("checkin")'>Checked in<Icon Name="close" /></button> }
                 @if (intent != "") { <button class="discovery-chip" aria-label="Remove looking for filter" @onclick='() => RemoveFilter("intent")'>@intent<Icon Name="close" /></button> }
                 @if (interest != "") { <button class="discovery-chip" aria-label="Remove interest filter" @onclick='() => RemoveFilter("interest")'>@interest<Icon Name="close" /></button> }
                 @if (minAge.HasValue || maxAge.HasValue) { <button class="discovery-chip" aria-label="Remove age filter" @onclick='() => RemoveFilter("age")'>Age @(minAge ?? 18)–@(maxAge ?? 120)<Icon Name="close" /></button> }
@@ -26,27 +27,17 @@
         }
     }
     @if (nearby) { <p class="small discovery-scope">Within @radius km of your current location. Only members with a saved precise location appear.</p> }
+    @if (selectedEvent != null) { <p class="small discovery-scope"><a href="/events/@selectedEvent.Id">@selectedEvent.Title</a> · @(checkedIn ? "Self-reported check-ins. Refresh to update." : "Members who opted into the attendee list.") <button class="text-button" disabled="@Busy" @onclick="Search">Refresh</button></p> }
     @if (Session?.Id != null && Session.IsVegan == null) { <div class="notice" role="status">Choose your vegan status to finish setting up your member profile. <a href="/settings/profile">Update your profile</a>.</div> }
     <Feedback Error="@Error" Success="@Success" />
     @if (!Loaded || Busy) { <p role="status" class="loading">Finding people…</p> }
-    else if (people.Count == 0) { <Empty Title="No people found" Text="Try a wider location or adjust your filters."><button class="secondary" @onclick='() => OpenPanel("location")'>Change location</button><button class="text-button" @onclick="ClearFilters">Reset filters</button></Empty> }
+    else if (people.Count == 0) { <Empty Title="@(checkedIn ? "No checked-in people found" : "No people found")" Text="@(eventId != "" ? "Members appear after opting into attendance visibility. Try refreshing or adjusting your filters." : "Try a wider location or adjust your filters.")"><button class="secondary" @onclick="Search">Refresh</button><button class="text-button" @onclick="ClearFilters">Reset filters</button></Empty> }
     else { <div class="people-grid">@foreach (var p in people) { <PersonCard Person="p" Viewer="Session?.Id" Connect="Connect" Save="Save" Discovery="true" /> }</div> }
     <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
     <ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
 </div>
 <DiscoveryPanel Open='@(panel != "")' Title="@PanelTitle" Closed="ClosePanel">
-    @if (panel == "location")
-    {
-        <div class="discovery-location-menu">
-            @if (profile != null)
-            {
-                <button type="button" class="location-menu-row" @onclick="MyCity"><Icon Name="home_pin" /><span>My city<small>@profile.City, @profile.Country</small></span><Icon Name="chevron_right" /></button>
-            }
-            <button type="button" class="location-menu-row" @onclick="OpenNearby"><Icon Name="my_location" /><span>Near me<small>Search within a distance of where you are</small></span><Icon Name="chevron_right" /></button>
-            <button type="button" class="location-menu-row" @onclick='() => panel = "place"'><Icon Name="public" /><span>Choose another location<small>Country, state or city</small></span><Icon Name="chevron_right" /></button>
-        </div>
-    }
-    else if (panel == "nearby")
+    @if (panel == "nearby")
     {
         <form @onsubmit="UseNearby" @onsubmit:preventDefault>
             <label for="discovery-radius">Distance: @draftRadius km</label>
@@ -65,17 +56,25 @@
     else if (panel == "filters")
     {
         <form @onsubmit="ApplyFilters" @onsubmit:preventDefault class="discovery-filter-form">
-            <fieldset><legend>Age</legend><div class="age-range"><div><label for="min-age">From</label><input id="min-age" type="number" min="18" max="120" placeholder="18" @bind="draftMinAge" @bind:event="oninput" /></div><span aria-hidden="true">–</span><div><label for="max-age">To</label><input id="max-age" type="number" min="18" max="120" placeholder="Any" @bind="draftMaxAge" @bind:event="oninput" /></div></div><small>Profiles without an age won't appear when an age filter is set.</small></fieldset>
+            <label for="discovery-event">Event</label><select id="discovery-event" @bind="draftEvent" disabled="@eventsLoading"><option value="">@(eventsLoading ? "Loading events…" : "All people")</option>@foreach (var item in eventOptions) { <option value="@item.Id">@EventLabel(item)</option> }</select>
+            @if (!eventsLoading && eventOptions.Count == 0 && panelError == "") { <small>No published events yet.</small> }
+            <label class="check-row"><input type="checkbox" @bind="draftCheckedIn" disabled="@(draftEvent == "")" /><span>Checked-in people only</span></label>
+            <fieldset><legend>Age</legend><AgeRange @bind-Min="draftMinAge" @bind-Max="draftMaxAge" /><small>Profiles without an age won't appear when an age filter is set.</small></fieldset>
             <label for="intent">Looking for</label><select id="intent" @bind="draftIntent"><option value="">Any connection</option>@foreach (var tag in Wire.Intents.Where(x => x != "Dating" || dating)) { <option>@tag</option> }</select>
             <label for="interest">Interest</label><select id="interest" @bind="draftInterest"><option value="">All interests</option>@foreach (var tag in new[] { "Running", "Baking", "Sanctuaries", "Design", "Hiking", "Cooking", "Volunteering", "Photography" }) { <option>@tag</option> }</select>
             <label class="check-row"><input type="checkbox" @bind="draftNonVegan" /><span>Include non-vegan profiles</span></label>
             <Feedback Error="@panelError" />
-            <div class="discovery-panel-actions"><button type="button" class="text-button" @onclick="ResetDraftFilters">Reset filters</button><button type="submit">Show people</button></div>
+            <div class="discovery-panel-actions"><button type="button" class="text-button" @onclick="ResetDraftFilters">Reset filters</button><button type="submit" disabled="@eventsLoading">Show people</button></div>
         </form>
     }
 </DiscoveryPanel>
 @code {
     [SupplyParameterFromQuery] public string? City { get; set; }
+    [SupplyParameterFromQuery(Name = "event")] public string? Event { get; set; }
+    [SupplyParameterFromQuery(Name = "checkedIn")] public bool CheckedIn { get; set; }
+    string eventId = "", draftEvent = ""; bool checkedIn, draftCheckedIn;
+    string? lastEvent; bool lastCheckedIn;
+    EventCard? selectedEvent; List<EventCard> eventOptions = []; bool eventsLoading;
     string country = "", state = "", city = "", search = "", interest = "", intent = "", panel = "", panelError = "";
     string draftIntent = "", draftInterest = "";
     bool dating, includeNonVegan, draftNonVegan, nearby, locating; int page = 1, total, radius = 25, draftRadius = 25;
@@ -83,8 +82,7 @@
     double? latitude, longitude;
     ProfileInput? profile; string? lastCity; int locationRequest;
     List<Person> people = []; Person? connecting;
-    bool HasFilters => interest != "" || intent != "" || includeNonVegan || minAge.HasValue || maxAge.HasValue;
-    string LocationLabel => nearby ? $"Within {radius} km" : city != "" ? city : state != "" ? state : country != "" ? country : "Anywhere";
+    bool HasFilters => eventId != "" || interest != "" || intent != "" || includeNonVegan || minAge.HasValue || maxAge.HasValue;
     string PanelTitle => panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
     protected override async Task OnInitializedAsync()
     {
@@ -98,15 +96,21 @@
     protected override async Task OnParametersSetAsync()
     {
         if (City != lastCity) { lastCity = City; nearby = false; country = state = ""; city = City == "All India" ? "" : City ?? ""; page = 1; }
+        if (Event != lastEvent || CheckedIn != lastCheckedIn)
+        {
+            lastEvent = Event; lastCheckedIn = CheckedIn; eventId = Event ?? ""; checkedIn = eventId != "" && CheckedIn; selectedEvent = null; page = 1;
+            if (eventId != "") { country = state = city = ""; nearby = false; latitude = longitude = null; }
+        }
         await Run(Refresh);
     }
     protected override async Task Refresh()
     {
+        if (eventId != "" && selectedEvent?.Id.ToString() != eventId) selectedEvent = await Api.Get<EventCard>("events/" + eventId);
         Page<Person> result;
         if (nearby)
-            result = await Api.Send<Page<Person>>("people/search", new DiscoveryInput { Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, MinAge = minAge, MaxAge = maxAge, Page = page });
+            result = await Api.Send<Page<Person>>("people/search", new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, MinAge = minAge, MaxAge = maxAge, Page = page });
         else
-            result = await Api.Get<Page<Person>>($"people?country={E(country)}&state={E(state)}&city={E(city)}&search={E(search)}&interest={E(interest)}&intent={E(intent)}&includeNonVegan={includeNonVegan.ToString().ToLowerInvariant()}&minAge={minAge}&maxAge={maxAge}&page={page}");
+            result = await Api.Get<Page<Person>>($"people?event={E(eventId)}&checkedIn={checkedIn.ToString().ToLowerInvariant()}&country={E(country)}&state={E(state)}&city={E(city)}&search={E(search)}&interest={E(interest)}&intent={E(intent)}&includeNonVegan={includeNonVegan.ToString().ToLowerInvariant()}&minAge={minAge}&maxAge={maxAge}&page={page}");
         people = result.Items; total = result.Total;
     }
     void OpenPanel(string value) { panelError = ""; panel = value; }
@@ -116,7 +120,6 @@
         if (Session?.Id == null) { Platform.SignIn("/"); return; }
         draftRadius = radius; OpenPanel("nearby");
     }
-    Task MyCity() => profile == null ? Task.CompletedTask : PlaceSelected(new() { Country = profile.Country, State = profile.State, City = profile.City });
     async Task PlaceSelected(DiscoveryInput place)
     {
         country = place.Country; state = place.State; city = place.City;
@@ -133,25 +136,45 @@
             var position = await module.InvokeAsync<CurrentPosition>("currentPosition");
             if (request != locationRequest || !locating || panel != "nearby") return;
             if (position.Error != "" || !position.Latitude.HasValue || !position.Longitude.HasValue) { panelError = position.Error != "" ? position.Error : "Location couldn't be found. Choose a city instead."; return; }
-            latitude = position.Latitude; longitude = position.Longitude; radius = draftRadius; nearby = true;
+            latitude = position.Latitude; longitude = position.Longitude; radius = draftRadius; nearby = true; country = state = city = "";
             ClosePanel(); await Search();
         }
         catch (JSException) { panelError = "Location couldn't be found. Try again or choose a city."; }
         finally { if (request == locationRequest) locating = false; }
     }
-    void OpenFilters()
+    async Task OpenFilters()
     {
+        draftEvent = eventId; draftCheckedIn = checkedIn;
         draftIntent = intent; draftInterest = interest; draftNonVegan = includeNonVegan; draftMinAge = minAge; draftMaxAge = maxAge; OpenPanel("filters");
+        eventsLoading = true; eventOptions = [];
+        try
+        {
+            for (var eventPage = 1; ; eventPage++)
+            {
+                var result = await Api.Get<Page<EventCard>>($"events?includePast=true&page={eventPage}");
+                eventOptions.AddRange(result.Items.Where(e => eventOptions.All(existing => existing.Id != e.Id)));
+                if (result.Items.Count == 0 || eventPage * result.PageSize >= result.Total) break;
+            }
+            if (selectedEvent != null && eventOptions.All(e => e.Id != selectedEvent.Id)) eventOptions.Add(selectedEvent);
+        }
+        catch (ApiException ex) { panelError = ex.Message; }
+        catch (HttpRequestException) { panelError = "Events couldn't load. Close filters and try again."; }
+        finally { eventsLoading = false; }
     }
+    static string EventLabel(EventCard item) => $"{item.Title} · {item.City} · {(item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone)).ToString("d MMM yyyy") : "Date to be confirmed")}";
     async Task ApplyFilters()
     {
         if (draftMinAge is < 18 or > 120 || draftMaxAge is < 18 or > 120 || draftMinAge > draftMaxAge) { panelError = "Choose an age range between 18 and 120, with From no higher than To."; return; }
-        intent = draftIntent; interest = draftInterest; includeNonVegan = draftNonVegan; minAge = draftMinAge; maxAge = draftMaxAge; ClosePanel(); await Search();
+        intent = draftIntent; interest = draftInterest; includeNonVegan = draftNonVegan; minAge = draftMinAge; maxAge = draftMaxAge; ClosePanel();
+        if (draftEvent != eventId || (draftEvent != "" && draftCheckedIn != checkedIn)) NavigateEvent(draftEvent, draftCheckedIn);
+        else await Search();
     }
-    void ResetDraftFilters() { draftIntent = draftInterest = panelError = ""; draftNonVegan = false; draftMinAge = draftMaxAge = null; }
-    Task ClearFilters() { search = interest = intent = ""; includeNonVegan = false; minAge = maxAge = null; return Search(); }
+    void NavigateEvent(string id, bool onlyCheckedIn) => Nav.NavigateTo(id == "" ? "/" : $"/?event={E(id)}&checkedIn={onlyCheckedIn.ToString().ToLowerInvariant()}");
+    void ResetDraftFilters() { draftEvent = draftIntent = draftInterest = panelError = ""; draftCheckedIn = draftNonVegan = false; draftMinAge = draftMaxAge = null; }
+    Task ClearFilters() { search = interest = intent = ""; includeNonVegan = false; minAge = maxAge = null; if (eventId != "") { NavigateEvent("", false); return Task.CompletedTask; } return Search(); }
     Task RemoveFilter(string filter)
     {
+        if (filter == "event" || filter == "checkin") { NavigateEvent(filter == "event" ? "" : eventId, false); return Task.CompletedTask; }
         if (filter == "intent") intent = ""; else if (filter == "interest") interest = ""; else if (filter == "age") minAge = maxAge = null; else includeNonVegan = false;
         return Search();
     }

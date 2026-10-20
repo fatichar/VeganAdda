@@ -1,0 +1,31 @@
+<button type="button" class="location-trigger" @onclick='() => panel = "menu"' aria-haspopup="dialog"><Icon Name="location_on" /><span>@Label</span><Icon Name="expand_more" /></button>
+<DiscoveryPanel Open='@(panel != "")' Title="Choose location" Closed='() => panel = ""'>
+    @if (panel == "menu")
+    {
+        <div class="location-menu">
+            @if (NearbyRequested.HasDelegate) { <button type="button" class="location-row" @onclick="NearMe"><Icon Name="my_location" /><span>Near me<small>Use my current location</small></span><Icon Name="chevron_right" /></button> }
+            @if (Profile != null) { <button type="button" class="location-row" @onclick="MyCity"><Icon Name="home_pin" /><span>My city<small>@Profile.City, @Profile.Country</small></span><Icon Name="chevron_right" /></button> }
+            <button type="button" class="location-row" @onclick='() => panel = "place"'><Icon Name="public" /><span>Choose another location<small>Country, state or city</small></span><Icon Name="chevron_right" /></button>
+            <button type="button" class="location-row" @onclick='() => Pick(new())'><Icon Name="language" /><span>Anywhere</span><Icon Name="chevron_right" /></button>
+        </div>
+    }
+    else
+    {
+        <DiscoveryPlacePicker Country="@Country" State="@State" City="@City" Selected="Pick" ApplyLabel="@ApplyLabel" />
+    }
+</DiscoveryPanel>
+@code {
+    [Parameter] public string Country { get; set; } = "";
+    [Parameter] public string State { get; set; } = "";
+    [Parameter] public string City { get; set; } = "";
+    [Parameter] public string? OverrideLabel { get; set; }
+    [Parameter] public ProfileInput? Profile { get; set; }
+    [Parameter] public string ApplyLabel { get; set; } = "Show people";
+    [Parameter] public EventCallback<DiscoveryInput> Selected { get; set; }
+    [Parameter] public EventCallback NearbyRequested { get; set; }
+    string panel = "";
+    string Label => OverrideLabel ?? (City != "" ? City : State != "" ? State : Country != "" ? Country : "Anywhere");
+    Task MyCity() => Profile == null ? Task.CompletedTask : Pick(new() { Country = Profile.Country, State = Profile.State, City = Profile.City });
+    async Task Pick(DiscoveryInput place) { panel = ""; await Selected.InvokeAsync(place); }
+    async Task NearMe() { panel = ""; await NearbyRequested.InvokeAsync(); }
+}

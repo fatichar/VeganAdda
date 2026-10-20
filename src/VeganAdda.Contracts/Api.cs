@@ -37,6 +37,8 @@ public record Person(Guid Id, string Name, string City, string Bio, string Photo
     bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerificationPending = false, int? Age = null, bool IsBirthday = false);
 public class DiscoveryInput
 {
+    public string Event { get; set; } = "";
+    public bool CheckedIn { get; set; }
     public string Country { get; set; } = "";
     public string State { get; set; } = "";
     public string City { get; set; } = "";
@@ -112,8 +114,9 @@ public record EventReviewInput(Guid Id, bool Approve, string? Note = null);
 public record ModerationData(List<ProfileReview> Profiles, List<EventReview> Events, int ProfilesTotal = 0, int EventsTotal = 0, int PageNumber = 1, int PageSize = 20);
 public record EventCard(Guid Id, string Title, string Cover, string Description, DateTimeOffset? Start,
     DateTimeOffset? End, string TimeZone, string City, string Venue, string Organizer, string? Registration,
-    bool Featured, bool Saved, bool Attending, bool AttendeeVisible, bool Demo);
+    bool Featured, bool Saved, bool Attending, bool AttendeeVisible, bool Demo, DateTimeOffset? CheckedInUntil = null);
 public record AttendanceInput(bool Attending, bool Visible);
+public record CheckInInput(bool CheckedIn);
 public record SavedItems(List<Person> People, List<EventCard> Events);
 public record Notice(Guid Id, string Kind, string Text, string Url, bool Read, DateTimeOffset Created);
 public record NotificationList(List<Notice> Items, int Unread, int Total = 0, int PageNumber = 1, int PageSize = 20);

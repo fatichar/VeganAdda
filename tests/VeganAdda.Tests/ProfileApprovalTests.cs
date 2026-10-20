@@ -36,10 +36,12 @@ public class ProfileApprovalTests(DatabaseFixture f)
     {
         var admin = await f.Member(admin: true);
         var member = await f.Member();
+        var city = "Approval-" + Guid.NewGuid().ToString("N");
         await using (var db = f.Db())
         {
             var profile = (await db.Profiles.FindAsync(member))!;
             profile.Approved = false;
+            profile.City = city;
             profile.IsVegan = true;
             profile.VeganVerificationPending = true;
             await db.SaveChangesAsync();
@@ -51,7 +53,7 @@ public class ProfileApprovalTests(DatabaseFixture f)
         Assert.True(Assert.Single(data.People, p => p.Id == member).Approved);
         Assert.False(await IsInReviewQueue(admin, member));
         Assert.False(Assert.IsType<ProfileInput>(await f.Call(member, "profile")).VeganVerificationPending);
-        Assert.Contains(Assert.IsType<Page<Person>>(await f.Call(null, "people")).Items, p => p.Id == member);
+        Assert.Contains(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=" + city)).Items, p => p.Id == member);
 
         await using (var db = f.Db())
         {
@@ -66,7 +68,7 @@ public class ProfileApprovalTests(DatabaseFixture f)
         Assert.False(revoked.Featured);
         Assert.False(revoked.Moderator);
         Assert.True(await IsInReviewQueue(admin, member));
-        Assert.DoesNotContain(Assert.IsType<Page<Person>>(await f.Call(null, "people")).Items, p => p.Id == member);
+        Assert.DoesNotContain(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=" + city)).Items, p => p.Id == member);
 
         await f.Call(admin, "admin/moderate", new ModerateInput(member, "approve"), "POST");
         data = await AllMembers(admin);

@@ -75,6 +75,9 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("CheckedInUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("Visible")
                         .HasColumnType("boolean");
 

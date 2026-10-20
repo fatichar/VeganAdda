@@ -10,15 +10,25 @@ public partial class CommunityService
     private async Task<EventCard> EventDto(Gathering e)
     {
         var a = Viewer.HasValue ? await db.Attendance.FindAsync(Viewer.Value, e.Id) : null;
+        var now = DateTimeOffset.UtcNow;
+        var checkedInUntil = a?.Visible == true && a.CheckedInUntil > now && e.Start <= now && e.End > now
+            ? (a.CheckedInUntil < e.End ? a.CheckedInUntil : e.End) : null;
         return new(e.Id, e.Title, e.Cover, e.Description, e.Start, e.End, e.TimeZone, e.City, e.Venue, e.Organizer, e.Registration,
-            e.Featured, Viewer.HasValue && await db.Saved.AnyAsync(s => s.UserId == Viewer && s.TargetId == e.Id && s.Kind == "event"), a != null, a?.Visible ?? false, e.Demo);
+            e.Featured, Viewer.HasValue && await db.Saved.AnyAsync(s => s.UserId == Viewer && s.TargetId == e.Id && s.Kind == "event"), a != null, a?.Visible ?? false, e.Demo, checkedInUntil);
     }
-    private async Task<object> EventQuery(Guid? id, string city, int page)
+    private async Task<object> EventQuery(Guid? id, string city, int page, bool includePast = false, string country = "", string state = "")
     {
         var events = db.Events.Where(e => e.Published);
         if (id.HasValue) return await EventDto(await events.SingleOrDefaultAsync(e => e.Id == id) ?? throw Missing());
-        events = events.Where(e => e.End >= DateTimeOffset.UtcNow);
-        if (city.Length > 0 && city != "All India") events = events.Where(e => e.City == city);
+        if (!includePast) events = events.Where(e => e.End >= DateTimeOffset.UtcNow);
+        country = Text(country, 80); state = Text(state, 80);
+        if (country != "" || state != "")
+        {
+            var cities = EventLocationCatalog.Cities(country, state);
+            events = events.Where(e => cities.Contains(e.City.ToLower()));
+        }
+        city = Text(city, 80).ToLowerInvariant();
+        if (city.Length > 0 && city != "all india") events = events.Where(e => e.City.ToLower() == city);
         var total = await events.CountAsync(); var result = new List<EventCard>();
         foreach (var e in await events.OrderByDescending(e => e.Featured).ThenBy(e => e.Start).ThenBy(e => e.Id).Skip((page - 1) * 12).Take(12).ToListAsync()) result.Add(await EventDto(e));
         return new Page<EventCard>(result, total, page);
@@ -26,7 +36,7 @@ public partial class CommunityService
     private async Task<object> EventAction(Guid id, string action, JsonElement? body)
     {
         var me = await User(true);
-        if (!await db.Events.AnyAsync(e => e.Id == id && e.Published)) throw Missing();
+        var gathering = await db.Events.SingleOrDefaultAsync(e => e.Id == id && e.Published) ?? throw Missing();
         await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
         if (action == "save")
         {
@@ -41,7 +51,23 @@ public partial class CommunityService
             {
                 if (a == null) { a = new() { UserId = me.Id, EventId = id }; db.Attendance.Add(a); }
                 a.Visible = input.Visible;
+                if (!a.Visible) a.CheckedInUntil = null;
             }
+        }
+        else if (action == "check-in")
+        {
+            var input = Read<CheckInInput>(body);
+            var a = await db.Attendance.FindAsync(me.Id, id);
+            if (input.CheckedIn)
+            {
+                var now = DateTimeOffset.UtcNow;
+                if (gathering.Start is not { } start || gathering.End is not { } end || now < start || now >= end)
+                    throw new ApiException(400, "Check-in is available while the event is running.");
+                if (a == null || !a.Visible) throw new ApiException(400, "Mark yourself as attending and choose to appear in the attendee list before checking in.");
+                var expires = now.AddHours(4);
+                a.CheckedInUntil = expires < end ? expires : end;
+            }
+            else if (a != null) a.CheckedInUntil = null;
         }
         else throw Missing();
         await db.SaveChangesAsync(); await tx.CommitAsync(); return new Ok();

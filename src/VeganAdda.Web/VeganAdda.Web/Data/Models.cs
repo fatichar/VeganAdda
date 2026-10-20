@@ -105,6 +105,7 @@ public class Attendance
     public Guid UserId { get; set; }
     public Guid EventId { get; set; }
     public bool Visible { get; set; }
+    public DateTimeOffset? CheckedInUntil { get; set; }
 }
 public class Saved
 {

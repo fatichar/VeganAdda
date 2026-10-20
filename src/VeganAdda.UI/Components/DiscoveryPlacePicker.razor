@@ -3,23 +3,22 @@
 @implements IAsyncDisposable
 <div class="discovery-place-fields">
     <label for="discover-country">Country <span class="muted">(optional)</span></label>
-    <input id="discover-country" list="discover-countries" maxlength="80" placeholder="Any country" @bind="Country" @bind:after="CountryChanged" disabled="@loading" />
-    <datalist id="discover-countries">@foreach (var country in countries) { <option value="@country.Name"></option> }</datalist>
+    <select @key="countries" id="discover-country" @bind="Country" @bind:after="CountryChanged" disabled="@loading"><option value="">Any country</option>@if (Country != "" && !countries.Any(c => c.Name == Country)) { <option>@Country</option> }@foreach (var country in countries) { <option>@country.Name</option> }</select>
     <label for="discover-state">State / region <span class="muted">(optional)</span></label>
-    <input id="discover-state" list="discover-states" maxlength="80" placeholder="Any state / region" @bind="State" @bind:after="StateChanged" disabled="@loading" />
-    <datalist id="discover-states">@foreach (var state in states) { <option value="@state.Name"></option> }</datalist>
+    <select @key="states" id="discover-state" @bind="State" @bind:after="StateChanged" disabled="@(loading || Country == "")"><option value="">Any state / region</option>@if (State != "" && !states.Any(s => s.Name == State)) { <option>@State</option> }@foreach (var state in states) { <option>@state.Name</option> }</select>
     <label for="discover-city">City <span class="muted">(optional)</span></label>
-    <input id="discover-city" list="discover-cities" maxlength="80" placeholder="Any city" @bind="City" />
-    <datalist id="discover-cities">@foreach (var city in Cities) { <option value="@city"></option> }</datalist>
+    <select @key="Cities" id="discover-city" @bind="City" disabled="@(loading || State == "")"><option value="">Any city</option>@if (City != "" && !Cities.Contains(City)) { <option>@City</option> }@foreach (var city in Cities) { <option>@city</option> }</select>
     @if (error != "") { <p class="small" role="status">@error</p> }
-    <small>Leave fields empty to widen your search. You can type a place if it isn't listed.</small>
-    <div class="discovery-panel-actions"><button type="button" class="text-button" @onclick="Clear">Anywhere</button><button type="button" @onclick="Apply" disabled="@loading">Show people</button></div>
+    @if (error != "") { <button type="button" class="text-button" @onclick="Initialize">Retry location lists</button> }
+    <small>Choose Any country, state or city to widen your search.</small>
+    <div class="discovery-panel-actions"><button type="button" class="text-button" @onclick="Clear">Anywhere</button><button type="button" @onclick="Apply" disabled="@(loading || error != "")">@ApplyLabel</button></div>
 </div>
 @code {
     [Parameter] public string Country { get; set; } = "";
     [Parameter] public string State { get; set; } = "";
     [Parameter] public string City { get; set; } = "";
     [Parameter] public EventCallback<DiscoveryInput> Selected { get; set; }
+    [Parameter] public string ApplyLabel { get; set; } = "Show people";
     IJSObjectReference? data;
     LocationPicker.CountryOption[] countries = [];
     LocationPicker.StateOption[] states = [];
@@ -28,14 +27,19 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        await Initialize(); StateHasChanged();
+    }
+    async Task Initialize()
+    {
+        loading = true; error = "";
         try
         {
             data = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/location-data.js");
             countries = await data.InvokeAsync<LocationPicker.CountryOption[]>("countries");
             await LoadStates();
         }
-        catch (JSException) { error = "Suggestions couldn't load. You can still type your location."; }
-        finally { loading = false; StateHasChanged(); }
+        catch (JSException) { error = "Location lists couldn't load. Please retry."; }
+        finally { loading = false; }
     }
     async Task LoadStates()
     {
@@ -46,7 +50,7 @@
     {
         State = City = error = ""; loading = true;
         try { await LoadStates(); }
-        catch (JSException) { error = "Suggestions couldn't load. You can still type your location."; }
+        catch (JSException) { error = "Location lists couldn't load. Please retry."; }
         finally { loading = false; }
     }
     void StateChanged() { City = ""; State = states.FirstOrDefault(s => s.Name.Equals(State, StringComparison.OrdinalIgnoreCase))?.Name ?? State; }
