@@ -7,13 +7,6 @@ on:
         description: Build and smoke-test only (skip GHCR publish and VPS deployment)
         type: boolean
         default: false
-      cache_mode:
-        description: Docker cache export mode (compare warm runs before changing the default)
-        type: choice
-        default: max
-        options:
-          - max
-          - min
   push:
     branches: [master]
 
@@ -55,7 +48,6 @@ jobs:
       - run: node --test tests/analytics.test.mjs
 
   build:
-    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -80,9 +72,6 @@ jobs:
           platforms: linux/amd64
           tags: ${{ env.IMAGE_TAG }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          # Isolate min experiments so they cannot replace the production max cache.
-          cache-from: type=gha,scope=${{ inputs.cache_mode == 'min' && 'buildkit-min' || 'buildkit' }}
-          cache-to: type=gha,scope=${{ inputs.cache_mode == 'min' && 'buildkit-min' || 'buildkit' }},mode=${{ inputs.cache_mode || 'max' }}
       - name: Verify container startup and Linux image upload
         run: bash scripts/ci-smoke.sh "$IMAGE_TAG"
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -102,7 +91,7 @@ jobs:
           echo "image-ref=$image_ref" >> "$GITHUB_OUTPUT"
 
   deploy:
-    needs: build
+    needs: [test, build]
     if: github.ref == 'refs/heads/master' && !inputs.benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 20
