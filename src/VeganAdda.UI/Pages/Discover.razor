@@ -88,6 +88,7 @@
     int? minAge, maxAge, draftMinAge, draftMaxAge;
     double? latitude, longitude;
     ProfileInput? profile; string? lastCity; int locationRequest;
+    bool locationReady;
     List<Person> people = []; Person? connecting;
     bool HasFilters => eventId != "" || interest != "" || intent != "" || includeNonVegan || minAge.HasValue || maxAge.HasValue;
     string PanelTitle => panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
@@ -97,7 +98,6 @@
         if (Session?.HasProfile == true) await Run(async () =>
         {
             profile = await Api.Get<ProfileInput>("profile"); dating = profile.LookingFor.Contains("Dating");
-            country = profile.Country; state = profile.State; city = profile.City;
         });
     }
     protected override async Task OnParametersSetAsync()
@@ -108,7 +108,25 @@
             lastEvent = Event; lastCheckedIn = CheckedIn; eventId = Event ?? ""; checkedIn = eventId != "" && CheckedIn; selectedEvent = null; page = 1;
             if (eventId != "") { country = state = city = ""; nearby = false; latitude = longitude = null; }
         }
+        if (locationReady) await Run(Refresh);
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (!firstRender) return;
+        try
+        {
+            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
+            var saved = await module.InvokeAsync<DiscoveryInput?>("loadPlace");
+            if (City == null && Event == null && saved != null)
+            {
+                country = saved.Country; state = saved.State; city = saved.City;
+            }
+        }
+        catch (JSException) { }
+        locationReady = true;
         await Run(Refresh);
+        await InvokeAsync(StateHasChanged);
     }
     protected override async Task Refresh()
     {
@@ -130,6 +148,12 @@
     async Task PlaceSelected(DiscoveryInput place)
     {
         country = place.Country; state = place.State; city = place.City;
+        try
+        {
+            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
+            await module.InvokeVoidAsync("savePlace", new DiscoveryInput { Country = country, State = state, City = city });
+        }
+        catch (JSException) { }
         nearby = false; latitude = longitude = null; ClosePanel(); await Search();
     }
     public record CurrentPosition(double? Latitude, double? Longitude, string Error = "");

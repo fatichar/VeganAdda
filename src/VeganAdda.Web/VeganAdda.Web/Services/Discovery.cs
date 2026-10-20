@@ -44,7 +44,7 @@ public partial class CommunityService
         if (nearby && (input.Latitude is not double lat || !double.IsFinite(lat) || lat < -90 || lat > 90
             || input.Longitude is not double lon || !double.IsFinite(lon) || lon < -180 || lon > 180 || input.RadiusKm is not (>= 1 and <= 500)))
             throw new ApiException(400, "Choose a valid current location and a radius between 1 and 500 km.");
-        var people = VisiblePeople();
+        var people = VisiblePeople().Where(p => p.Id != Viewer);
         people = input.IncludeNonVegan ? people.Where(p => p.IsVegan != null) : people.Where(p => p.IsVegan == true);
         if (nearby)
         {

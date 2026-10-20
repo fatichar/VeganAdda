@@ -175,7 +175,7 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 
 /* Discovery uses the shared card and type system, with photos when supplied by members. */
 .discovery-panel-actions{display:flex;justify-content:space-between;gap:12px;margin-top:24px;align-items:center}
-.discovery-person-photo{display:block;width:100%;aspect-ratio:2.5;object-fit:cover;border-radius:10px;margin-bottom:14px}
+.discovery-person-photo{display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--soft);border-radius:10px;margin-bottom:14px}
 .discovery-person-card:has(.discovery-person-photo) .person-identity>.avatar{display:none}
 .discovery-person-card .person-header h3{font-size:1.25rem}
 .discovery-person-card .person-footer{display:flex;flex-wrap:wrap;gap:8px}

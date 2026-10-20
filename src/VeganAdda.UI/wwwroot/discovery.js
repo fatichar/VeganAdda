@@ -1,4 +1,13 @@
 let trigger;
+const placeKey = 'veganadda-discovery-place';
+export function loadPlace() {
+    try { return JSON.parse(localStorage.getItem(placeKey) || 'null'); }
+    catch { return null; }
+}
+export function savePlace(place) {
+    try { localStorage.setItem(placeKey, JSON.stringify(place)); }
+    catch { }
+}
 export function openPanel(panel) {
     trigger = document.activeElement;
     document.body.style.overflow = 'hidden';
