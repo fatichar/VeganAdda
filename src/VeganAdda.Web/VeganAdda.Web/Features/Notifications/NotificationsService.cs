@@ -1,12 +1,19 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
+using VeganAdda.Web.Data;
+using VeganAdda.Web.Services;
+using VeganAdda.Web.Features.Shared;
+using VeganAdda.Web.Features.Profiles;
+using VeganAdda.Web.Features.Referrals;
+using VeganAdda.Web.Features.Events;
+using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
-namespace VeganAdda.Web.Services;
+namespace VeganAdda.Web.Features.Notifications;
 
-public partial class CommunityService
+public sealed class NotificationsService(FeatureContext context) : FeatureService(context)
 {
-    private async Task<object> Unread()
+    public async Task<UnreadCounts> Unread()
     {
         var me = await User();
         var messages = await (from message in db.Messages
@@ -17,8 +24,7 @@ public partial class CommunityService
                               select message.Id).CountAsync();
         return new UnreadCounts(messages, await db.Notifications.CountAsync(n => n.UserId == me.Id && n.Kind != "message" && !n.Read));
     }
-
-    private async Task<object> NotificationAction(string method, string[] parts, JsonElement? body)
+    public async Task<Ok> NotificationAction(string method, string[] parts, JsonElement? body)
     {
         var me = await User();
         var owned = db.Notifications.Where(n => n.UserId == me.Id);
@@ -39,5 +45,15 @@ public partial class CommunityService
         else throw Missing();
         await changes.Changed(me.Id);
         return new Ok();
+    }
+    public async Task<NotificationList> GetNotifications(int page = 1)
+    {
+        var notified = await User();
+                    var notifications = db.Notifications.Where(x => x.UserId == notified.Id && x.Kind != "message");
+                    const int notificationPageSize = 20;
+                    var notificationTotal = await notifications.CountAsync();
+                    page = Math.Min(page, Math.Max(1, (notificationTotal + notificationPageSize - 1) / notificationPageSize));
+                    var notices = await notifications.OrderByDescending(x => x.Created).ThenByDescending(x => x.Id).Skip((page - 1) * notificationPageSize).Take(notificationPageSize).Select(x => new Notice(x.Id, x.Kind, x.Text, x.Url, x.Read, x.Created)).ToListAsync();
+                    return new NotificationList(notices, await notifications.CountAsync(x => !x.Read), notificationTotal, page, notificationPageSize);
     }
 }

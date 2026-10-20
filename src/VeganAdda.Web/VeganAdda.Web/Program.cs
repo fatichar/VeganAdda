@@ -14,6 +14,7 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Components;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
+using VeganAdda.Web.Features;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console(new CompactJsonFormatter())
@@ -52,7 +53,7 @@ if (!dev && !migrationOnly && string.IsNullOrWhiteSpace(Environment.GetEnvironme
     throw new InvalidOperationException("GOOGLE_APPLICATION_CREDENTIALS must point to a mounted Firebase Admin service-account file.");
 builder.Services.AddDbContext<CommunityDb>(o => o.UseNpgsql(connection));
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<IActor, HttpActor>(); builder.Services.AddScoped<CommunityService>();
+builder.Services.AddScoped<IActor, HttpActor>(); builder.Services.AddCommunityFeatures();
 builder.Services.AddScoped<ICommunityApi, ServerApi>(); builder.Services.AddScoped<IPlatform, ServerPlatform>();
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
 builder.Services.AddSingleton<IFirebaseIdentityVerifier, FirebaseIdentityVerifier>();
@@ -177,29 +178,7 @@ if (dev && builder.Configuration.GetValue<bool>("Development:Enabled"))
         await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Principal(account), new AuthenticationProperties { IsPersistent = true }); return Results.Ok(new Ok());
     });
 }
-app.MapMethods("/api/{**resource}", ["GET", "POST", "DELETE"], async (string resource, HttpContext ctx, CommunityService service, IAntiforgery csrf) =>
-{
-    System.Text.Json.JsonElement? body = null;
-    if (ctx.Request.Method != "GET")
-    {
-        await csrf.ValidateRequestAsync(ctx);
-        if (ctx.Request.ContentLength > 32000) throw new ApiException(413, "This request is too large.");
-        // JsonContent and browser requests may be chunked with no Content-Length.
-        var bytes = new byte[32001]; var length = 0;
-        while (length < bytes.Length)
-        { var read = await ctx.Request.Body.ReadAsync(bytes.AsMemory(length)); if (read == 0) break; length += read; }
-        if (length > 32000) throw new ApiException(413, "This request is too large.");
-        if (length > 0)
-        { try { body = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(bytes.AsSpan(0, length)); } catch (System.Text.Json.JsonException) { throw new ApiException(400, "Please check your input."); } }
-    }
-    try
-    {
-        var result = await service.Execute(ctx.Request.Method, resource + ctx.Request.QueryString, body);
-        if (resource == "account" && ctx.Request.Method == "DELETE") await ctx.SignOutAsync();
-        return Results.Json(result, Wire.Json);
-    }
-    catch (FormatException) { throw new ApiException(400, "This identifier is invalid."); }
-});
+app.MapCommunityFeatures();
 app.MapMedia();
 app.MapHub<CommunityHub>("/hubs/community").RequireAuthorization();
 app.MapStaticAssets();

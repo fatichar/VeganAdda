@@ -1,39 +1,19 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
+using VeganAdda.Web.Data;
+using VeganAdda.Web.Services;
+using VeganAdda.Web.Features.Shared;
+using VeganAdda.Web.Features.Profiles;
+using VeganAdda.Web.Features.Referrals;
+using VeganAdda.Web.Features.Events;
+using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
-namespace VeganAdda.Web.Services;
+namespace VeganAdda.Web.Features.Discovery;
 
-public partial class CommunityService
+public sealed class DiscoveryService(FeatureContext context, ProfileVisibility visibility, PeopleProjection projection) : FeatureService(context)
 {
-    private static DateOnly ReadBirthDetails(ProfileInput input)
-    {
-        if (input.BirthYear is not { } year || input.BirthMonth is not { } month)
-            throw new ApiException(400, "Add your birth month and year.");
-        if (year < 1 || year > 9999 || month < 1 || month > 12 || input.BirthDay is < 1 or > 31)
-            throw new ApiException(400, "Choose valid birth details.");
-        var days = DateTime.DaysInMonth(year, month);
-        if (input.BirthDay > days) throw new ApiException(400, "Choose a day that exists in your birth month.");
-        var birth = new DateOnly(year, month, input.BirthDay ?? days);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (birth > today.AddYears(-18) || birth <= today.AddYears(-121))
-            throw new ApiException(400, "Your birth details must indicate an age between 18 and 120. If you turned 18 this month, add your birth day.");
-        return birth;
-    }
-    private static bool BirthdayToday(DateOnly? birthDate, bool hasExactBirthDate)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        return hasExactBirthDate && birthDate is { } birth && birth.Month == today.Month && birth.Day == today.Day;
-    }
-    private static int? ParseAge(string value) => value == "" ? null : int.TryParse(value, out var age) ? age : throw new ApiException(400, "Choose a valid age range.");
-    private static int? Age(DateOnly? birthDate)
-    {
-        if (birthDate is not { } birth) return null;
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var years = today.Year - birth.Year;
-        return today < birth.AddYears(years) ? years - 1 : years;
-    }
-
-    private async Task<Page<Person>> SearchPeople(DiscoveryInput input)
+    public async Task<Page<Person>> SearchPeople(DiscoveryInput input)
     {
         var nearby = input.Latitude.HasValue || input.Longitude.HasValue || input.RadiusKm.HasValue;
         if (!Viewer.HasValue && (nearby || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan
@@ -44,7 +24,7 @@ public partial class CommunityService
         if (nearby && (input.Latitude is not double lat || !double.IsFinite(lat) || lat < -90 || lat > 90
             || input.Longitude is not double lon || !double.IsFinite(lon) || lon < -180 || lon > 180 || input.RadiusKm is not (>= 1 and <= 500)))
             throw new ApiException(400, "Choose a valid current location and a radius between 1 and 500 km.");
-        var people = VisiblePeople().Where(p => p.Id != Viewer);
+        var people = visibility.Query().Where(p => p.Id != Viewer);
         people = input.IncludeNonVegan ? people.Where(p => p.IsVegan != null) : people.Where(p => p.IsVegan == true);
         if (nearby)
         {
@@ -101,7 +81,7 @@ public partial class CommunityService
         var total = await people.CountAsync();
         var rows = await people.OrderByDescending(p => p.Featured && p.Public && p.FeatureConsent).ThenBy(p => p.Name).ThenBy(p => p.Id)
             .Skip((page - 1) * 12).Take(12).ToListAsync();
-        var dtos = new List<Person>(); foreach (var p in rows) dtos.Add(await PersonDto(p));
+        var dtos = new List<Person>(); foreach (var p in rows) dtos.Add(await projection.One(p));
         return new(dtos, total, page);
     }
 }

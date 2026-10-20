@@ -1,0 +1,58 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using VeganAdda.Contracts;
+using VeganAdda.Web.Data;
+using VeganAdda.Web.Services;
+using VeganAdda.Web.Features.Shared;
+using VeganAdda.Web.Features.Profiles;
+using VeganAdda.Web.Features.Referrals;
+using VeganAdda.Web.Features.Events;
+using static VeganAdda.Web.Features.Profiles.BirthDetails;
+using VeganAdda.Web.Features.Discovery;
+using VeganAdda.Web.Features.Connections;
+using VeganAdda.Web.Features.Messaging;
+using VeganAdda.Web.Features.Moderation;
+using VeganAdda.Web.Features.Notifications;
+using VeganAdda.Web.Features.Accounts;
+using VeganAdda.Web.Features.Saved;
+
+namespace VeganAdda.Web.Features;
+
+public static class FeatureRegistration
+{
+    public static void MapCommunityFeatures(this WebApplication app)
+    {
+        var api = app.MapGroup("/api").AddEndpointFilter<FeatureRequestFilter>();
+        AccountsEndpoints.Map(api);
+        ProfilesEndpoints.Map(api);
+        DiscoveryEndpoints.Map(api);
+        ConnectionsEndpoints.Map(api);
+        MessagingEndpoints.Map(api);
+        EventsEndpoints.Map(api);
+        ModerationEndpoints.Map(api);
+        NotificationsEndpoints.Map(api);
+        ReferralsEndpoints.Map(api);
+        SavedEndpoints.Map(api);
+    }
+
+    public static IServiceCollection AddCommunityFeatures(this IServiceCollection services)
+    {
+        services.AddScoped<FeatureContext>();
+        services.AddScoped<CommunityService>();
+        services.AddScoped<ProfileVisibility>();
+        services.AddScoped<PeopleProjection>();
+        services.AddScoped<ReferralTrust>();
+        services.AddScoped<EventProjection>();
+        services.AddScoped<SessionService>();
+        services.AddScoped<SavedService>();
+        services.AddScoped<ProfilesService>();
+        services.AddScoped<DiscoveryService>();
+        services.AddScoped<ConnectionsService>();
+        services.AddScoped<MessagingService>();
+        services.AddScoped<EventsService>();
+        services.AddScoped<ModerationService>();
+        services.AddScoped<NotificationsService>();
+        services.AddScoped<ReferralsService>();
+        return services;
+    }
+}

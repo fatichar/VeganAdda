@@ -11,6 +11,7 @@ using Npgsql;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
+using VeganAdda.Web.Features;
 
 namespace VeganAdda.Tests;
 
@@ -28,9 +29,17 @@ public sealed class DatabaseFixture : IAsyncLifetime
         await using var db = Db(); await db.Database.MigrateAsync();
     }
     public CommunityDb Db() => new(new DbContextOptionsBuilder<CommunityDb>().UseNpgsql(Connection).Options);
-    public CommunityService Service(CommunityDb db, Guid? id) => new(db, new Actor(id), new Bus(), new ConfigurationBuilder().Build(), new TestEnvironment());
     public async Task<object> Call(Guid? id, string path, object? body = null, string method = "GET")
-    { await using var db = Db(); return await Service(db, id).Execute(method, path, body == null ? null : JsonSerializer.SerializeToElement(body, Wire.Json)); }
+    {
+        using var services = new ServiceCollection()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
+            .AddSingleton<IWebHostEnvironment>(new TestEnvironment())
+            .AddScoped<IActor>(_ => new Actor(id)).AddScoped<IChangeBus, Bus>()
+            .AddScoped(_ => Db()).AddCommunityFeatures().BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<CommunityService>()
+            .Execute(method, path, body == null ? null : JsonSerializer.SerializeToElement(body, Wire.Json));
+    }
     public async Task<Guid> Member(bool pub = true, bool dating = false, bool admin = false)
     {
         await using var db = Db(); var u = new Account { Subject = Guid.NewGuid().ToString(), Name = "Test Member", Admin = admin };
