@@ -34,6 +34,8 @@ Optional `Prod` variables override these defaults:
 | `VPS_HOST` | `51.79.223.152` |
 | `VPS_PORT` | `22222` |
 | `VPS_USER` | `ubuntu` |
+| `UMAMI_SCRIPT_URL` | `https://analytics.greenfit.in/script.js` |
+| `UMAMI_WEBSITE_ID` | `29d3948e-23fe-4394-b433-799a76a4b09d` (VeganAdda property) |
 
 Retrieve the already trusted host entry on your own workstation, checking its fingerprint against the VPS console/provider or an independently trusted record first:
 
@@ -74,6 +76,7 @@ cd /opt/veganadda/current
 export COMPOSE_PROJECT_NAME=veganadda
 export COMPOSE_FILE="$PWD/compose.yaml"
 export COMPOSE_ENV_FILES=/opt/veganadda/.env
+if [ -s "$PWD/analytics.env" ]; then export COMPOSE_ENV_FILES="/opt/veganadda/.env,$PWD/analytics.env"; fi
 export IMAGE_REF="$(cat image-ref)"
 docker compose ps
 docker compose logs --tail 100 web
@@ -85,3 +88,5 @@ Regular backups restart web afterward; rollout's `BACKUP_KEEP_STOPPED=1` keeps t
 On a failed migration or readiness check, inspect the workflow log and that release's container logs; `/opt/veganadda/current` still identifies the last successful release. Do not rerun migration blindly or assume an app rollback reverses schema changes. If the previous image is compatible with the current schema, select that release's Compose file/digest and start web with `--no-deps --no-build --pull never --wait`. Otherwise restore the pre-deployment backup to a **new isolated project** with `restore.sh`, a distinct port and subnet, verify it, then switch only VeganAdda's upstream. See README backup/restore instructions.
 
 The isolated restore and a production HTTPS/Firebase/chat smoke test remain required launch checks. This workflow is deployment preparation, not evidence of a completed live deployment.
+
+See [observability setup](OBSERVABILITY.md) for Better Stack source credentials, monitor creation and notification verification. Better Stack secrets stay in the VPS .env. Public analytics settings are copied to a release-local analytics.env; no image rebuild is needed to change runtime settings.

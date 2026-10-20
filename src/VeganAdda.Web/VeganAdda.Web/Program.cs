@@ -7,15 +7,35 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
+using Serilog.Formatting.Compact;
+using VeganAdda.Web.Observability;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Components;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
 
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console(new CompactJsonFormatter())
+    .CreateBootstrapLogger();
+try
+{
 var builder = WebApplication.CreateBuilder(args);
-builder.Logging.ClearProviders(); builder.Logging.AddJsonConsole();
+builder.Services.AddSerilog((services, logger) =>
+{
+    logger
+    .ReadFrom.Configuration(builder.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "VeganAdda")
+    .Enrich.WithProperty("Environment", builder.Environment.EnvironmentName)
+    .WriteTo.Console(new CompactJsonFormatter());
+    BetterStackLogging.Configure(logger, builder.Configuration);
+});
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 3 * 1024 * 1024);
 var dev = builder.Environment.IsDevelopment();
+var analytics = AnalyticsSettings.FromConfiguration(builder.Configuration, builder.Environment);
+builder.Services.AddSingleton(analytics ?? new AnalyticsSettings("", "", ""));
 if (dev)
     Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", Environment.GetEnvironmentVariable("FIREBASE_ADMIN_CREDENTIALS_VEGANADDA"));
 if (!dev && (builder.Configuration.GetValue<bool>("Development:Enabled") || builder.Configuration.GetValue<bool>("Development:Seed")))
@@ -86,6 +106,7 @@ builder.Services.AddRateLimiter(o =>
 });
 var app = builder.Build();
 app.UseForwardedHeaders();
+app.UseSerilogRequestLogging(RequestLogging.Configure);
 if (dev) app.UseWebAssemblyDebugging(); else { app.UseHsts(); app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/health"), branch => branch.UseHttpsRedirection()); }
 app.Use(async (ctx, next) =>
 {
@@ -97,14 +118,15 @@ app.Use(async (ctx, next) =>
     var cspNonce = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
     ctx.Items["VeganAdda.CspNonce"] = cspNonce;
     // The free reverse-geocoding endpoint can redirect to BigDataCloud's api-bdc.io host.
-    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.bigdatacloud.net https://api-bdc.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com ws: wss:; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    var analyticsOrigin = analytics is null ? "" : " " + analytics.Origin;
+    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com{analyticsOrigin}; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.bigdatacloud.net https://api-bdc.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com ws: wss:{analyticsOrigin}; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     if (!ctx.Request.Path.StartsWithSegments("/_framework") && !ctx.Request.Path.StartsWithSegments("/_content")) ctx.Response.Headers.CacheControl = "no-cache, no-store";
     try { await next(); }
     catch (ApiException ex) when (!ctx.Response.HasStarted) { ctx.Response.StatusCode = ex.Status; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
     catch (AntiforgeryValidationException) when (!ctx.Response.HasStarted) { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsJsonAsync(new { error = "Your session changed. Refresh this page and try again." }); }
     catch (Exception ex) when (!ctx.Response.HasStarted)
     {
-        app.Logger.LogError("Request failed. Type={ExceptionType} Trace={TraceId}", ex.GetType().Name, ctx.TraceIdentifier);
+        app.Logger.LogError("Request failed. Type={ExceptionType} Trace={TraceId} Stack={StackTrace}", ex.GetType().Name, ctx.TraceIdentifier, ex.StackTrace);
         ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { error = "Something went wrong. Please try again.", traceId = ctx.TraceIdentifier });
     }
 });
@@ -200,7 +222,18 @@ else
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     if (await db.Accounts.AnyAsync(a => a.Demo) || await db.Events.AnyAsync(e => e.Demo)) throw new InvalidOperationException("Production cannot use a database containing development fixtures.");
 }
-app.Run();
+await app.RunAsync();
+}
+catch (Exception ex)
+{
+    // Exception messages can contain connection strings or member data.
+    Log.Fatal("Host terminated unexpectedly. Type={ExceptionType} Stack={StackTrace}", ex.GetType().Name, ex.StackTrace);
+    throw;
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}
 
 static ClaimsPrincipal Principal(Account account) => new(new ClaimsIdentity([new(ClaimTypes.NameIdentifier, account.Id.ToString()), new(ClaimTypes.Name, account.Name)], CookieAuthenticationDefaults.AuthenticationScheme));
 public partial class Program;

@@ -1,4 +1,5 @@
 using VeganAdda.Contracts;
+using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
 
 namespace VeganAdda.Tests;
@@ -92,9 +93,16 @@ public class ProfileApprovalTests(DatabaseFixture f)
     {
         var admin = await f.Member(admin: true);
         var member = await f.Member();
+        await using (var db = f.Db())
+        {
+            // Keep both role-change targets beyond the first member page, even in isolation.
+            for (var i = 0; i < 20; i++)
+                db.Accounts.Add(new Account { Name = $"AAA role pagination {i:00}", Subject = Guid.NewGuid().ToString() });
+            await db.SaveChangesAsync();
+        }
 
         await f.Call(admin, "admin/moderate", new ModerateInput(member, "grant-admin"), "POST");
-        var data = Assert.IsType<AdminData>(await f.Call(admin, "admin"));
+        var data = await AllMembers(admin);
         Assert.True(Assert.Single(data.People, p => p.Id == member).Admin);
         var appointed = Assert.Single(Assert.IsType<NotificationList>(await f.Call(member, "notifications")).Items);
         Assert.Equal("admin-appointed", appointed.Kind);
@@ -102,7 +110,7 @@ public class ProfileApprovalTests(DatabaseFixture f)
         Assert.Equal("/admin", appointed.Url);
 
         await f.Call(member, "admin/moderate", new ModerateInput(admin, "revoke-admin"), "POST");
-        data = Assert.IsType<AdminData>(await f.Call(member, "admin"));
+        data = await AllMembers(member);
         Assert.False(Assert.Single(data.People, p => p.Id == admin).Admin);
         var revoked = Assert.IsType<NotificationList>(await f.Call(admin, "notifications"));
         Assert.Equal("admin-revoked", Assert.Single(revoked.Items).Kind);

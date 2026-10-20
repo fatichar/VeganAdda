@@ -18,11 +18,21 @@
 <body>
     <Routes @rendermode="InteractiveWebAssembly" />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    @if (!string.IsNullOrEmpty(Analytics.WebsiteId))
+    {
+        <script src="@Assets["js/analytics.js"]" defer></script>
+        <script src="@Analytics.ScriptUrl" data-website-id="@Analytics.WebsiteId"
+                data-domains="veganadda.com,www.veganadda.com" data-exclude-search="true"
+                data-exclude-hash="true" data-do-not-track="true"
+                data-before-send="veganAddaAnalyticsBeforeSend" defer></script>
+    }
 </body>
 
 </html>
 
 @code {
+    [Microsoft.AspNetCore.Components.Inject]
+    private VeganAdda.Web.Observability.AnalyticsSettings Analytics { get; set; } = default!;
     [Microsoft.AspNetCore.Components.Inject]
     private Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
 

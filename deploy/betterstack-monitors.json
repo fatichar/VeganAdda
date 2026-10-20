@@ -1,0 +1,35 @@
+[
+  {
+    "pronounceable_name": "VeganAdda readiness",
+    "url": "https://veganadda.com/health/ready",
+    "monitor_type": "expected_status_code",
+    "expected_status_codes": [200],
+    "check_frequency": 180,
+    "request_timeout": 10,
+    "confirmation_period": 180,
+    "recovery_period": 180,
+    "verify_ssl": true,
+    "ssl_expiration": 14,
+    "follow_redirects": false,
+    "email": true,
+    "sms": false,
+    "call": false,
+    "push": false
+  },
+  {
+    "pronounceable_name": "VeganAdda liveness",
+    "url": "https://veganadda.com/health/live",
+    "monitor_type": "expected_status_code",
+    "expected_status_codes": [200],
+    "check_frequency": 180,
+    "request_timeout": 10,
+    "confirmation_period": 180,
+    "recovery_period": 180,
+    "verify_ssl": true,
+    "follow_redirects": false,
+    "email": true,
+    "sms": false,
+    "call": false,
+    "push": false
+  }
+]

@@ -52,6 +52,7 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet restore VeganAdda.sln
       - run: dotnet test tests/VeganAdda.Tests -c Release --no-restore -m:1 /nr:false
+      - run: node --test tests/analytics.test.mjs
 
   build:
     needs: test
@@ -113,6 +114,8 @@ jobs:
       VPS_HOST: ${{ vars.VPS_HOST || '51.79.223.152' }}
       VPS_PORT: ${{ vars.VPS_PORT || '22222' }}
       VPS_USER: ${{ vars.VPS_USER || 'ubuntu' }}
+      UMAMI_SCRIPT_URL: ${{ vars.UMAMI_SCRIPT_URL || 'https://analytics.greenfit.in/script.js' }}
+      UMAMI_WEBSITE_ID: ${{ vars.UMAMI_WEBSITE_ID || '29d3948e-23fe-4394-b433-799a76a4b09d' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

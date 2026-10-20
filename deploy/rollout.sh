@@ -15,6 +15,9 @@ flock -n 9 || { echo 'Another VeganAdda deployment is running'; exit 1; }
 export COMPOSE_PROJECT_NAME=veganadda
 export COMPOSE_FILE="$release/compose.yaml"
 export COMPOSE_ENV_FILES="$root/.env"
+if [[ -s "$release/analytics.env" ]]; then
+  export COMPOSE_ENV_FILES="$root/.env,$release/analytics.env"
+fi
 # CI always overrides the local IMAGE_REF value in .env.
 export DOCKER_CONFIG
 DOCKER_CONFIG=$(mktemp -d "$root/.docker-login.XXXXXX")

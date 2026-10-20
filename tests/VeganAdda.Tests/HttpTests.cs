@@ -85,6 +85,38 @@ public class HttpTests : IDisposable
         Assert.Contains("https://api-bdc.io", origins);
         Assert.DoesNotContain("*", connect);
     }
+    [Fact] public async Task Production_analytics_scripts_and_csp_are_enabled_only_with_configuration()
+    {
+        SetFirebaseEnvironment("GOOGLE_APPLICATION_CREDENTIALS", "unused-in-this-render-test.json");
+        // Program validates these before WebApplicationFactory applies its late
+        // ConfigureAppConfiguration callback. Supply startup inputs explicitly.
+        SetFirebaseEnvironment("ConnectionStrings__Database", f.Connection);
+        SetFirebaseEnvironment("Storage__KeysPath", Path.Combine(storage, "keys"));
+        SetFirebaseEnvironment("Analytics__Umami__ScriptUrl", "https://analytics.greenfit.in/script.js");
+        SetFirebaseEnvironment("Analytics__Umami__WebsiteId", "29d3948e-23fe-4394-b433-799a76a4b09d");
+        using var production = factory.WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Production");
+            b.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Analytics:Umami:ScriptUrl"] = "https://analytics.greenfit.in/script.js",
+                ["Analytics:Umami:WebsiteId"] = "29d3948e-23fe-4394-b433-799a76a4b09d"
+            }));
+        });
+        using var client = production.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        using var response = await client.GetAsync("/privacy");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("data-before-send=\"veganAddaAnalyticsBeforeSend\"", html);
+        Assert.Contains("data-exclude-search=\"true\"", html);
+        Assert.True(html.IndexOf("js/analytics", StringComparison.Ordinal) < html.IndexOf("https://analytics.greenfit.in/script.js", StringComparison.Ordinal));
+        var policy = response.Headers.GetValues("Content-Security-Policy").Single();
+        Assert.Contains("https://analytics.greenfit.in", policy.Split(';').Single(d => d.TrimStart().StartsWith("script-src ")));
+        Assert.Contains("https://analytics.greenfit.in", policy.Split(';').Single(d => d.TrimStart().StartsWith("connect-src ")));
+        using var development = Client();
+        var developmentHtml = await development.GetStringAsync("/privacy");
+        Assert.DoesNotContain("data-website-id", developmentHtml);
+    }
     [Fact] public async Task Push_registration_requires_identity_csrf_and_moves_token_to_one_owner()
     {
         SetFirebaseEnvironment("Push__SenderId", "test-sender");
