@@ -520,6 +520,9 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<bool>("Resolved")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("SubjectId")
                         .HasColumnType("uuid");
 

@@ -55,4 +55,8 @@ bash "$release/check-ready.sh" "$binding"
 printf '%s\n' "$IMAGE_REF" > "$release/image-ref"
 ln -sfn -- "$release" "$root/current"
 successful=true
+if [[ -d "$root/backups" && ! -L "$root/backups" ]]; then
+  # Prune only timestamped VeganAdda backup bundles, and only after readiness passes.
+  find "$root/backups" -mindepth 1 -maxdepth 1 -type d -name 'veganadda-????????T??????Z' -mmin +43200 -exec rm -rf -- {} + || echo 'Warning: could not prune expired backup bundles' >&2
+fi
 echo "Deployed $IMAGE_REF; readiness passed. Release: $release"

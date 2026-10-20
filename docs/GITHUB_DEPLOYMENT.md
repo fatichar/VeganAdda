@@ -74,7 +74,7 @@ docker compose logs --tail 100 web
 bash backup.sh /opt/veganadda/backups
 ```
 
-Regular backups restart web afterward; rollout's `BACKUP_KEEP_STOPPED=1` keeps the same maintenance window open until migration completes. Encrypt/copy backups off-host and establish retention: the workflow intentionally never deletes them. Monitor disk space on this shared VPS and clean old release images/backups only after confirming retention and rollback needs.
+Regular backups restart web afterward; rollout's `BACKUP_KEEP_STOPPED=1` keeps the same maintenance window open until migration completes. Encrypt/copy backups off-host and remove those copies within 30 days. After a successful deployment, rollout deletes timestamped VeganAdda backup bundles older than 30 days. If deployments pause, expired bundles may remain until cleanup runs again. Monitor disk space on this shared VPS.
 
 On a failed migration or readiness check, inspect the workflow log and that release's container logs; `/opt/veganadda/current` still identifies the last successful release. Do not rerun migration blindly or assume an app rollback reverses schema changes. If the previous image is compatible with the current schema, select that release's Compose file/digest and start web with `--no-deps --no-build --pull never --wait`. Otherwise restore the pre-deployment backup to a **new isolated project** with `restore.sh`, a distinct port and subnet, verify it, then switch only VeganAdda's upstream. See README backup/restore instructions.
 

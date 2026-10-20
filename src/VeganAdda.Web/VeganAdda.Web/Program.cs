@@ -37,6 +37,7 @@ builder.Services.AddScoped<ICommunityApi, ServerApi>(); builder.Services.AddScop
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
 builder.Services.AddSingleton<IFirebaseIdentityVerifier, FirebaseIdentityVerifier>();
 builder.Services.AddHostedService<ChatPushWorker>();
+builder.Services.AddHostedService<DataRetentionWorker>();
 builder.Services.AddSingleton<IChatPushSender, FirebaseChatPushSender>();
 builder.Services.AddRazorComponents().AddInteractiveWebAssemblyComponents();
 builder.Services.AddSignalR(o => { o.EnableDetailedErrors = false; o.MaximumReceiveMessageSize = 4096; });

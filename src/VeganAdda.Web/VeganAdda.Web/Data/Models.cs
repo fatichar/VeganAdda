@@ -131,6 +131,7 @@ public class Report
     public string Reason { get; set; } = "";
     public bool Resolved { get; set; }
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? ResolvedAt { get; set; }
 }
 public class Referral
 {

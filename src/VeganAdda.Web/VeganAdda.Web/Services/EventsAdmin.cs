@@ -235,7 +235,7 @@ public partial class CommunityService
         var affected = new HashSet<Guid> { input.Id };
         if (input.Action == "resolve")
         {
-            var report = await db.Reports.FindAsync(input.Id) ?? throw Missing(); report.Resolved = true;
+            var report = await db.Reports.FindAsync(input.Id) ?? throw Missing(); report.Resolved = true; report.ResolvedAt = DateTimeOffset.UtcNow;
         }
         else
         {

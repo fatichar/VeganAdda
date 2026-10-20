@@ -5,6 +5,7 @@ umask 077
 target="${1:?Usage: deploy/backup.sh /absolute/backup-directory}"
 [[ "$target" = /* ]] || { echo 'Use an absolute backup path'; exit 1; }
 mkdir -p "$target"
+chmod 700 "$target"
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 bundle="$target/veganadda-$stamp"
 mkdir "$bundle"

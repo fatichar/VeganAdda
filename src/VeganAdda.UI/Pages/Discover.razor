@@ -4,6 +4,13 @@
 @inject IJSRuntime JS
 <PageTitle>Discover · VeganAdda</PageTitle>
 <div class="discovery">
+    @if (Session?.Id == null)
+    {
+        <section class="visitor-banner public-home-intro">
+            <div><strong>VeganAdda — meet your vegan community</strong><p>Discover people, find vegan events, and build local connections. Dating is optional and mutual.</p></div>
+            <a class="button secondary" href="/events">Explore events</a>
+        </section>
+    }
     <h1 class="sr-only">Discover</h1>
     <div class="discovery-heading">
         <LocationFilter Country="@country" State="@state" City="@city" OverrideLabel="@(nearby ? $"Near me · {radius} km" : null)" Profile="profile" Selected="PlaceSelected" NearbyRequested="OpenNearby" />
