@@ -144,17 +144,20 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                 case "notifications":
                     var notified = await User();
                     var notifications = db.Notifications.Where(x => x.UserId == notified.Id && x.Kind != "message");
-                    var notices = await notifications.OrderByDescending(x => x.Created).Take(50).Select(x => new Notice(x.Id, x.Kind, x.Text, x.Url, x.Read, x.Created)).ToListAsync();
-                    return new NotificationList(notices, await notifications.CountAsync(x => !x.Read));
+                    const int notificationPageSize = 20;
+                    var notificationTotal = await notifications.CountAsync();
+                    page = Math.Min(page, Math.Max(1, (notificationTotal + notificationPageSize - 1) / notificationPageSize));
+                    var notices = await notifications.OrderByDescending(x => x.Created).ThenByDescending(x => x.Id).Skip((page - 1) * notificationPageSize).Take(notificationPageSize).Select(x => new Notice(x.Id, x.Kind, x.Text, x.Url, x.Read, x.Created)).ToListAsync();
+                    return new NotificationList(notices, await notifications.CountAsync(x => !x.Read), notificationTotal, page, notificationPageSize);
                 case "unread": return await Unread();
                 case "blocked":
                     var blocker = await User();
                     return await db.Blocks.Where(b => b.Owner == blocker.Id).Join(db.Profiles, b => b.Subject, p => p.Id, (b, p) => new AdminPerson(p.Id, p.Name, false, false, false, false)).ToListAsync();
                 case "admin":
-                    if (parts.Length == 1) return await Admin(Q("approval"));
+                    if (parts.Length == 1) return await Admin(Q("approval"), Q("section") is { Length: > 0 } section ? section : "Members", page);
                     if (parts.Length == 3 && parts[1] == "members" && Guid.TryParse(parts[2], out var memberId)) return await AdminMemberProfile(memberId);
                     throw Missing();
-                case "moderation": return new ModerationData(await ProfileQueue(includeTestProfiles: false), await EventQueue(includeTestEvents: false));
+                case "moderation": return await Moderation(Q("section") is { Length: > 0 } moderationSection ? moderationSection : "Profiles", page);
                 case "event-submissions": return await MyEventSubmissions();
             }
         }

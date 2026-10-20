@@ -4,7 +4,7 @@
 <span class="eyebrow">Care for the community</span><h1>Community administration</h1><Feedback Error="@Error" Success="@Success" />
 @if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
 else if (data != null) {
-    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => tab = t">@t@if (t == "Members" && data.Profiles.Count > 0) { <span class="badge" aria-label="Profiles awaiting approval">@data.Profiles.Count</span> }</button> }</div>
+    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => SwitchTab(t)">@t@if (t == "Members" && data.ProfilesTotal > 0) { <span class="badge" aria-label="Profiles awaiting approval">@data.ProfilesTotal</span> }</button> }</div>
     @if (tab == "Events") {
         <div class="admin-events"><aside class="card"><button @onclick="NewEvent"><Icon Name="add" />Create event</button>@foreach (var item in data.Events) { <button class="admin-event-link secondary" @onclick="() => Edit(item)">@item.Title<span class="badge">@(item.Published ? "Published" : "Draft")</span></button> }</aside>
         @if (edit != null) {
@@ -26,11 +26,12 @@ else if (data != null) {
                 <button disabled="@Busy">Save event</button><small>Leave Ekatva as a draft until official details and affiliation wording are confirmed by the owner.</small>
             </fieldset></form>
         }</div>
+        <Pagination PageNumber="@eventsPage" PageSize="20" Total="@data.EventsTotal" Busy="@Busy" PageChanged="SetPage" />
     }
     else if (tab == "Members") {
         <div class="admin-member-toolbar">
             <select id="member-approval" aria-label="Filter members by approval" @bind="memberApproval" @bind:after="FilterMembers" disabled="@Busy"><option value="all">All members</option><option value="approved">Approved</option><option value="awaiting-approval">Awaiting approval</option><option value="no-profile">No profile</option></select>
-            <p class="small muted">Showing up to 200 members. Select a name to view their profile.</p>
+            <p class="small muted">Select a name to view their profile.</p>
         </div>
         @if (data.People.Count == 0) { <Empty Icon="group" Title="No members found" Text="Choose another approval filter." /> }
         <div class="admin-rows">
@@ -58,6 +59,7 @@ else if (data != null) {
                 }
             </article>
         }</div>
+        <Pagination PageNumber="@membersPage" PageSize="20" Total="@data.MembersTotal" Busy="@Busy" PageChanged="SetPage" />
     }
     else {
         @if (data.Reports.Count == 0) { <Empty Icon="shield" Title="No reports to review" Text="Member reports will appear here." /> }
@@ -65,17 +67,22 @@ else if (data != null) {
             <article class="card"><div class="section-heading"><h3>@report.Subject</h3><span class="badge">@(report.Resolved ? "Resolved" : "Needs review")</span></div><p>@report.Reason</p><small>@Date(report.Created)</small>
             @if (!report.Resolved) { <div class="actions"><button class="secondary" @onclick='() => Moderate(report.Id, "resolve")'>Mark reviewed</button>@if (report.SubjectId != Guid.Empty) { <button class="danger-button" @onclick='() => Moderate(report.SubjectId, "suspend")'>Suspend member</button> }</div> }</article>
         }
+        <Pagination PageNumber="@reportsPage" PageSize="20" Total="@data.ReportsTotal" Busy="@Busy" PageChanged="SetPage" />
     }
 }
 @code {
-    AdminData? data; EventInput? edit; string tab = "Events", memberApproval = "all"; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    AdminData? data; EventInput? edit; string tab = "Events", memberApproval = "all"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(Refresh); }
     protected override async Task Refresh() {
-        data = await Api.Get<AdminData>($"admin?approval={E(memberApproval)}");
+        data = await Api.Get<AdminData>($"admin?approval={E(memberApproval)}&section={E(tab)}&page={CurrentPage}");
+        if (tab == "Events") eventsPage = data.PageNumber; else if (tab == "Reports") reportsPage = data.PageNumber; else membersPage = data.PageNumber;
         if (expandedMember is { } id && data.People.Any(p => p.Id == id && p.HasProfile)) memberProfile = await Api.Get<ProfileReview>($"admin/members/{id}");
         else { expandedMember = null; memberProfile = null; }
     }
-    Task FilterMembers() => Run(Refresh);
+    int CurrentPage => tab == "Events" ? eventsPage : tab == "Reports" ? reportsPage : membersPage;
+    Task SwitchTab(string value) { tab = value; return Run(Refresh); }
+    Task SetPage(int value) { if (tab == "Events") eventsPage = value; else if (tab == "Reports") reportsPage = value; else membersPage = value; return Run(Refresh); }
+    Task FilterMembers() { membersPage = 1; return Run(Refresh); }
     Task ToggleMember(Guid id) => Run(async () => {
         if (expandedMember == id) { expandedMember = null; memberProfile = null; }
         else { var profile = await Api.Get<ProfileReview>($"admin/members/{id}"); memberProfile = profile; expandedMember = id; }

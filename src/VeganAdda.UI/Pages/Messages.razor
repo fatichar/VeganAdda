@@ -18,7 +18,7 @@ else
                 {
                     <Empty Icon="chat_bubble" Title="No messages yet" Text="Connect with someone to start chatting."><a href="/" class="button secondary">Discover people</a></Empty>
                 }
-                @foreach (var request in Requests)
+                @foreach (var request in VisibleRequests)
                 {
                     <a class="conversation conversation-request @(request.Incoming ? "incoming-request" : "sent-request") @(request.Key == Key ? "selected" : "")" href="/messages/@request.Key" aria-current="@(request.Key == Key ? "page" : null)" @key="request.Key">
                         <Avatar Name="@request.Person.Name" Photo="@request.Person.Photo" />
@@ -26,12 +26,14 @@ else
                         <Icon Name="@(request.Incoming ? "person_add" : "schedule")" />
                     </a>
                 }
-                @foreach (var c in Chats)
+                <Pagination PageNumber="@requestPage" PageSize="10" Total="@Requests.Count" Busy="@Busy" PageChanged="SetRequestPage" />
+                @foreach (var c in VisibleChats)
                 {
                     <a class="conversation @(c.Key == Key ? "selected" : "") @(c.Unread > 0 ? "has-unread" : "")" href="/messages/@c.Key" @key="c.Key">
                         <Avatar Name="@c.Name" Photo="@c.Photo" /><div class="conversation-copy"><div class="conversation-top"><strong>@c.Name</strong><small title="@Date(c.Updated)">@InboxTimestamp.Format(c.Updated, DateTimeOffset.UtcNow)</small></div><div class="conversation-preview"><p>@c.Latest</p>@if (c.Unread > 0) { <span class="count" aria-label="@($"{c.Unread} unread messages")">@c.Unread</span> }</div></div>
                     </a>
                 }
+                <Pagination PageNumber="@chatPage" PageSize="10" Total="@Chats.Count()" Busy="@Busy" PageChanged="SetChatPage" />
             </aside>
             <section class="chat-panel" aria-label="Conversation">
                 @if (Key == null) { <Empty Icon="forum" Title="Choose a chat" Text="Select someone to start chatting." /> }
@@ -118,6 +120,7 @@ else
     MessagePage? messagePage;
     string loadedKey = "", confirmAction = "";
     bool sending, refreshing, refreshAgain, hasOlder, menuOpen;
+    int requestPage = 1, chatPage = 1;
     bool scrollToLatest;
     ElementReference historyElement;
     readonly CancellationTokenSource stop = new();
@@ -127,6 +130,8 @@ else
     Guid? SelectedPersonId => SelectedRequest?.Person.Id ?? Selected?.PersonId;
     List<ConnectionItem> Requests => connections.Where(c => c.State == "pending").OrderByDescending(c => c.Incoming).ThenByDescending(c => c.Updated).ToList();
     IEnumerable<Conversation> Chats => conversations.Where(c => !connections.Any(r => r.State == "pending" && r.Key == c.Key));
+    IEnumerable<ConnectionItem> VisibleRequests => Requests.Skip((requestPage - 1) * 10).Take(10);
+    IEnumerable<Conversation> VisibleChats => Chats.Skip((chatPage - 1) * 10).Take(10);
     class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; }
     protected override async Task OnParametersSetAsync()
     {
@@ -158,6 +163,8 @@ else
         {
             conversations = await Api.Get<List<Conversation>>("conversations");
             connections = await Api.Get<List<ConnectionItem>>("connections");
+            requestPage = Math.Min(requestPage, Math.Max(1, (Requests.Count + 9) / 10));
+            chatPage = Math.Min(chatPage, Math.Max(1, (Chats.Count() + 9) / 10));
             if (Key != null)
             {
                 var key = Key; MessagePage result;
@@ -188,6 +195,8 @@ else
         }
         finally { refreshing = false; if (refreshAgain) await Refresh(); }
     }
+    Task SetRequestPage(int value) { requestPage = value; return Task.CompletedTask; }
+    Task SetChatPage(int value) { chatPage = value; return Task.CompletedTask; }
     Task Older() => Run(async () =>
     {
         var key = Key;

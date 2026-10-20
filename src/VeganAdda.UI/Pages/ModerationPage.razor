@@ -4,7 +4,7 @@
 <div class="narrow"><h1>Community review</h1><Feedback Error="@Error" Success="@Success" />
 @if (Session?.IsAdmin != true && Session?.IsModerator != true) { <Empty Icon="lock" Title="Moderator access" Text="This page is available only to the community review team." /> }
 else if (data != null) {
-    <div class="tab-row"><button class="chip @(tab == "Profiles" ? "active" : "")" @onclick='() => tab = "Profiles"'>Profiles @if (data.Profiles.Count > 0) { <span class="badge">@data.Profiles.Count</span> }</button><button class="chip @(tab == "Events" ? "active" : "")" @onclick='() => tab = "Events"'>Events @if (data.Events.Count > 0) { <span class="badge">@data.Events.Count</span> }</button></div>
+    <div class="tab-row"><button class="chip @(tab == "Profiles" ? "active" : "")" @onclick='() => SwitchTab("Profiles")'>Profiles @if (data.ProfilesTotal > 0) { <span class="badge">@data.ProfilesTotal</span> }</button><button class="chip @(tab == "Events" ? "active" : "")" @onclick='() => SwitchTab("Events")'>Events @if (data.EventsTotal > 0) { <span class="badge">@data.EventsTotal</span> }</button></div>
     @if (tab == "Profiles") {
         @if (data.Profiles.Count == 0) { <Empty Icon="verified" Title="All profiles reviewed" Text="New and updated profiles will appear here." /> }
         @foreach (var p in data.Profiles) {
@@ -16,6 +16,7 @@ else if (data != null) {
                 <div class="actions"><button disabled="@Busy" @onclick="() => ReviewProfile(p.Id, true)">Approve</button><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(profileNotes.GetValueOrDefault(p.Id)))" @onclick="() => ReviewProfile(p.Id, false)">Request changes</button></div>
             </article>
         }
+        <Pagination PageNumber="@profilesPage" PageSize="@data.PageSize" Total="@data.ProfilesTotal" Busy="@Busy" PageChanged="SetPage" />
     } else {
         @if (data.Events.Count == 0) { <Empty Icon="event_available" Title="No events to review" Text="Member event submissions will appear here." /> }
         @foreach (var item in data.Events) { var ev = item.Details;
@@ -26,13 +27,16 @@ else if (data != null) {
                 <div class="actions"><button disabled="@Busy" @onclick="() => ReviewEvent(ev.Id, true)">Approve and publish</button><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(eventNotes.GetValueOrDefault(ev.Id)))" @onclick="() => ReviewEvent(ev.Id, false)">Request changes</button></div>
             </article>
         }
+        <Pagination PageNumber="@eventsPage" PageSize="@data.PageSize" Total="@data.EventsTotal" Busy="@Busy" PageChanged="SetPage" />
     }
 }
 </div>
 @code {
-    ModerationData? data; string tab = "Profiles"; Dictionary<Guid, string> profileNotes = []; Dictionary<Guid, string> eventNotes = [];
+    ModerationData? data; string tab = "Profiles"; int profilesPage = 1, eventsPage = 1; Dictionary<Guid, string> profileNotes = []; Dictionary<Guid, string> eventNotes = [];
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true || Session?.IsModerator == true) await Run(Refresh); }
-    protected override async Task Refresh() => data = await Api.Get<ModerationData>("moderation");
+    protected override async Task Refresh() { data = await Api.Get<ModerationData>($"moderation?section={E(tab)}&page={(tab == "Profiles" ? profilesPage : eventsPage)}"); if (tab == "Profiles") profilesPage = data.PageNumber; else eventsPage = data.PageNumber; }
+    Task SwitchTab(string value) { tab = value; return Run(Refresh); }
+    Task SetPage(int value) { if (tab == "Profiles") profilesPage = value; else eventsPage = value; return Run(Refresh); }
     Task ReviewProfile(Guid id, bool approve) => Run(async () => { await Api.Send<Ok>("moderation/profile-review", new ProfileReviewInput(id, approve, profileNotes.GetValueOrDefault(id))); profileNotes.Remove(id); await Refresh(); Success = approve ? "Profile approved." : "Changes requested."; });
     Task ReviewEvent(Guid id, bool approve) => Run(async () => { await Api.Send<Ok>("moderation/event-review", new EventReviewInput(id, approve, eventNotes.GetValueOrDefault(id))); eventNotes.Remove(id); await Refresh(); Success = approve ? "Event approved and published." : "Changes requested."; });
 }

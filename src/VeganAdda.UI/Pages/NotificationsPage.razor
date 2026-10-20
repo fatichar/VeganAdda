@@ -15,7 +15,7 @@
     else if (items != null)
     {
         <div class="notification-toolbar">
-            <label class="notification-select"><input type="checkbox" aria-label="Select shown notifications" checked="@(selected.Count == items.Items.Count)" @onchange="SelectShown" disabled="@Busy" />Select shown</label>
+            <label class="notification-select"><input type="checkbox" aria-label="Select shown notifications" checked="@(items.Items.Count > 0 && items.Items.All(n => selected.Contains(n.Id)))" @onchange="SelectShown" disabled="@Busy" />Select shown</label>
             @if (selected.Count > 0) { <button class="text-button danger" disabled="@Busy" @onclick="DeleteSelected">Delete selected (@selected.Count)</button> }
             <button class="text-button danger" disabled="@Busy" @onclick="() => confirmAll = true">Delete all</button>
         </div>
@@ -35,21 +35,23 @@
                 </article>
             }
         </div>
+        <Pagination PageNumber="@(page)" PageSize="@items.PageSize" Total="@items.Total" Busy="@Busy" PageChanged="SetPage" />
     }
 </div>
 @code {
     NotificationList? items;
     readonly HashSet<Guid> selected = [];
-    bool confirmAll;
+    bool confirmAll; int page = 1;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(Refresh); }
     protected override async Task Refresh()
     {
         if (Session?.Id == null) return;
-        items = await Api.Get<NotificationList>("notifications");
-        selected.IntersectWith(items.Items.Select(n => n.Id));
+        items = await Api.Get<NotificationList>($"notifications?page={page}");
+        page = items.PageNumber;
         if (items.Items.Count == 0) confirmAll = false;
     }
     Task MarkRead() => Run(async () => { await Api.Send<Ok>("notifications/read"); await Refresh(); });
+    Task SetPage(int value) { page = value; return Run(Refresh); }
     async Task Open(Notice notice)
     {
         if (Busy) return;
@@ -60,7 +62,7 @@
         });
     }
     void Select(Guid id, ChangeEventArgs e) { if (e.Value is true) selected.Add(id); else selected.Remove(id); }
-    void SelectShown(ChangeEventArgs e) { selected.Clear(); if (e.Value is true && items != null) selected.UnionWith(items.Items.Select(n => n.Id)); }
+    void SelectShown(ChangeEventArgs e) { if (items == null) return; if (e.Value is true) selected.UnionWith(items.Items.Select(n => n.Id)); else selected.ExceptWith(items.Items.Select(n => n.Id)); }
     Task DeleteSelected() => Delete(selected.ToArray());
     Task DeleteAll() => Delete([], true);
     async Task Delete(Guid[] ids, bool all = false)
@@ -69,6 +71,7 @@
         await Run(async () =>
         {
             await Api.Send<Ok>("notifications", new NotificationSelection(ids, all), "DELETE");
+            if (all) selected.Clear(); else selected.ExceptWith(ids);
             confirmAll = false; await Refresh();
         });
     }

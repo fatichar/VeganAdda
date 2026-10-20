@@ -23,10 +23,10 @@ public class ProfileApprovalTests(DatabaseFixture f)
         }
 
         var data = Assert.IsType<AdminData>(await f.Call(admin, "admin"));
-        var row = Assert.Single(data.People, p => p.Id == member);
+        var row = Assert.Single((await AllMembers(admin)).People, p => p.Id == member);
         Assert.True(row.HasProfile);
         Assert.Equal(approved, row.Approved);
-        Assert.Equal(!approved, data.Profiles.Any(p => p.Id == member));
+        Assert.Equal(!approved, await IsInReviewQueue(admin, member));
     }
 
     [Theory]
@@ -47,9 +47,9 @@ public class ProfileApprovalTests(DatabaseFixture f)
 
         object approval = path == "admin/profile-review" ? new ProfileReviewInput(member, true) : new ModerateInput(member, "approve");
         await f.Call(admin, path, approval, "POST");
-        var data = Assert.IsType<AdminData>(await f.Call(admin, "admin"));
+        var data = await AllMembers(admin);
         Assert.True(Assert.Single(data.People, p => p.Id == member).Approved);
-        Assert.DoesNotContain(data.Profiles, p => p.Id == member);
+        Assert.False(await IsInReviewQueue(admin, member));
         Assert.False(Assert.IsType<ProfileInput>(await f.Call(member, "profile")).VeganVerificationPending);
         Assert.Contains(Assert.IsType<Page<Person>>(await f.Call(null, "people")).Items, p => p.Id == member);
 
@@ -60,18 +60,18 @@ public class ProfileApprovalTests(DatabaseFixture f)
             await db.SaveChangesAsync();
         }
         await f.Call(admin, "admin/moderate", new ModerateInput(member, "revoke-approval"), "POST");
-        data = Assert.IsType<AdminData>(await f.Call(admin, "admin"));
+        data = await AllMembers(admin);
         var revoked = Assert.Single(data.People, p => p.Id == member);
         Assert.False(revoked.Approved);
         Assert.False(revoked.Featured);
         Assert.False(revoked.Moderator);
-        Assert.Contains(data.Profiles, p => p.Id == member);
+        Assert.True(await IsInReviewQueue(admin, member));
         Assert.DoesNotContain(Assert.IsType<Page<Person>>(await f.Call(null, "people")).Items, p => p.Id == member);
 
         await f.Call(admin, "admin/moderate", new ModerateInput(member, "approve"), "POST");
-        data = Assert.IsType<AdminData>(await f.Call(admin, "admin"));
+        data = await AllMembers(admin);
         Assert.True(Assert.Single(data.People, p => p.Id == member).Approved);
-        Assert.DoesNotContain(data.Profiles, p => p.Id == member);
+        Assert.False(await IsInReviewQueue(admin, member));
     }
 
     [Theory]
@@ -108,5 +108,31 @@ public class ProfileApprovalTests(DatabaseFixture f)
 
         var error = await Assert.ThrowsAsync<ApiException>(() => f.Call(member, "admin/moderate", new ModerateInput(member, "revoke-admin"), "POST"));
         Assert.Equal(409, error.Status);
+    }
+
+    private async Task<AdminData> AllMembers(Guid admin)
+    {
+        var first = Assert.IsType<AdminData>(await f.Call(admin, "admin?section=Members&page=1"));
+        var people = first.People.ToList();
+        var pages = (first.MembersTotal + first.PageSize - 1) / first.PageSize;
+        for (var page = 2; page <= pages; page++)
+        {
+            var next = Assert.IsType<AdminData>(await f.Call(admin, $"admin?section=Members&page={page}"));
+            people.AddRange(next.People);
+        }
+        return first with { People = people };
+    }
+
+    private async Task<bool> IsInReviewQueue(Guid admin, Guid profileId)
+    {
+        var first = Assert.IsType<ModerationData>(await f.Call(admin, "moderation?section=Profiles&page=1"));
+        if (first.Profiles.Any(p => p.Id == profileId)) return true;
+        var pages = (first.ProfilesTotal + first.PageSize - 1) / first.PageSize;
+        for (var page = 2; page <= pages; page++)
+        {
+            var next = Assert.IsType<ModerationData>(await f.Call(admin, $"moderation?section=Profiles&page={page}"));
+            if (next.Profiles.Any(p => p.Id == profileId)) return true;
+        }
+        return false;
     }
 }

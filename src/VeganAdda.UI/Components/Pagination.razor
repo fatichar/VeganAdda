@@ -1,0 +1,16 @@
+@if (Total > PageSize)
+{
+    <nav class="pagination" aria-label="Pagination">
+        <button class="secondary" disabled="@(Busy || PageNumber <= 1)" @onclick="() => PageChanged.InvokeAsync(PageNumber - 1)">Previous</button>
+        <span>Page @PageNumber of @((Total + PageSize - 1) / PageSize)</span>
+        <button class="secondary" disabled="@(Busy || PageNumber * PageSize >= Total)" @onclick="() => PageChanged.InvokeAsync(PageNumber + 1)">Next</button>
+    </nav>
+}
+
+@code {
+    [Parameter] public int PageNumber { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 12;
+    [Parameter] public int Total { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+}

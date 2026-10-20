@@ -87,18 +87,18 @@ public class EventInput
 }
 public record EventReview(EventInput Details, string? SubmittedBy);
 public record EventReviewInput(Guid Id, bool Approve, string? Note = null);
-public record ModerationData(List<ProfileReview> Profiles, List<EventReview> Events);
+public record ModerationData(List<ProfileReview> Profiles, List<EventReview> Events, int ProfilesTotal = 0, int EventsTotal = 0, int PageNumber = 1, int PageSize = 20);
 public record EventCard(Guid Id, string Title, string Cover, string Description, DateTimeOffset? Start,
     DateTimeOffset? End, string TimeZone, string City, string Venue, string Organizer, string? Registration,
     bool Featured, bool Saved, bool Attending, bool AttendeeVisible, bool Demo);
 public record AttendanceInput(bool Attending, bool Visible);
 public record SavedItems(List<Person> People, List<EventCard> Events);
 public record Notice(Guid Id, string Kind, string Text, string Url, bool Read, DateTimeOffset Created);
-public record NotificationList(List<Notice> Items, int Unread);
+public record NotificationList(List<Notice> Items, int Unread, int Total = 0, int PageNumber = 1, int PageSize = 20);
 public record NotificationSelection(Guid[] Ids, bool All = false);
 public record UnreadCounts(int Messages, int Notifications);
 public record ReportView(Guid Id, string Reporter, Guid SubjectId, string Subject, string Reason, bool Resolved, DateTimeOffset Created);
-public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People, List<ProfileReview> Profiles);
+public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People, List<ProfileReview> Profiles, int EventsTotal = 0, int ReportsTotal = 0, int MembersTotal = 0, int ProfilesTotal = 0, int PageNumber = 1, int PageSize = 20);
 public record AdminPerson(Guid Id, string Name, bool Suspended, bool Public, bool Consent, bool Featured, bool Approved = false, bool TestProfile = false, bool Moderator = false, bool? IsVegan = null, bool HasProfile = false, bool Admin = false);
 public record ProfileReview(Guid Id, string Name, string City, string Bio, string[] Interests, string[] LookingFor, string Photo, string? Instagram, string? LinkedIn, string? Website, bool Public, bool TestProfile, string? ReferredBy, bool ReferrerCanRefer, string? ReviewNote, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerificationPending = false);
 public record ProfileReviewInput(Guid Id, bool Approve, string? Note = null);

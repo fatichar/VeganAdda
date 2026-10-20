@@ -30,14 +30,16 @@ else if (profile != null) {
     }
     <div class="section-heading"><h2>Your submissions</h2><button class="secondary" @onclick="NewEvent" disabled="@Busy">Suggest another</button></div>
     @if (submissions.Count == 0) { <p class="muted">You have no event submissions yet.</p> }
-    @foreach (var item in submissions) { <article class="card admin-row"><div><strong>@item.Title</strong><small>@item.City · @item.SubmissionStatus</small>@if (item.ReviewNote != null) { <small class="error-text">@item.ReviewNote</small> }</div>@if (item.SubmissionStatus != "Pending review") { <button class="secondary small-button" @onclick="() => Edit(item)">Edit</button> }</article> }
+    @foreach (var item in submissions.Skip((submissionPage - 1) * 12).Take(12)) { <article class="card admin-row"><div><strong>@item.Title</strong><small>@item.City · @item.SubmissionStatus</small>@if (item.ReviewNote != null) { <small class="error-text">@item.ReviewNote</small> }</div>@if (item.SubmissionStatus != "Pending review") { <button class="secondary small-button" @onclick="() => Edit(item)">Edit</button> }</article> }
+    <Pagination PageNumber="@submissionPage" Total="@submissions.Count" Busy="@Busy" PageChanged="SetSubmissionPage" />
 }
 </div>
 @code {
     [Parameter] public Guid? Id { get; set; }
-    ProfileInput? profile; List<EventInput> submissions = []; EventInput? edit; DateTime? start, end;
+    ProfileInput? profile; List<EventInput> submissions = []; EventInput? edit; DateTime? start, end; int submissionPage = 1;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null && Session.HasProfile) await Run(Refresh); }
-    protected override async Task Refresh() { profile = await Api.Get<ProfileInput>("profile"); submissions = await Api.Get<List<EventInput>>("event-submissions"); if (Id.HasValue) { var item = submissions.FirstOrDefault(x => x.Id == Id.Value); if (item != null && item.SubmissionStatus != "Pending review") Edit(item); } if (edit == null) NewEvent(); }
+    protected override async Task Refresh() { profile = await Api.Get<ProfileInput>("profile"); submissions = await Api.Get<List<EventInput>>("event-submissions"); submissionPage = Math.Min(submissionPage, Math.Max(1, (submissions.Count + 11) / 12)); if (Id.HasValue) { var item = submissions.FirstOrDefault(x => x.Id == Id.Value); if (item != null && item.SubmissionStatus != "Pending review") Edit(item); } if (edit == null) NewEvent(); }
+    Task SetSubmissionPage(int value) { submissionPage = value; return Task.CompletedTask; }
     void NewEvent() { edit = new() { City = profile?.City ?? "Pune" }; start = end = null; }
     void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
     Task Save() => Run(async () => { try { var zone = TimeZoneInfo.FindSystemTimeZoneById(edit!.TimeZone); edit.Start = start.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start.Value, DateTimeKind.Unspecified), zone)) : null; edit.End = end.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end.Value, DateTimeKind.Unspecified), zone)) : null; } catch { throw new ApiException(400, "Check the time zone and local event times."); } await Api.Send<Ok>("event-submissions", edit); edit = null; await Refresh(); Success = "Your event was submitted for review."; });

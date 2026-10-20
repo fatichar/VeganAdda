@@ -46,11 +46,19 @@ public partial class CommunityService
         else throw Missing();
         await db.SaveChangesAsync(); await tx.CommitAsync(); return new Ok();
     }
-    private async Task<object> Admin(string approval = "")
+    private async Task<object> Admin(string approval = "", string section = "Members", int page = 1)
     {
         await User(admin: true);
-        var events = await db.Events.OrderBy(e => e.Start).Select(e => new EventInput { Id = e.Id, Title = e.Title, Cover = e.Cover, Description = e.Description, Start = e.Start, End = e.End, TimeZone = e.TimeZone, City = e.City, Venue = e.Venue, Organizer = e.Organizer, Registration = e.Registration, Published = e.Published, Featured = e.Featured, SubmissionStatus = e.PendingReview ? "Pending review" : e.Published ? "Approved" : e.ReviewNote != null ? "Changes requested" : "Draft", ReviewNote = e.ReviewNote }).ToListAsync();
-        var reports = await db.Reports.OrderByDescending(r => r.Created).Take(100).Select(r => new ReportView(r.Id, r.ReporterId == null ? "Deleted account" : "Member", r.SubjectId ?? Guid.Empty, r.SubjectId == null ? "Deleted account" : db.Accounts.Where(a => a.Id == r.SubjectId).Select(a => a.Name).FirstOrDefault() ?? "Unavailable", r.Reason, r.Resolved, r.Created)).ToListAsync();
+        const int pageSize = 20;
+        if (section is not ("Events" or "Members" or "Reports")) throw new ApiException(400, "Choose a supported administration section.");
+        var eventsQuery = db.Events.AsQueryable();
+        var eventsTotal = await eventsQuery.CountAsync();
+        var eventsPage = section == "Events" ? Math.Min(page, Math.Max(1, (eventsTotal + pageSize - 1) / pageSize)) : 1;
+        var events = section == "Events" ? await eventsQuery.OrderBy(e => e.Start).ThenBy(e => e.Id).Skip((eventsPage - 1) * pageSize).Take(pageSize).Select(e => new EventInput { Id = e.Id, Title = e.Title, Cover = e.Cover, Description = e.Description, Start = e.Start, End = e.End, TimeZone = e.TimeZone, City = e.City, Venue = e.Venue, Organizer = e.Organizer, Registration = e.Registration, Published = e.Published, Featured = e.Featured, SubmissionStatus = e.PendingReview ? "Pending review" : e.Published ? "Approved" : e.ReviewNote != null ? "Changes requested" : "Draft", ReviewNote = e.ReviewNote }).ToListAsync() : [];
+        var reportsQuery = db.Reports.AsQueryable();
+        var reportsTotal = await reportsQuery.CountAsync();
+        var reportsPage = section == "Reports" ? Math.Min(page, Math.Max(1, (reportsTotal + pageSize - 1) / pageSize)) : 1;
+        var reports = section == "Reports" ? await reportsQuery.OrderByDescending(r => r.Created).ThenByDescending(r => r.Id).Skip((reportsPage - 1) * pageSize).Take(pageSize).Select(r => new ReportView(r.Id, r.ReporterId == null ? "Deleted account" : "Member", r.SubjectId ?? Guid.Empty, r.SubjectId == null ? "Deleted account" : db.Accounts.Where(a => a.Id == r.SubjectId).Select(a => a.Name).FirstOrDefault() ?? "Unavailable", r.Reason, r.Resolved, r.Created)).ToListAsync() : [];
         var members = db.Accounts.AsQueryable();
         members = approval switch
         {
@@ -60,20 +68,42 @@ public partial class CommunityService
             "no-profile" => members.Where(a => !db.Profiles.Any(p => p.Id == a.Id)),
             _ => throw new ApiException(400, "Choose a supported approval filter.")
         };
-        var accounts = await members.OrderBy(a => a.Name).ThenBy(a => a.Id).Take(200).ToListAsync();
+        var membersTotal = await members.CountAsync();
+        var membersPage = section == "Members" ? Math.Min(page, Math.Max(1, (membersTotal + pageSize - 1) / pageSize)) : 1;
+        var accounts = section == "Members" ? await members.OrderBy(a => a.Name).ThenBy(a => a.Id).Skip((membersPage - 1) * pageSize).Take(pageSize).ToListAsync() : [];
         var people = new List<AdminPerson>();
         foreach (var a in accounts)
         {
             var profile = await db.Profiles.FindAsync(a.Id);
             people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, profile?.Approved ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null, a.Admin));
         }
-        return new AdminData(events, reports, people, await ProfileQueue(includeTestProfiles: true));
+        var profilesTotal = await db.Profiles.CountAsync(p => !p.Approved);
+        var profiles = await db.Profiles.Where(p => !p.Approved).OrderBy(p => p.Name).ThenBy(p => p.Id).Take(pageSize).ToListAsync();
+        var verified = await VerifiedAccounts();
+        var pendingProfiles = new List<ProfileReview>();
+        foreach (var profile in profiles) pendingProfiles.Add(await ProfileReviewDto(profile, verified));
+        var activePage = section == "Events" ? eventsPage : section == "Reports" ? reportsPage : membersPage;
+        return new AdminData(events, reports, people, pendingProfiles, eventsTotal, reportsTotal, membersTotal, profilesTotal, activePage, pageSize);
     }
     private async Task<ProfileReview> AdminMemberProfile(Guid id)
     {
         await User(admin: true);
         var profile = await db.Profiles.FindAsync(id) ?? throw Missing();
         return await ProfileReviewDto(profile, await VerifiedAccounts());
+    }
+    private async Task<ModerationData> Moderation(string section, int page)
+    {
+        const int pageSize = 20;
+        if (section is not ("Profiles" or "Events")) throw new ApiException(400, "Choose a supported review section.");
+        var profilesQuery = db.Profiles.Where(p => !p.Approved && !p.TestProfile);
+        var eventsQuery = db.Events.Where(e => e.PendingReview && !e.Demo);
+        var profilesTotal = await profilesQuery.CountAsync();
+        var eventsTotal = await eventsQuery.CountAsync();
+        var sectionTotal = section == "Profiles" ? profilesTotal : eventsTotal;
+        page = Math.Min(page, Math.Max(1, (sectionTotal + pageSize - 1) / pageSize));
+        var profiles = section == "Profiles" ? await ProfileQueue(includeTestProfiles: false, page, pageSize) : [];
+        var events = section == "Events" ? await EventQueue(includeTestEvents: false, page, pageSize) : [];
+        return new ModerationData(profiles, events, profilesTotal, eventsTotal, page, pageSize);
     }
     private async Task<ProfileReview> ProfileReviewDto(Profile p, HashSet<Guid> verifiedAccounts)
     {
@@ -84,19 +114,19 @@ public partial class CommunityService
         return new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
             referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending);
     }
-    private async Task<List<ProfileReview>> ProfileQueue(bool includeTestProfiles)
+    private async Task<List<ProfileReview>> ProfileQueue(bool includeTestProfiles, int page = 1, int pageSize = 20)
     {
         if (includeTestProfiles) await User(admin: true); else await User(moderator: true);
         var verifiedAccounts = await VerifiedAccounts();
-        var reviewRows = await db.Profiles.Where(p => !p.Approved && (includeTestProfiles || !p.TestProfile)).OrderBy(p => p.Name).Take(200).ToListAsync();
+        var reviewRows = await db.Profiles.Where(p => !p.Approved && (includeTestProfiles || !p.TestProfile)).OrderBy(p => p.Name).ThenBy(p => p.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var profileReviews = new List<ProfileReview>();
         foreach (var p in reviewRows) profileReviews.Add(await ProfileReviewDto(p, verifiedAccounts));
         return profileReviews;
     }
-    private async Task<List<EventReview>> EventQueue(bool includeTestEvents)
+    private async Task<List<EventReview>> EventQueue(bool includeTestEvents, int page = 1, int pageSize = 20)
     {
         await User(moderator: !includeTestEvents, admin: includeTestEvents);
-        var rows = await db.Events.Where(e => e.PendingReview && (includeTestEvents || !e.Demo)).OrderBy(e => e.Start).Take(200).ToListAsync();
+        var rows = await db.Events.Where(e => e.PendingReview && (includeTestEvents || !e.Demo)).OrderBy(e => e.Start).ThenBy(e => e.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var result = new List<EventReview>();
         foreach (var e in rows)
         {

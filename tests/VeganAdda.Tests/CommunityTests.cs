@@ -34,7 +34,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     public async Task<Guid> Member(bool pub = true, bool dating = false, bool admin = false)
     {
         await using var db = Db(); var u = new Account { Subject = Guid.NewGuid().ToString(), Name = "Test Member", Admin = admin };
-        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", State = "Maharashtra", Public = pub, Approved = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
+        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", State = "Maharashtra", Public = pub, Approved = true, IsVegan = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
     }
     public async Task DisposeAsync()
     {
@@ -207,7 +207,14 @@ public class CommunityTests(DatabaseFixture f)
         var own = Enumerable.Range(0, 55).Select(i => new VeganAdda.Web.Data.Notification { UserId = a, Text = "Update " + i, Kind = "request", Url = "/messages?tab=requests", Created = DateTimeOffset.UtcNow.AddMinutes(i) }).ToList();
         var foreign = new VeganAdda.Web.Data.Notification { UserId = b, Text = "Private update", Kind = "request" };
         await using (var db = f.Db()) { db.Notifications.AddRange(own); db.Notifications.Add(foreign); await db.SaveChangesAsync(); }
-        Assert.Equal(50, Assert.IsType<NotificationList>(await f.Call(a, "notifications")).Items.Count);
+        var firstPage = Assert.IsType<NotificationList>(await f.Call(a, "notifications"));
+        Assert.Equal(20, firstPage.Items.Count);
+        Assert.Equal(55, firstPage.Total);
+        Assert.Equal(1, firstPage.PageNumber);
+        var secondPage = Assert.IsType<NotificationList>(await f.Call(a, "notifications?page=2"));
+        Assert.Equal(20, secondPage.Items.Count);
+        Assert.Equal(2, secondPage.PageNumber);
+        Assert.DoesNotContain(firstPage.Items.Select(n => n.Id), id => secondPage.Items.Any(n => n.Id == id));
         Assert.Equal(55, Assert.IsType<UnreadCounts>(await f.Call(a, "unread")).Notifications);
         await f.Call(a, $"notifications/{own[0].Id}/read", null, "POST");
         await f.Call(a, $"notifications/{own[0].Id}/read", null, "POST");

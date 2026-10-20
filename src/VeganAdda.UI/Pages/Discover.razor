@@ -24,7 +24,7 @@
     @if (!Loaded || Busy) { <p role="status" class="loading">Finding people…</p> }
     else if (people.Count == 0) { <Empty Title="No people found" Text="Try another city or reset your filters."><button class="secondary" @onclick="Clear">Reset filters</button></Empty> }
     else { <div class="people-grid">@foreach (var p in people) { <PersonCard Person="p" Viewer="Session?.Id" Connect="Connect" Save="Save" /> }</div> }
-    @if (total > 12) { <div class="pagination"><button class="secondary" disabled="@(page <= 1 || Busy)" @onclick="Previous">Previous</button><span>Page @(page) of @((total + 11) / 12)</span><button class="secondary" disabled="@(page * 12 >= total || Busy)" @onclick="Next">Next</button></div> }
+    <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
     <ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
 </div>
 @code {
@@ -38,7 +38,7 @@
     Task Search() { page = 1; return Run(Refresh); }
     void FilterKey(KeyboardEventArgs e) { if (e.Key == "Escape") filtersOpen = false; }
     Task Clear() { search = interest = intent = ""; includeNonVegan = false; City = "All India"; return Search(); }
-    Task Previous() { page--; return Run(Refresh); } Task Next() { page++; return Run(Refresh); }
+    Task SetPage(int value) { page = value; return Run(Refresh); }
     Task Connect(Person p) { if (Session?.Id == null) Platform.SignIn($"/people/{p.Id}?action=connect"); else if (!Session.HasProfile) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{p.Id}?action=connect")}"); else connecting = p; return Task.CompletedTask; }
     async Task Save(Person p) { if (!ReadyForAction($"/people/{p.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"people/{p.Id}/save"); await Refresh(); Success = p.Saved ? "Profile unsaved." : "Profile saved."; }); }
     async Task Connected() { Success = "Request sent."; await Run(Refresh); }
