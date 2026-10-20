@@ -122,6 +122,12 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<int>("PushAttempts")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("PushLeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("PushLeaseUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("PushPending")
                         .HasColumnType("boolean");
 
@@ -137,6 +143,10 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasColumnType("character varying(4000)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Id")
+                        .HasDatabaseName("IX_Messages_PendingPush")
+                        .HasFilter("\"PushPending\" = TRUE");
 
                     b.HasIndex("Conversation", "Id");
 
@@ -380,6 +390,21 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Profiles");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.PushDelivery", b =>
+                {
+                    b.Property<long>("MessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MessageId", "DeviceId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.ToTable("PushDeliveries");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.PushDevice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -613,6 +638,21 @@ namespace VeganAdda.Web.Data.Migrations
                     b.HasOne("VeganAdda.Web.Data.Account", null)
                         .WithOne()
                         .HasForeignKey("VeganAdda.Web.Data.Profile", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.PushDelivery", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.PushDevice", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VeganAdda.Web.Data.ChatMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

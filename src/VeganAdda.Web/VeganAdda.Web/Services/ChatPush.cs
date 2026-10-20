@@ -80,8 +80,10 @@ public sealed class FirebaseChatPushSender(IConfiguration config) : IChatPushSen
         }, ct);
     }
 }
-public sealed class ChatPushWorker(IServiceScopeFactory scopes, IConfiguration config, IChatPushSender sender, ILogger<ChatPushWorker> logger) : BackgroundService
+public sealed class ChatPushWorker(IServiceScopeFactory scopes, IConfiguration config, IChatPushSender sender, ILogger<ChatPushWorker> logger, TimeProvider? time = null) : BackgroundService
 {
+    private TimeProvider Clock { get; } = time ?? TimeProvider.System;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (string.IsNullOrWhiteSpace(config["Push:VapidKey"]) || string.IsNullOrWhiteSpace(config["Push:SenderId"])) return;
@@ -96,42 +98,112 @@ public sealed class ChatPushWorker(IServiceScopeFactory scopes, IConfiguration c
             { logger.LogWarning("Chat push batch failed: {Type}", ex.GetType().Name); }
         }
     }
+    private sealed record Claim(long Id, string Conversation, Guid SenderId, DateTimeOffset SentAt, int Attempt, Guid Lease);
+
     public async Task DeliverPending(CancellationToken stoppingToken = default)
+    {
+        // Claim one message at a time so a slow earlier delivery cannot exhaust a
+        // later message's lease before processing even starts.
+        for (var i = 0; i < 20; i++)
+        {
+            var claim = await ClaimNext(stoppingToken);
+            if (claim == null) return;
+            await Deliver(claim, stoppingToken);
+        }
+    }
+
+    private async Task<Claim?> ClaimNext(CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
-        await using var tx = await db.Database.BeginTransactionAsync(stoppingToken);
-        // Avoid two replicas sending the same pending batch.
-        var messages = await db.Messages.FromSqlRaw("SELECT * FROM \"Messages\" WHERE \"PushPending\" = TRUE ORDER BY \"Id\" LIMIT 20 FOR UPDATE SKIP LOCKED").ToListAsync(stoppingToken);
-        foreach (var message in messages)
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var now = Clock.GetUtcNow();
+        var message = (await db.Messages.FromSqlInterpolated($"""
+            SELECT * FROM "Messages"
+            WHERE "PushPending" = TRUE AND ("PushLeaseUntil" IS NULL OR "PushLeaseUntil" <= {now})
+            ORDER BY "Id" LIMIT 1 FOR UPDATE SKIP LOCKED
+            """).ToListAsync(ct)).SingleOrDefault();
+        if (message == null) return null;
+        if (message.PushAttempts >= 4)
         {
+            // A crash can leave the final attempt leased and pending. Recover it
+            // without performing a fifth delivery after the lease expires.
             message.PushPending = false;
-            var r = await db.Relationships.FindAsync([message.Conversation], stoppingToken);
-            if (r == null || r.State != "accepted" || message.SentAt < DateTimeOffset.UtcNow.AddHours(-1)) continue;
-            var recipient = r.A == message.SenderId ? r.B : r.A;
-            if ((r.A == recipient ? r.ReadA : r.ReadB) >= message.Id
-                || await db.Accounts.AnyAsync(a => (a.Id == recipient || a.Id == message.SenderId) && a.Suspended, stoppingToken)
-                || await db.Blocks.AnyAsync(b => (b.Owner == recipient && b.Subject == message.SenderId) || (b.Owner == message.SenderId && b.Subject == recipient), stoppingToken)) continue;
-            var devices = await db.PushDevices.Where(d => d.UserId == recipient && d.Updated > DateTimeOffset.UtcNow.AddDays(-60)).ToListAsync(stoppingToken);
-            foreach (var device in devices)
+            message.PushLeaseId = null;
+            message.PushLeaseUntil = null;
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return null;
+        }
+        var lease = Guid.NewGuid();
+        message.PushLeaseId = lease;
+        message.PushLeaseUntil = now.AddMinutes(2);
+        message.PushAttempts++;
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return new(message.Id, message.Conversation, message.SenderId, message.SentAt, message.PushAttempts, lease);
+    }
+
+    private async Task Deliver(Claim claim, CancellationToken stoppingToken)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
+        var retry = false;
+        using var deliveryTimeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        deliveryTimeout.CancelAfter(TimeSpan.FromSeconds(45)); // Always shorter than the lease.
+        var ct = deliveryTimeout.Token;
+        try
+        {
+            var relationship = await db.Relationships.FindAsync([claim.Conversation], ct);
+            if (relationship != null && relationship.State == "accepted" && claim.SentAt >= Clock.GetUtcNow().AddHours(-1))
             {
-                try
+                var recipient = relationship.A == claim.SenderId ? relationship.B : relationship.A;
+                var through = relationship.A == recipient ? relationship.ReadA : relationship.ReadB;
+                var suppressed = through >= claim.Id
+                    || await db.Accounts.AnyAsync(a => (a.Id == recipient || a.Id == claim.SenderId) && a.Suspended, ct)
+                    || await db.Blocks.AnyAsync(b => (b.Owner == recipient && b.Subject == claim.SenderId) || (b.Owner == claim.SenderId && b.Subject == recipient), ct);
+                if (!suppressed)
                 {
-                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                    timeout.CancelAfter(TimeSpan.FromSeconds(10));
-                    await sender.Send(device.Token, message.Id, recipient, timeout.Token);
-                }
-                catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode == MessagingErrorCode.Unregistered)
-                { db.PushDevices.Remove(device); }
-                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
-                {
-                    // Do not log tokens, credentials or message contents.
-                    logger.LogWarning("Chat push failed: {Type}", ex.GetType().Name);
-                    message.PushPending = message.PushAttempts < 3;
+                    var delivered = await db.PushDeliveries.Where(d => d.MessageId == claim.Id).Select(d => d.DeviceId).ToArrayAsync(ct);
+                    var devices = await db.PushDevices.Where(d => d.UserId == recipient && d.Updated > Clock.GetUtcNow().AddDays(-60) && !delivered.Contains(d.Id)).ToListAsync(ct);
+                    foreach (var device in devices)
+                    {
+                        try
+                        {
+                            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+                            await sender.Send(device.Token, claim.Id, recipient, timeout.Token);
+                            // No database transaction/row lock is held across Firebase I/O.
+                            // A stable message ID also lets clients deduplicate crash-window redelivery.
+                            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                                INSERT INTO "PushDeliveries" ("MessageId", "DeviceId")
+                                VALUES ({claim.Id}, {device.Id}) ON CONFLICT DO NOTHING
+                                """, ct);
+                        }
+                        catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode == MessagingErrorCode.Unregistered)
+                        {
+                            await db.PushDevices.Where(d => d.Id == device.Id).ExecuteDeleteAsync(ct);
+                        }
+                        catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                        {
+                            logger.LogWarning("Chat push failed: {Type}", ex.GetType().Name);
+                            retry = true;
+                        }
+                    }
                 }
             }
-            message.PushAttempts++;
         }
-        await db.SaveChangesAsync(stoppingToken); await tx.CommitAsync(stoppingToken);
+        catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Chat push delivery failed: {Type}", ex.GetType().Name);
+            retry = true;
+        }
+        // On shutdown the lease deliberately remains recoverable by another worker.
+        stoppingToken.ThrowIfCancellationRequested();
+        await db.Messages.Where(m => m.Id == claim.Id && m.PushLeaseId == claim.Lease)
+            .ExecuteUpdateAsync(update => update
+                .SetProperty(m => m.PushPending, retry && claim.Attempt < 4)
+                .SetProperty(m => m.PushLeaseId, (Guid?)null)
+                .SetProperty(m => m.PushLeaseUntil, retry && claim.Attempt < 4 ? (DateTimeOffset?)Clock.GetUtcNow().AddSeconds(5) : null), stoppingToken);
     }
 }

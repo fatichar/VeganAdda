@@ -69,6 +69,8 @@ public class Block
 public class ChatMessage
 {
     public bool PushPending { get; set; }
+    public Guid? PushLeaseId { get; set; }
+    public DateTimeOffset? PushLeaseUntil { get; set; }
     public int PushAttempts { get; set; }
     public long Id { get; set; }
     public string Conversation { get; set; } = "";
@@ -150,6 +152,7 @@ public class ReferralInvite
 }
 public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(options)
 {
+    public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<PushDevice> PushDevices => Set<PushDevice>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Profile> Profiles => Set<Profile>();
@@ -176,6 +179,10 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<Block>().HasOne<Account>().WithMany().HasForeignKey(x => x.Subject).OnDelete(DeleteBehavior.Cascade);
         b.Entity<ChatMessage>().HasIndex(x => new { x.SenderId, x.ClientId }).IsUnique();
         b.Entity<ChatMessage>().HasIndex(x => new { x.Conversation, x.Id });
+        b.Entity<ChatMessage>().HasIndex(x => x.Id).HasDatabaseName("IX_Messages_PendingPush").HasFilter("\"PushPending\" = TRUE");
+        b.Entity<PushDelivery>().HasKey(x => new { x.MessageId, x.DeviceId });
+        b.Entity<PushDelivery>().HasOne<ChatMessage>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PushDelivery>().HasOne<PushDevice>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<ChatMessage>().HasOne<Relationship>().WithMany().HasForeignKey(x => x.Conversation).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Attendance>().HasKey(x => new { x.UserId, x.EventId });
         b.Entity<Attendance>().HasOne<Account>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -207,4 +214,10 @@ public class PushDevice
     public Guid UserId { get; set; }
     public string Token { get; set; } = "";
     public DateTimeOffset Updated { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public class PushDelivery
+{
+    public long MessageId { get; set; }
+    public Guid DeviceId { get; set; }
 }

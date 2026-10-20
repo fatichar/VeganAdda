@@ -35,11 +35,13 @@ public class ChatPushTests(DatabaseFixture f)
         }
         using var services = new ServiceCollection().AddDbContext<CommunityDb>(o => o.UseNpgsql(f.Connection)).BuildServiceProvider();
         var sender = new Sender { Fail = true };
-        var worker = new ChatPushWorker(services.GetRequiredService<IServiceScopeFactory>(), new ConfigurationBuilder().Build(), sender, NullLogger<ChatPushWorker>.Instance);
+        var clock = new ManualClock();
+        var worker = new ChatPushWorker(services.GetRequiredService<IServiceScopeFactory>(), new ConfigurationBuilder().Build(), sender, NullLogger<ChatPushWorker>.Instance, clock);
         var input = new MessageInput(Guid.NewGuid(), "Private text must never reach the transport");
         var message = (Message)await f.Call(a, $"conversations/{key}/messages", input, "POST");
         await worker.DeliverPending();
         await using (var db = f.Db()) { var queued = await db.Messages.FindAsync(message.Id); Assert.True(queued!.PushPending); Assert.Equal(1, queued.PushAttempts); }
+        clock.Advance(TimeSpan.FromSeconds(6));
         sender.Fail = false;
         await worker.DeliverPending();
         Assert.Equal(("recipient", message.Id, b), Assert.Single(sender.Sent));
