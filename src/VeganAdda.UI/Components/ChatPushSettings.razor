@@ -1,12 +1,18 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 @implements IAsyncDisposable
-@if (ShowControls)
+@if (state != "" || error != "")
 {
 <div class="actions" aria-label="Chat notifications">
     @if (state is "enabled" or "off")
     {
-        <button class="text-button" disabled="@busy" @onclick="Toggle">@(state == "enabled" ? "Turn off chat notifications" : "Enable chat notifications")</button>
+        @if (inviteVisible)
+        {
+            <span class="small muted">Get an alert when a new message arrives.</span>
+            <button class="text-button" disabled="@busy" @onclick="Toggle">Enable chat notifications</button>
+            <button class="text-button" disabled="@busy" @onclick="DismissInvite">Not now</button>
+        }
+        else { <button class="text-button" disabled="@busy" @onclick="Toggle">@(state == "enabled" ? "Turn off chat notifications" : "Enable chat notifications")</button> }
     }
     else if (state == "blocked") { <span class="small muted">Allow notifications in your browser settings to enable chat alerts.</span> }
     else if (state == "unsupported") { <span class="small muted">Chat alerts need a supported browser. On iPhone, add VeganAdda to your Home Screen first.</span> }
@@ -14,9 +20,8 @@
 </div>
 }
 @code {
-    [Parameter] public bool ShowControls { get; set; }
     string state = "", error = "";
-    bool busy;
+    bool busy, inviteVisible;
     IJSObjectReference? module;
     protected override async Task OnAfterRenderAsync(bool first)
     {
@@ -25,6 +30,7 @@
         {
             module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-push.js");
             state = await module.InvokeAsync<string>("refresh");
+            inviteVisible = await module.InvokeAsync<bool>("claimInvite", state == "off");
         }
         catch (JSException) { error = "Chat notification settings are unavailable. Refresh to try again."; }
         StateHasChanged();
@@ -33,9 +39,10 @@
     {
         if (module == null) return;
         busy = true; error = "";
-        try { state = await module.InvokeAsync<string>(state == "enabled" ? "disable" : "enable"); }
+        try { state = await module.InvokeAsync<string>(state == "enabled" ? "disable" : "enable"); if (state != "off") inviteVisible = false; }
         catch (JSException) { error = "Could not update chat notifications. Please try again."; }
         finally { busy = false; }
     }
+    void DismissInvite() => inviteVisible = false;
     public async ValueTask DisposeAsync() { if (module != null) await module.DisposeAsync(); }
 }

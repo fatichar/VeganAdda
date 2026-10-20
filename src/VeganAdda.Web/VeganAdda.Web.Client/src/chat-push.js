@@ -2,6 +2,15 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getMessaging, getToken, deleteToken, isSupported, onMessage } from 'firebase/messaging';
 
 let messaging, registration, listening;
+export function claimInvite(isEligible) {
+  if (!isEligible) return false;
+  const key = 'veganadda-chat-push-invite-seen';
+  try {
+    if (localStorage.getItem(key)) return false;
+    localStorage.setItem(key, 'true');
+    return isEligible;
+  } catch { return false; }
+}
 async function request(method, body) {
   const csrf = await (await fetch('/api/csrf')).json();
   const response = await fetch('/api/push/device', { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf.token }, body: body ? JSON.stringify(body) : undefined });
