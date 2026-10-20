@@ -29,7 +29,7 @@
                 <article class="notification card @(n.Read ? "" : "unread")" @key="n.Id">
                     <label class="notification-select"><input type="checkbox" aria-label="@($"Select notification: {n.Text}")" checked="@selected.Contains(n.Id)" @onchange="e => Select(n.Id, e)" disabled="@Busy" /></label>
                     <a class="notification-content" href="@n.Url" @onclick="() => Open(n)" @onclick:preventDefault>
-                        <span class="notice-symbol"><Icon Name="@(n.Kind == "declined" ? "person_remove" : "person_add")" /></span><div><strong>@n.Text</strong><small>@Date(n.Created)</small></div><Icon Name="arrow_forward" />
+                        <span class="notice-symbol"><Icon Name="@(n.Kind == "admin-appointed" ? "admin_panel_settings" : n.Kind == "admin-revoked" ? "person_off" : n.Kind == "declined" ? "person_remove" : "person_add")" /></span><div><strong>@n.Text</strong><small>@Date(n.Created)</small></div><Icon Name="arrow_forward" />
                     </a>
                     <button class="icon-button danger" aria-label="@($"Delete notification: {n.Text}")" disabled="@Busy" @onclick="() => Delete([n.Id])"><Icon Name="delete" /></button>
                 </article>

@@ -142,6 +142,9 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
     .chat-header .chat-menu { margin-left:auto; }
 }
 .admin-profile-review{display:grid;gap:12px;margin:16px 0}.admin-profile-summary{display:flex;align-items:center;gap:12px}.admin-profile-summary h2{margin:0}.profile-social-review{display:flex;flex-wrap:wrap;gap:12px}.profile-social-review a{display:inline-flex;align-items:center;gap:4px}
+.admin-member-toolbar{display:flex;align-items:end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:20px 0}.admin-member-toolbar label{margin:0;min-width:200px}.admin-member-toolbar select{display:block;margin-top:6px}.admin-member-toolbar p{margin:0}
+.admin-member{margin-bottom:15px;min-width:0}.admin-member>.admin-row{margin-bottom:0}.admin-member .admin-row>div{min-width:0}.admin-member-name{justify-content:flex-start;min-height:44px;padding:4px 0;border:0;border-radius:4px;background:none;color:var(--green);font-size:1.05rem;text-align:left;overflow-wrap:anywhere}.admin-member-name:hover{background:none;box-shadow:none;text-decoration:underline}.admin-member-name .material-symbols-outlined{font-size:20px}
+.admin-member-details{display:grid;gap:12px;border-top:1px solid var(--line);margin-top:20px;padding-top:20px;min-width:0}.admin-member-details p,.admin-member-details label{margin:0}.admin-member-details .profile-bio{white-space:pre-wrap;overflow-wrap:anywhere}.admin-member-details textarea{min-width:0}
 .event-suggest{margin-bottom:16px}
 .site-header .brand{flex-shrink:0}
 .conversation{padding:12px 16px;min-height:72px}
@@ -165,3 +168,5 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .referral-result{min-width:0}
 @media(max-width:767px){.referral-invite{padding:18px 15px}}
 @media(max-width:767px){.brand-logo{width:88px}}
+
+.admin-entry{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--soft);color:var(--forest);font-size:.82rem;font-weight:650}.admin-entry .material-symbols-outlined{font-size:19px}.admin-entry:hover{background:#e9eee7}

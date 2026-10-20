@@ -46,19 +46,43 @@ public partial class CommunityService
         else throw Missing();
         await db.SaveChangesAsync(); await tx.CommitAsync(); return new Ok();
     }
-    private async Task<object> Admin()
+    private async Task<object> Admin(string approval = "")
     {
         await User(admin: true);
         var events = await db.Events.OrderBy(e => e.Start).Select(e => new EventInput { Id = e.Id, Title = e.Title, Cover = e.Cover, Description = e.Description, Start = e.Start, End = e.End, TimeZone = e.TimeZone, City = e.City, Venue = e.Venue, Organizer = e.Organizer, Registration = e.Registration, Published = e.Published, Featured = e.Featured, SubmissionStatus = e.PendingReview ? "Pending review" : e.Published ? "Approved" : e.ReviewNote != null ? "Changes requested" : "Draft", ReviewNote = e.ReviewNote }).ToListAsync();
         var reports = await db.Reports.OrderByDescending(r => r.Created).Take(100).Select(r => new ReportView(r.Id, r.ReporterId == null ? "Deleted account" : "Member", r.SubjectId ?? Guid.Empty, r.SubjectId == null ? "Deleted account" : db.Accounts.Where(a => a.Id == r.SubjectId).Select(a => a.Name).FirstOrDefault() ?? "Unavailable", r.Reason, r.Resolved, r.Created)).ToListAsync();
-        var accounts = await db.Accounts.OrderBy(a => a.Name).Take(200).ToListAsync();
+        var members = db.Accounts.AsQueryable();
+        members = approval switch
+        {
+            "" or "all" => members,
+            "approved" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && p.Approved)),
+            "awaiting-approval" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && !p.Approved)),
+            "no-profile" => members.Where(a => !db.Profiles.Any(p => p.Id == a.Id)),
+            _ => throw new ApiException(400, "Choose a supported approval filter.")
+        };
+        var accounts = await members.OrderBy(a => a.Name).ThenBy(a => a.Id).Take(200).ToListAsync();
         var people = new List<AdminPerson>();
         foreach (var a in accounts)
         {
             var profile = await db.Profiles.FindAsync(a.Id);
-            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, profile?.Approved ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null));
+            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, profile?.Approved ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null, a.Admin));
         }
         return new AdminData(events, reports, people, await ProfileQueue(includeTestProfiles: true));
+    }
+    private async Task<ProfileReview> AdminMemberProfile(Guid id)
+    {
+        await User(admin: true);
+        var profile = await db.Profiles.FindAsync(id) ?? throw Missing();
+        return await ProfileReviewDto(profile, await VerifiedAccounts());
+    }
+    private async Task<ProfileReview> ProfileReviewDto(Profile p, HashSet<Guid> verifiedAccounts)
+    {
+        var referral = await db.Referrals.FindAsync(p.Id);
+        var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
+        var referrerCanRefer = referral != null && verifiedAccounts.Contains(referral.ReferrerId)
+            && await db.Profiles.AnyAsync(p => p.Id == referral.ReferrerId && p.Approved && !p.TestProfile);
+        return new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
+            referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending);
     }
     private async Task<List<ProfileReview>> ProfileQueue(bool includeTestProfiles)
     {
@@ -66,15 +90,7 @@ public partial class CommunityService
         var verifiedAccounts = await VerifiedAccounts();
         var reviewRows = await db.Profiles.Where(p => !p.Approved && (includeTestProfiles || !p.TestProfile)).OrderBy(p => p.Name).Take(200).ToListAsync();
         var profileReviews = new List<ProfileReview>();
-        foreach (var p in reviewRows)
-        {
-            var referral = await db.Referrals.FindAsync(p.Id);
-            var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
-            var referrerCanRefer = referral != null && verifiedAccounts.Contains(referral.ReferrerId)
-                && await db.Profiles.AnyAsync(p => p.Id == referral.ReferrerId && p.Approved && !p.TestProfile);
-            profileReviews.Add(new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
-                referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending));
-        }
+        foreach (var p in reviewRows) profileReviews.Add(await ProfileReviewDto(p, verifiedAccounts));
         return profileReviews;
     }
     private async Task<List<EventReview>> EventQueue(bool includeTestEvents)
@@ -169,7 +185,17 @@ public partial class CommunityService
         {
             var u = await db.Accounts.FindAsync(input.Id) ?? throw Missing();
             if (u.Admin && input.Action == "suspend") throw new ApiException(400, "Administrator suspension requires an owner database review.");
-            if (input.Action is "suspend" or "restore") u.Suspended = input.Action == "suspend";
+            if (input.Action is "grant-admin" or "revoke-admin")
+            {
+                var appoint = input.Action == "grant-admin";
+                if (appoint == u.Admin) throw new ApiException(409, appoint ? "This member is already an administrator." : "This member is not an administrator.");
+                if (appoint && u.Suspended) throw new ApiException(409, "Restore this member's access before appointing them as an administrator.");
+                if (!appoint && (u.Id == me.Id || await db.Accounts.CountAsync(a => a.Admin) <= 1)) throw new ApiException(409, "Another administrator must revoke this access.");
+                u.Admin = appoint;
+                u.Moderator = appoint ? false : u.Moderator;
+                Notice(u.Id, appoint ? "admin-appointed" : "admin-revoked", appoint ? "You have been appointed as a VeganAdda administrator." : "Your VeganAdda administrator access has been revoked.", appoint ? "/admin" : "/");
+            }
+            else if (input.Action is "suspend" or "restore") u.Suspended = input.Action == "suspend";
             else if (input.Action is "grant-moderator" or "revoke-moderator")
             {
                 if (u.Admin) throw new ApiException(409, "Administrators already have profile review access.");

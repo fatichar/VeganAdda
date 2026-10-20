@@ -4,7 +4,7 @@
 <span class="eyebrow">Care for the community</span><h1>Community administration</h1><Feedback Error="@Error" Success="@Success" />
 @if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
 else if (data != null) {
-    <div class="tab-row">@foreach (var t in new[] { "Events", "Profiles", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => tab = t">@t@if (t == "Profiles" && data.Profiles.Count > 0) { <span class="badge">@data.Profiles.Count</span> }</button> }</div>
+    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => tab = t">@t@if (t == "Members" && data.Profiles.Count > 0) { <span class="badge" aria-label="Profiles awaiting approval">@data.Profiles.Count</span> }</button> }</div>
     @if (tab == "Events") {
         <div class="admin-events"><aside class="card"><button @onclick="NewEvent"><Icon Name="add" />Create event</button>@foreach (var item in data.Events) { <button class="admin-event-link secondary" @onclick="() => Edit(item)">@item.Title<span class="badge">@(item.Published ? "Published" : "Draft")</span></button> }</aside>
         @if (edit != null) {
@@ -27,23 +27,36 @@ else if (data != null) {
             </fieldset></form>
         }</div>
     }
-    else if (tab == "Profiles") {
-        @if (data.Profiles.Count > 0) { <p class="muted">Profiles awaiting approval. New and updated profiles appear here.</p> }
-        @if (data.Profiles.Count == 0) { <Empty Icon="verified" Title="All profiles reviewed" Text="New and updated profiles will appear here." /> }
-        @foreach (var p in data.Profiles) {
-            <article class="card admin-profile-review"><div class="admin-profile-summary"><Avatar Name="@p.Name" Photo="@p.Photo" /><div><h2>@p.Name</h2><small>@string.Join(", ", new[] { p.City, p.State, p.Country }.Where(x => !string.IsNullOrWhiteSpace(x))) · @(p.Public ? "Public profile" : "Members only")@(p.TestProfile ? " · Test profile" : "")</small></div></div>
-                <p class="small"><strong>@(p.IsVegan == true ? "Vegan" : p.IsVegan == false ? "Not vegan" : "Vegan status not provided")</strong>@if (p.VeganVerificationPending) { <span> · Vegan status verification required</span> }</p><p>@p.Bio</p><p class="small">Interests: @(p.Interests.Length == 0 ? "None" : string.Join(", ", p.Interests)) · Looking for: @string.Join(", ", p.LookingFor)</p><div class="profile-social-review">@if (p.Instagram != null) { <a href="@p.Instagram" target="_blank" rel="noopener noreferrer">Instagram <Icon Name="open_in_new" /></a> }@if (p.LinkedIn != null) { <a href="@p.LinkedIn" target="_blank" rel="noopener noreferrer">LinkedIn <Icon Name="open_in_new" /></a> }@if (p.Website != null) { <a href="@p.Website" target="_blank" rel="noopener noreferrer">Website <Icon Name="open_in_new" /></a> }</div>
-                <p class="small">@(p.ReferredBy == null ? "No referral" : $"Referred by {p.ReferredBy}" + (p.ReferrerCanRefer ? " · referral access active" : " · referral access inactive"))</p>
-                @if (p.ReviewNote != null) { <p class="notice">Previous review: @p.ReviewNote</p> }
-                <label for="review-@p.Id">Note for member if changes are needed</label><input id="review-@p.Id" value="@reviewNotes.GetValueOrDefault(p.Id)" @oninput="e => reviewNotes[p.Id] = e.Value?.ToString() ?? string.Empty" maxlength="500" placeholder="Explain what needs updating" />
-                <div class="actions"><button disabled="@Busy" @onclick="() => ReviewProfile(p.Id, true)">Approve</button><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(reviewNotes.GetValueOrDefault(p.Id)))" @onclick="() => ReviewProfile(p.Id, false)">Request changes</button></div>
-            </article>
-        }
-    }
     else if (tab == "Members") {
-        <p class="muted">Showing up to 200 members. Approval controls whether a profile appears in discovery.</p><div class="admin-rows">
+        <div class="admin-member-toolbar">
+            <select id="member-approval" aria-label="Filter members by approval" @bind="memberApproval" @bind:after="FilterMembers" disabled="@Busy"><option value="all">All members</option><option value="approved">Approved</option><option value="awaiting-approval">Awaiting approval</option><option value="no-profile">No profile</option></select>
+            <p class="small muted">Showing up to 200 members. Select a name to view their profile.</p>
+        </div>
+        @if (data.People.Count == 0) { <Empty Icon="group" Title="No members found" Text="Choose another approval filter." /> }
+        <div class="admin-rows">
         @foreach (var p in data.People) {
-            <article class="card admin-row"><div><strong>@p.Name</strong><small>@(p.Suspended ? "Suspended" : "Active") · @(p.IsVegan == true ? "Vegan" : p.IsVegan == false ? "Not vegan" : "Status missing") · @(p.Public ? "Public" : "Members only") · @(!p.HasProfile ? "No profile" : p.Approved ? "Approved" : "Awaiting approval")@(p.TestProfile ? " · Test profile" : "")@(p.Moderator ? " · Moderator" : "")</small></div><div class="actions"><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Moderator ? "revoke-moderator" : "grant-moderator")'>@(p.Moderator ? "Remove moderator" : "Make moderator")</button><button class="secondary small-button" disabled="@(Busy || !p.HasProfile || p.Suspended && !p.Approved)" @onclick='() => Moderate(p.Id, p.Approved ? "revoke-approval" : "approve")'>@(p.Approved ? "Revoke approval" : "Approve")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.TestProfile ? "normal-profile" : "test-profile")'>@(p.TestProfile ? "Mark real" : "Mark test")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button><button class="secondary small-button danger" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button></div></article>
+            <article class="card admin-member" @key="p.Id">
+                <div class="admin-row"><div>
+                    @if (p.HasProfile) { <button class="admin-member-name" disabled="@Busy" aria-expanded="@(expandedMember == p.Id ? "true" : "false")" aria-controls="member-profile-@p.Id" @onclick="() => ToggleMember(p.Id)">@p.Name<Icon Name="@(expandedMember == p.Id ? "expand_less" : "expand_more")" /></button> }
+                    else { <strong>@p.Name</strong> }
+                    <small>@(p.Suspended ? "Suspended" : "Active") · @(p.IsVegan == true ? "Vegan" : p.IsVegan == false ? "Not vegan" : "Status missing") · @(p.Public ? "Public" : "Members only") · @(!p.HasProfile ? "No profile" : p.Approved ? "Approved" : "Awaiting approval")@(p.TestProfile ? " · Test profile" : "")@(p.Admin ? " · Admin" : p.Moderator ? " · Moderator" : "")</small>
+                </div><div class="actions"><button class="secondary small-button" disabled="@(Busy || p.Id == Session?.Id)" @onclick='() => Moderate(p.Id, p.Admin ? "revoke-admin" : "grant-admin")'>@(p.Admin ? "Revoke admin" : "Appoint admin")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Moderator ? "revoke-moderator" : "grant-moderator")'>@(p.Moderator ? "Remove moderator" : "Make moderator")</button><button class="secondary small-button" disabled="@(Busy || !p.HasProfile || p.Suspended && !p.Approved)" @onclick='() => Moderate(p.Id, p.Approved ? "revoke-approval" : "approve")'>@(p.Approved ? "Revoke approval" : "Approve")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.TestProfile ? "normal-profile" : "test-profile")'>@(p.TestProfile ? "Mark real" : "Mark test")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button><button class="secondary small-button danger" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button></div></div>
+                @if (expandedMember == p.Id && memberProfile != null) {
+                    var profile = memberProfile;
+                    <div id="member-profile-@p.Id" class="admin-member-details">
+                        <h2 class="sr-only">Profile details for @profile.Name</h2>
+                        <div class="admin-profile-summary"><Avatar Name="@profile.Name" Photo="@profile.Photo" /><small>@string.Join(", ", new[] { profile.City, profile.State, profile.Country }.Where(x => !string.IsNullOrWhiteSpace(x)))</small></div>
+                        @if (profile.VeganVerificationPending) { <p class="notice">Vegan status verification required before approval.</p> }
+                        <p class="profile-bio">@(string.IsNullOrWhiteSpace(profile.Bio) ? "No bio provided." : profile.Bio)</p>
+                        <p class="small">Interests: @(profile.Interests.Length == 0 ? "None" : string.Join(", ", profile.Interests)) · Looking for: @string.Join(", ", profile.LookingFor)</p>
+                        <div class="profile-social-review">@if (profile.Instagram != null) { <a href="@profile.Instagram" target="_blank" rel="noopener noreferrer">Instagram <Icon Name="open_in_new" /></a> }@if (profile.LinkedIn != null) { <a href="@profile.LinkedIn" target="_blank" rel="noopener noreferrer">LinkedIn <Icon Name="open_in_new" /></a> }@if (profile.Website != null) { <a href="@profile.Website" target="_blank" rel="noopener noreferrer">Website <Icon Name="open_in_new" /></a> }</div>
+                        <p class="small">@(profile.ReferredBy == null ? "No referral" : $"Referred by {profile.ReferredBy}" + (profile.ReferrerCanRefer ? " · referral access active" : " · referral access inactive"))</p>
+                        @if (profile.ReviewNote != null) { <p class="notice">Previous review: @profile.ReviewNote</p> }
+                        <label for="review-@p.Id">Note for member if changes are needed</label><textarea id="review-@p.Id" @bind:get="reviewNotes.GetValueOrDefault(p.Id, string.Empty)" @bind:set="value => reviewNotes[p.Id] = value ?? string.Empty" @bind:event="oninput" maxlength="500" rows="2" placeholder="Explain what needs updating"></textarea>
+                        <div class="actions"><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(reviewNotes.GetValueOrDefault(p.Id)))" @onclick="() => ReviewProfile(p.Id, false)">Request changes</button></div>
+                    </div>
+                }
+            </article>
         }</div>
     }
     else {
@@ -55,9 +68,18 @@ else if (data != null) {
     }
 }
 @code {
-    AdminData? data; EventInput? edit; string tab = "Events"; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    AdminData? data; EventInput? edit; string tab = "Events", memberApproval = "all"; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(Refresh); }
-    protected override async Task Refresh() => data = await Api.Get<AdminData>("admin");
+    protected override async Task Refresh() {
+        data = await Api.Get<AdminData>($"admin?approval={E(memberApproval)}");
+        if (expandedMember is { } id && data.People.Any(p => p.Id == id && p.HasProfile)) memberProfile = await Api.Get<ProfileReview>($"admin/members/{id}");
+        else { expandedMember = null; memberProfile = null; }
+    }
+    Task FilterMembers() => Run(Refresh);
+    Task ToggleMember(Guid id) => Run(async () => {
+        if (expandedMember == id) { expandedMember = null; memberProfile = null; }
+        else { var profile = await Api.Get<ProfileReview>($"admin/members/{id}"); memberProfile = profile; expandedMember = id; }
+    });
     void NewEvent() { edit = new(); start = end = null; }
     void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
     Task SaveEvent() => Run(async () => { try { var zone = TimeZoneInfo.FindSystemTimeZoneById(edit!.TimeZone); edit.Start = start.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start.Value, DateTimeKind.Unspecified), zone)) : null; edit.End = end.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end.Value, DateTimeKind.Unspecified), zone)) : null; } catch { throw new ApiException(400, "Check the time zone and local event times."); } await Api.Send<Ok>("admin/events", edit); await Refresh(); Success = "Event saved."; });

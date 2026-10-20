@@ -150,7 +150,10 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                 case "blocked":
                     var blocker = await User();
                     return await db.Blocks.Where(b => b.Owner == blocker.Id).Join(db.Profiles, b => b.Subject, p => p.Id, (b, p) => new AdminPerson(p.Id, p.Name, false, false, false, false)).ToListAsync();
-                case "admin": return await Admin();
+                case "admin":
+                    if (parts.Length == 1) return await Admin(Q("approval"));
+                    if (parts.Length == 3 && parts[1] == "members" && Guid.TryParse(parts[2], out var memberId)) return await AdminMemberProfile(memberId);
+                    throw Missing();
                 case "moderation": return new ModerationData(await ProfileQueue(includeTestProfiles: false), await EventQueue(includeTestEvents: false));
                 case "event-submissions": return await MyEventSubmissions();
             }
