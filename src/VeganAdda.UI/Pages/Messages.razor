@@ -43,7 +43,7 @@ else
                     <div class="chat-header">
                         <a class="icon-button mobile-back" href="/messages" aria-label="Back to chats"><Icon Name="arrow_back" /></a>
                         <Avatar Name="@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")" Photo="@(SelectedRequest?.Person.Photo ?? Selected?.Photo ?? "")" />
-                        <div class="chat-heading"><h2>@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")</h2><small>@(SelectedRequest is { } currentRequest ? (currentRequest.Incoming ? "Connection request" : "Request sent") : messagePage.CanMessage ? "Connected" : "Messaging is closed · history remains available")</small></div>
+                        <div class="chat-heading"><h2>@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")</h2><small>@(Selected?.BlockedByMe == true ? "Member blocked" : SelectedRequest is { } currentRequest ? (currentRequest.Incoming ? "Connection request" : "Request sent") : messagePage.CanMessage ? "Connected" : "Messaging unavailable · history remains available")</small></div>
                         @if (SelectedPersonId is { } personId)
                         {
                             <div class="chat-menu" @onkeydown="MenuKeyDown">
@@ -51,10 +51,17 @@ else
                                 @if (menuOpen)
                                 {
                                 <div class="chat-menu-items" id="chat-options">
+                                    @if (Selected?.BlockedByMe == true)
+                                    {
+                                        <button class="text-button" disabled="@Busy" @onclick="Unblock">Unblock member</button>
+                                    }
+                                    else
+                                    {
                                     <a href="/people/@personId">View profile</a>
                                     <a href="/people/@personId#safety">Report member</a>
                                     @if (messagePage.CanMessage) { <button class="text-button danger" @onclick='() => Ask("remove")'>Remove connection</button> }
                                     <button class="text-button danger" @onclick='() => Ask("block")'>Block member</button>
+                                    }
                                 </div>
                                 }
                             </div>
@@ -63,7 +70,7 @@ else
                     @if (confirmAction != "")
                     {
                         <div class="notice chat-confirm" role="alert">
-                            <p>@(confirmAction == "block" ? "Block this member? Your profiles will be hidden from each other and messaging will close. Existing history remains." : "Remove this connection? Messaging will close. Both of you can still view existing history.")</p>
+                            <p>@(confirmAction == "block" ? "Block this member? Your profiles will be hidden from each other and messaging will pause until unblocked. Existing history remains." : "Remove this connection? Messaging will close. Both of you can still view existing history.")</p>
                             <button class="danger-button" disabled="@Busy" @onclick="ConfirmAction">Confirm @(confirmAction == "block" ? "block" : "removal")</button>
                             <button class="text-button" @onclick='() => confirmAction = ""'>Cancel</button>
                         </div>
@@ -107,7 +114,15 @@ else
                     {
                         <MessageComposer @key="Key" Sending="@sending" Submitted="SendText" />
                     }
-                    else { <div class="notice">This conversation is closed. Existing messages are available to both participants until an account is deleted.</div> }
+                    else if (Selected?.BlockedByMe == true)
+                    {
+                        <div class="notice"><p>You blocked this member. Unblock them to resume an existing connection.</p><button class="secondary" disabled="@Busy" @onclick="Unblock">Unblock member</button></div>
+                    }
+                    else if (Selected?.CanReconnect == true)
+                    {
+                        <div class="notice"><p>This connection was removed. Send a new connection request to chat again.</p><button class="secondary" disabled="@Busy" @onclick="Reconnect">Reconnect</button></div>
+                    }
+                    else { <div class="notice">Messaging is unavailable. Existing messages are available to both participants until an account is deleted.</div> }
                 }
             </section>
         </div>
@@ -228,6 +243,16 @@ else
         else if (Key == item.Key) Nav.NavigateTo("/messages");
     });
     void Ask(string action) { menuOpen = false; confirmAction = action; }
+    Task Unblock() => Act(async () =>
+    {
+        if (Selected is not { BlockedByMe: true, PersonId: { } id }) return;
+        await Api.Send<Ok>($"people/{id}/unblock"); menuOpen = false; await Refresh();
+    });
+    Task Reconnect() => Act(async () =>
+    {
+        if (Selected is not { CanReconnect: true, PersonId: { } id }) return;
+        await Api.Send<Ok>("connections", new ConnectionInput(id)); await Refresh();
+    });
     void MenuKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") menuOpen = false; }
     Task ConfirmAction() => Act(async () =>
     {

@@ -244,7 +244,7 @@ public class CommunityTests(DatabaseFixture f)
         await f.Call(b, $"conversations/{key}/read", new ReadInput(long.MaxValue), "POST");
         Assert.Equal(0, Assert.IsType<List<Conversation>>(await f.Call(b,"conversations")).Single(c=>c.Key==key).Unread);
     }
-    [Fact] public async Task Pending_connection_cannot_message_and_block_closes_both_directions_but_retains_history()
+    [Fact] public async Task Blocking_pauses_both_directions_and_unblocking_restores_messaging_and_history()
     {
         var a = await f.Member(); var b = await f.Member(); var key = CommunityService.Pair(a,b);
         await f.Call(a, "connections", new ConnectionInput(b), "POST");
@@ -255,8 +255,48 @@ public class CommunityTests(DatabaseFixture f)
         foreach (var id in new[]{a,b}) Assert.Equal(403,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(id,$"conversations/{key}/messages",new MessageInput(Guid.NewGuid(),"no"),"POST"))).Status);
         Assert.Single(Assert.IsType<MessagePage>(await f.Call(b,$"conversations/{key}/messages")).Items);
         Assert.Equal(404,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(b,"people/"+a))).Status);
+        var blockedChat = Assert.Single(Assert.IsType<List<Conversation>>(await f.Call(a, "conversations")));
+        Assert.True(blockedChat.BlockedByMe); Assert.Equal(b, blockedChat.PersonId); Assert.False(blockedChat.CanMessage);
+        var otherChat = Assert.Single(Assert.IsType<List<Conversation>>(await f.Call(b, "conversations")));
+        Assert.False(otherChat.BlockedByMe); Assert.Null(otherChat.PersonId);
         await f.Call(a,$"people/{b}/unblock",null,"POST");
-        Assert.False(Assert.IsType<MessagePage>(await f.Call(a,$"conversations/{key}/messages")).CanMessage);
+        foreach (var id in new[] { a, b })
+        {
+            Assert.True(Assert.IsType<MessagePage>(await f.Call(id, $"conversations/{key}/messages")).CanMessage);
+            await f.Call(id, $"conversations/{key}/messages", new MessageInput(Guid.NewGuid(), "resumed"), "POST");
+        }
+        Assert.Equal(3, Assert.IsType<MessagePage>(await f.Call(a, $"conversations/{key}/messages")).Items.Count);
+        Assert.False(Assert.Single(Assert.IsType<List<Conversation>>(await f.Call(a, "conversations"))).BlockedByMe);
+    }
+    [Fact] public async Task Blocked_empty_chat_remains_available_and_unblocking_does_not_override_another_block()
+    {
+        var (a, b, key) = await Connected();
+        await f.Call(a, $"people/{b}/block", null, "POST");
+        Assert.True(Assert.Single(Assert.IsType<List<Conversation>>(await f.Call(a, "conversations"))).BlockedByMe);
+        await using (var db = f.Db()) { db.Blocks.Add(new() { Owner = b, Subject = a }); await db.SaveChangesAsync(); }
+        await f.Call(a, $"people/{b}/unblock", null, "POST");
+        Assert.False(Assert.IsType<MessagePage>(await f.Call(a, $"conversations/{key}/messages")).CanMessage);
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(a, $"conversations/{key}/messages", new MessageInput(Guid.NewGuid(), "no"), "POST"))).Status);
+        await f.Call(b, $"people/{a}/unblock", null, "POST");
+        Assert.True(Assert.IsType<MessagePage>(await f.Call(a, $"conversations/{key}/messages")).CanMessage);
+    }
+    [Fact] public async Task Unblocking_preserves_pending_and_removed_connections_and_offers_reconnection_for_legacy_chats()
+    {
+        var a = await f.Member(); var b = await f.Member(); var key = CommunityService.Pair(a, b);
+        await f.Call(a, "connections", new ConnectionInput(b), "POST");
+        await f.Call(a, $"people/{b}/block", null, "POST");
+        await f.Call(a, $"people/{b}/unblock", null, "POST");
+        Assert.False(Assert.IsType<MessagePage>(await f.Call(a, $"conversations/{key}/messages")).CanMessage);
+        await f.Call(b, "connections/accept", new ConnectionInput(a), "POST");
+        await f.Call(a, $"conversations/{key}/messages", new MessageInput(Guid.NewGuid(), "history"), "POST");
+        await f.Call(b, "connections/remove", new ConnectionInput(a), "POST");
+        await f.Call(a, $"people/{b}/block", null, "POST");
+        await f.Call(a, $"people/{b}/unblock", null, "POST");
+        Assert.False(Assert.IsType<MessagePage>(await f.Call(a, $"conversations/{key}/messages")).CanMessage);
+        Assert.True(Assert.Single(Assert.IsType<List<Conversation>>(await f.Call(a, "conversations"))).CanReconnect);
+        await f.Call(a, "connections", new ConnectionInput(b), "POST");
+        await f.Call(b, "connections/accept", new ConnectionInput(a), "POST");
+        Assert.True(Assert.IsType<MessagePage>(await f.Call(a, $"conversations/{key}/messages")).CanMessage);
     }
     [Fact] public async Task History_has_stable_older_pagination_and_removed_connection_cannot_send()
     {

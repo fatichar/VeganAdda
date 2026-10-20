@@ -86,7 +86,7 @@ public partial class CommunityService
                 break;
             case "block":
                 if (!await db.Blocks.AnyAsync(b => b.Owner == me.Id && b.Subject == id)) db.Blocks.Add(new() { Owner = me.Id, Subject = id });
-                var r = await db.Relationships.FindAsync(Pair(me.Id, id)); if (r != null) { r.State = "removed"; r.Updated = DateTimeOffset.UtcNow; }
+                // Blocking pauses messaging through CanMessage without removing mutual consent.
                 await db.Saved.Where(s => s.Kind == "person" && ((s.UserId == me.Id && s.TargetId == id) || (s.UserId == id && s.TargetId == me.Id))).ExecuteDeleteAsync();
                 break;
             case "report":
@@ -127,13 +127,15 @@ public partial class CommunityService
         {
             if (await HiddenTestConversation(r, me.Id)) continue;
             var latest = await db.Messages.Where(m => m.Conversation == r.Key).OrderByDescending(m => m.Id).FirstOrDefaultAsync();
-            if (latest == null && r.State != "accepted") continue;
             var other = r.A == me.Id ? r.B : r.A;
+            var blockedByMe = await db.Blocks.AnyAsync(b => b.Owner == me.Id && b.Subject == other);
+            if (latest == null && r.State != "accepted" && !blockedByMe) continue;
             var unavailable = await Blocked(me.Id, other) || !await db.Accounts.AnyAsync(a => a.Id == other && !a.Suspended);
             var isAdmin = await db.Accounts.AnyAsync(a => a.Id == me.Id && a.Admin);
             var p = unavailable ? null : await db.Profiles.FindAsync(other);
             if (p?.TestProfile == true && other != me.Id && !isAdmin) p = null;
-            results.Add(new(r.Key, p?.Name ?? "Unavailable member", p?.Photo ?? "", latest?.Text ?? "Say hello", await db.Messages.CountAsync(m => m.Conversation == r.Key && m.SenderId != me.Id && m.Id > (r.A == me.Id ? r.ReadA : r.ReadB)), latest?.SentAt ?? r.Updated, await CanMessage(r), unavailable ? null : other));
+            var canReconnect = r.State == "removed" && !unavailable && await VisiblePeople().AnyAsync(p => p.Id == other);
+            results.Add(new(r.Key, p?.Name ?? "Unavailable member", p?.Photo ?? "", latest?.Text ?? "Say hello", await db.Messages.CountAsync(m => m.Conversation == r.Key && m.SenderId != me.Id && m.Id > (r.A == me.Id ? r.ReadA : r.ReadB)), latest?.SentAt ?? r.Updated, await CanMessage(r), unavailable && !blockedByMe ? null : other, blockedByMe, canReconnect));
         }
         return results.OrderByDescending(c => c.Updated).ToList();
     }
@@ -157,7 +159,7 @@ public partial class CommunityService
         // Lock sender too: a reused UUID across different conversations is consistently rejected.
         await UserLock(me.Id);
         var r = await ConversationAccess(key);
-        if (!await CanMessage(r)) throw new ApiException(403, "Messaging is closed for this connection. Your existing history is still available.");
+        if (!await CanMessage(r)) throw new ApiException(403, "Messaging is unavailable for this connection. Your existing history is still available.");
         var previous = await db.Messages.SingleOrDefaultAsync(m => m.SenderId == me.Id && m.ClientId == input.ClientId);
         if (previous != null)
         {

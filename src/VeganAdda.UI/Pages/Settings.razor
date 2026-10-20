@@ -32,7 +32,7 @@ else if (model != null) { <div class="settings-identity"><Avatar Name="@Session.
     Task CreateReferral() => Run(async () => { var invite = await Api.Send<ReferralInviteResult>("referrals/invite"); referralLink = Nav.BaseUri.TrimEnd('/') + "/onboarding?ref=" + E(invite.Code); });
     Task Update(Action change) => Act(async () => { change(); try { await Api.Send<Ok>("profile", model); Success = "Your privacy settings are saved."; } finally { await Refresh(); } });
     Task SetBlockedPage(int value) { blockedPage = value; return Task.CompletedTask; }
-    Task Unblock(Guid id) => Act(async () => { await Api.Send<Ok>($"people/{id}/unblock"); await Refresh(); Success = "Member unblocked. You can choose whether to reconnect."; });
+    Task Unblock(Guid id) => Act(async () => { await Api.Send<Ok>($"people/{id}/unblock"); await Refresh(); Success = "Member unblocked. Existing connections can message again unless another restriction applies."; });
     Task SignOut() => Run(async () => { await Api.Send<Ok>("auth/signout"); await Platform.ClearFirebaseSession(); Nav.NavigateTo("/", true); });
     Task Delete() => Run(async () => { await Api.Send<Ok>("account", new { confirm = "DELETE" }, "DELETE"); Nav.NavigateTo("/", true); });
 }
