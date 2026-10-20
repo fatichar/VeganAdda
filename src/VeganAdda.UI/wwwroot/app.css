@@ -32,6 +32,8 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .city-picker select{width:auto;max-width:180px;min-height:44px;padding:8px 24px 8px 4px;border:0;border-radius:8px;background:transparent;font-size:.85rem;font-weight:600;cursor:pointer}
 .discovery .filter-bar{position:relative;flex-wrap:nowrap;gap:10px;margin:0 0 24px}
 .discovery .search-field{min-width:0;padding:0 4px 0 14px;background:var(--surface);border:1px solid var(--line)}
+.discovery .search-field:focus-within{outline:3px solid #bb6748;outline-offset:2px}
+.discovery .search-field input:focus-visible{outline:none}
 .discovery .search-field input{min-width:0;min-height:44px;padding:10px 0;font-size:.875rem}
 .discovery .search-submit{flex-shrink:0;width:44px;min-width:44px;height:44px;min-height:44px;padding:0}
 .filter-toggle{display:inline-flex;position:relative;flex-shrink:0;border:1px solid var(--line);background:var(--surface)}
