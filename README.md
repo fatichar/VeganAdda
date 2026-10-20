@@ -1,14 +1,14 @@
 # VeganAdda
 
-**Find your vegan people.** India-first, mobile-first community website for adults 18+. Blazor, ASP.NET Core, PostgreSQL/EF Core, SignalR and Firebase Authentication (Google sign-in). A small modular monolith; no mobile app is included.
+**Find your vegan people.** India-first, mobile-first community website for adults 18+. Blazor, ASP.NET Core, PostgreSQL/EF Core, SignalR and Firebase Authentication (Google sign-in). A small modular monolith; no mobile app is included. See [the architecture map](docs/ARCHITECTURE.md) and [agent instructions](AGENTS.md) for feature ownership and verification.
 
 ## Design and architecture
 
 The Google Stitch export in `design-reference/` is read-only visual reference, never the application. [Design map and decisions](docs/IMPLEMENTATION_PLAN.md) explain the screen mapping and scope corrections. Forest green, warm cream, terracotta, Plus Jakarta Sans and Material Symbols are retained. Fonts are self-hosted.
 
 - `src/VeganAdda.UI`: reusable Razor Class Library with screens, cards, forms and responsive shell.
-- `src/VeganAdda.Contracts`: explicit DTOs plus `ICommunityApi` / `IPlatform` abstractions.
-- `src/VeganAdda.Web/VeganAdda.Web`: ASP.NET Core host, Firebase token verification and secure cookie sessions, JSON API, application modules, EF Core migrations and SignalR.
+- `src/VeganAdda.Contracts`: feature-grouped DTOs and typed profile/inbox/saved APIs, plus compatibility `ICommunityApi` / `IPlatform` abstractions.
+- `src/VeganAdda.Web/VeganAdda.Web`: ASP.NET Core host, Firebase token verification and secure cookie sessions, explicit feature endpoints/services, EF Core migrations, background workers and SignalR.
 - `src/VeganAdda.Web/VeganAdda.Web.Client`: WebAssembly transport, antiforgery, browser navigation, uploads and realtime adapter.
 - `tests/VeganAdda.Tests`: real PostgreSQL service/HTTP/SignalR tests.
 
@@ -121,4 +121,4 @@ Test a restore before launch, then periodically. Keep the backup outside the sou
 
 ## Launch limits
 
-No posts, comments, likes, compatibility scores, business accounts, attachments, groups, calls, presence, typing indicators, read receipts, email or push notifications. Notifications are in-app only. Legal copy and support contact are explicitly marked for owner review. Current admin lists show up to 200 accounts and 100 reports; suitable for the pilot, expand pagination when needed. A MAUI app, native authentication, richer moderation tooling and background notifications are deferred.
+No posts, comments, likes, compatibility scores, business accounts, attachments, groups, calls, presence, typing indicators, read receipts, email notifications. In-app notifications and opt-in Firebase chat push are supported; see [chat push setup](docs/chat-push.md). Legal copy and support contact are explicitly marked for owner review. Administration, discovery, saved items and inbox lists use server-side pagination. A MAUI app, native authentication, and richer moderation tooling are deferred.

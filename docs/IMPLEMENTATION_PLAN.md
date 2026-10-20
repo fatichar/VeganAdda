@@ -27,6 +27,8 @@ Missing: saved items, notifications, admin, report forms, legal/help, loading/er
 8. Curated events only; unpublished Ekatva draft has no assumed dates/venue/affiliation. Publishing requires complete verified details. Event attendance is not registration.
 9. Production requires PostgreSQL, persistent media and data-protection keys, HTTPS, Firebase web configuration and a private Admin SDK credential. No local dev authentication or seed configuration is accepted outside Development. No production deployment authorized.
 
+Current implementation and module ownership: [architecture map](ARCHITECTURE.md).
+
 ## Vertical slices
 - [x] Foundation, tokens, responsive navigation and API contracts
 - [x] Authentication, onboarding, profile editing and uploads
