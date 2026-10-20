@@ -163,6 +163,7 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .location-credit{display:block;margin-top:8px;font-size:.65rem;color:var(--muted)}
 .location-credit a{text-decoration:underline}
 .location-status{margin:10px 0;overflow-wrap:anywhere}
+.event-submission .actions{margin-top:24px}
 .brand-logo{display:block;width:112px;height:auto}
 .referral-invite{display:grid;gap:16px;padding:20px 22px}
 .referral-invite>p{margin:0}

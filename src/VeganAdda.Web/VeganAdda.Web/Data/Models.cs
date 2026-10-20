@@ -46,7 +46,7 @@ public class Profile
     public Guid? ReviewedBy { get; set; }
     public bool Featured { get; set; }
     public bool FeatureConsent { get; set; }
-    public bool DefaultAttendeeVisible { get; set; }
+    public bool DefaultAttendeeVisible { get; set; } = true;
     public DateTimeOffset AdultConfirmedAt { get; set; }
 }
 public class Relationship

@@ -72,7 +72,7 @@ public class ProfileInput
     public string? Website { get; set; }
     public bool Public { get; set; }
     public bool FeatureConsent { get; set; }
-    public bool DefaultAttendeeVisible { get; set; }
+    public bool DefaultAttendeeVisible { get; set; } = true;
     public bool AdultConfirmed { get; set; }
     public bool? IsVegan { get; set; }
     public bool VeganVerificationPending { get; set; }

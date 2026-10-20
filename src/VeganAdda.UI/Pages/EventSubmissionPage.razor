@@ -12,10 +12,10 @@ else if (profile != null && !profile.Approved) { <Empty Title="Your profile is a
 else if (profile != null) {
     <p class="small muted">Submissions are checked by the community team before they appear in Events. Share public event details only.</p>
     @if (edit != null) {
-        <form class="form-card" @onsubmit="Save" @onsubmit:preventDefault><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
+        <form class="form-card event-submission" @onsubmit="Save" @onsubmit:preventDefault><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
             <h2>@(edit.Id == Guid.Empty ? "Event details" : "Edit submission")</h2>
             <label for="event-title">Event name</label><input id="event-title" required maxlength="150" @bind="edit.Title" @bind:event="oninput" />
-            <label for="event-description">Description</label><textarea id="event-description" required rows="5" maxlength="4000" @bind="edit.Description" @bind:event="oninput"></textarea>
+            <label for="event-description">Description <span class="muted">(optional)</span></label><textarea id="event-description" rows="5" maxlength="4000" @bind="edit.Description" @bind:event="oninput"></textarea>
             <label for="event-cover">Cover image <span class="muted">(optional)</span></label><InputFile id="event-cover" OnChange="Upload" accept="image/jpeg,image/png,image/webp" />
             @if (edit.Cover != "") { <img class="admin-cover" src="@edit.Cover" alt="Event cover preview" /> }
             <label for="event-city">City</label><input id="event-city" required maxlength="80" @bind="edit.City" @bind:event="oninput" />
@@ -25,7 +25,7 @@ else if (profile != null) {
             <label for="event-start">Local start date and time</label><input id="event-start" type="datetime-local" required @bind="start" />
             <label for="event-end">Local end date and time</label><input id="event-end" type="datetime-local" required @bind="end" />
             <label for="event-registration">Official information / registration link <span class="muted">(optional)</span></label><input id="event-registration" type="url" @bind="edit.Registration" @bind:event="oninput" placeholder="https://" />
-            <button disabled="@Busy">@(Busy ? "Submitting…" : edit.Id == Guid.Empty ? "Submit for review" : "Resubmit for review")<Icon Name="arrow_forward" /></button>
+            <div class="actions"><button disabled="@Busy">@(Busy ? "Submitting…" : edit.Id == Guid.Empty ? "Submit for review" : "Resubmit for review")<Icon Name="arrow_forward" /></button></div>
         </fieldset></form>
     }
     <div class="section-heading"><h2>Your submissions</h2><button class="secondary" @onclick="NewEvent" disabled="@Busy">Suggest another</button></div>

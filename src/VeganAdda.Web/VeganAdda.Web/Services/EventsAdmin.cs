@@ -166,7 +166,7 @@ public partial class CommunityService
     {
         var me = await User(profile: true);
         if (!await db.Profiles.AnyAsync(p => p.Id == me.Id && p.IsVegan == true && !p.VeganVerificationPending && p.Approved && !p.TestProfile)) throw new ApiException(403, "Only an approved vegan member can submit an event.");
-        var title = Text(input.Title, 150, true); var description = Text(input.Description, 4000, true); var city = Text(input.City, 80, true);
+        var title = Text(input.Title, 150, true); var description = Text(input.Description, 4000); var city = Text(input.City, 80, true);
         var venue = Text(input.Venue, 200, true); var organizer = Text(input.Organizer, 150, true); var registration = Url(input.Registration); var cover = Photo(input.Cover);
         try { _ = TimeZoneInfo.FindSystemTimeZoneById(input.TimeZone); } catch { throw new ApiException(400, "Choose a valid IANA time zone, such as Asia/Kolkata."); }
         if (input.Start == null || input.End == null || input.End <= input.Start) throw new ApiException(400, "Enter verified start and end times.");
