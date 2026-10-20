@@ -10,14 +10,16 @@
     {
         <form class="filter-bar" @onsubmit="Search" @onsubmit:preventDefault @onkeydown="FilterKey">
             <div class="search-field"><label class="sr-only" for="people-search">Search people and interests</label><input id="people-search" type="search" enterkeyhint="search" placeholder="Search people or interests" @bind="search" @bind:event="oninput" /><button type="submit" class="icon-button search-submit" aria-label="Search"><Icon Name="search" /></button></div>
-            <button type="button" class="icon-button secondary filter-toggle" aria-label="Filters" aria-expanded="@(filtersOpen ? "true" : "false")" aria-controls="discovery-filters" @onclick="() => filtersOpen = !filtersOpen"><Icon Name="tune" />@if (interest != "" || intent != "") { <span class="filter-dot"></span> }</button>
+            <button type="button" class="icon-button secondary filter-toggle" aria-label="Filters" aria-expanded="@(filtersOpen ? "true" : "false")" aria-controls="discovery-filters" @onclick="() => filtersOpen = !filtersOpen"><Icon Name="tune" />@if (interest != "" || intent != "" || includeNonVegan) { <span class="filter-dot"></span> }</button>
             <div id="discovery-filters" class="filter-controls @(filtersOpen ? "open" : "")">
                 <label class="sr-only" for="interest">Interest</label><select id="interest" @bind="interest" @bind:after="Search"><option value="">All interests</option>@foreach (var tag in new[] { "Running", "Baking", "Sanctuaries", "Design", "Hiking", "Cooking", "Volunteering", "Photography" }) { <option>@tag</option> }</select>
                 <label class="sr-only" for="intent">Looking for</label><select id="intent" @bind="intent" @bind:after="Search"><option value="">Looking for</option>@foreach (var tag in Wire.Intents.Where(x => x != "Dating" || dating)) { <option>@tag</option> }</select>
+                <label class="check-row"><input type="checkbox" checked="@includeNonVegan" @onchange="IncludeNonVeganChanged" /><span>Include non-vegan profiles</span></label>
                 <button type="button" class="text-button" @onclick="Clear">Reset filters</button>
             </div>
         </form>
     }
+    @if (Session?.Id != null && Session.IsVegan == null) { <div class="notice" role="status">Choose your vegan status to finish setting up your member profile. <a href="/settings/profile">Update your profile</a>.</div> }
     <Feedback Error="@Error" Success="@Success" />
     @if (!Loaded || Busy) { <p role="status" class="loading">Finding people…</p> }
     else if (people.Count == 0) { <Empty Title="No people found" Text="Try another city or reset your filters."><button class="secondary" @onclick="Clear">Reset filters</button></Empty> }
@@ -27,14 +29,15 @@
 </div>
 @code {
     [SupplyParameterFromQuery] public string City { get; set; } = "All India";
-    string search = "", interest = "", intent = ""; bool dating, filtersOpen; int page = 1, total;
+    string search = "", interest = "", intent = ""; bool dating, filtersOpen, includeNonVegan; int page = 1, total;
     List<Person> people = []; Person? connecting;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.HasProfile == true) await Run(async () => dating = (await Api.Get<ProfileInput>("profile")).LookingFor.Contains("Dating")); }
     protected override async Task OnParametersSetAsync() { if (string.IsNullOrEmpty(City)) City = "All India"; await Run(Refresh); }
-    protected override async Task Refresh() { var result = await Api.Get<Page<Person>>($"people?city={E(City)}&search={E(search)}&interest={E(interest)}&intent={E(intent)}&page={page}"); people = result.Items; total = result.Total; }
+    protected override async Task Refresh() { var result = await Api.Get<Page<Person>>($"people?city={E(City)}&search={E(search)}&interest={E(interest)}&intent={E(intent)}&includeNonVegan={includeNonVegan.ToString().ToLowerInvariant()}&page={page}"); people = result.Items; total = result.Total; }
+    Task IncludeNonVeganChanged(ChangeEventArgs e) { includeNonVegan = e.Value is bool value && value; return Search(); }
     Task Search() { page = 1; return Run(Refresh); }
     void FilterKey(KeyboardEventArgs e) { if (e.Key == "Escape") filtersOpen = false; }
-    Task Clear() { search = interest = intent = ""; City = "All India"; return Search(); }
+    Task Clear() { search = interest = intent = ""; includeNonVegan = false; City = "All India"; return Search(); }
     Task Previous() { page--; return Run(Refresh); } Task Next() { page++; return Run(Refresh); }
     Task Connect(Person p) { if (Session?.Id == null) Platform.SignIn($"/people/{p.Id}?action=connect"); else if (!Session.HasProfile) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{p.Id}?action=connect")}"); else connecting = p; return Task.CompletedTask; }
     async Task Save(Person p) { if (!ReadyForAction($"/people/{p.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"people/{p.Id}/save"); await Refresh(); Success = p.Saved ? "Profile unsaved." : "Profile saved."; }); }

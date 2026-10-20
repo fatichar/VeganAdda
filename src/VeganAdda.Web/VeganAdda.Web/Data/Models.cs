@@ -31,6 +31,8 @@ public class Profile
     public string? Website { get; set; }
     public bool Public { get; set; }
     public bool Approved { get; set; }
+    public bool? IsVegan { get; set; }
+    public bool VeganVerificationPending { get; set; }
     public bool TestProfile { get; set; }
     public string? ReviewNote { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }

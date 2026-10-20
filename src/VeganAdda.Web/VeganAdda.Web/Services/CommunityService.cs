@@ -17,7 +17,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         if (u.Suspended) throw new ApiException(403, "Your account is suspended. Contact the community team for help.");
         if (profile && !await db.Profiles.AnyAsync(x => x.Id == u.Id)) throw new ApiException(409, "Create your profile first.");
         if (admin && !u.Admin) throw Denied();
-        if (moderator && !u.Admin && !u.Moderator) throw Denied();
+        if (moderator && !u.Admin && (!u.Moderator || !await db.Profiles.AnyAsync(p => p.Id == u.Id && p.IsVegan == true && !p.VeganVerificationPending))) throw Denied();
         return u;
     }
     private async Task ActiveViewer() { if (Viewer.HasValue) await User(); }
@@ -25,11 +25,11 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
     public static string Pair(Guid a, Guid b) => string.CompareOrdinal(a.ToString(), b.ToString()) < 0 ? $"{a:N}_{b:N}" : $"{b:N}_{a:N}";
     private Task PairLock(string key) => db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({key}, 0))");
     private Task UserLock(Guid id) => PairLock("user:" + id);
-    private IQueryable<Profile> VisiblePeople()
+    private IQueryable<Profile> VisiblePeople(bool includeRelatedProfiles = false)
     {
         var q = db.Profiles.Where(p => db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
         if (Viewer is not { } v) return q.Where(p => p.Public && p.Approved && !p.TestProfile);
-        return q.Where(p => (p.Approved || p.Id == v)
+        return q.Where(p => (p.Approved || p.Id == v || includeRelatedProfiles && db.Relationships.Any(r => (r.A == v && r.B == p.Id || r.B == v && r.A == p.Id) && (r.State == "pending" || r.State == "accepted")))
             && (!p.TestProfile || p.Id == v || db.Accounts.Any(a => a.Id == v && a.Admin))
             && (db.Accounts.Any(a => a.Id == v && a.Admin) || p.Id == v || !db.Profiles.Any(x => x.Id == v && x.TestProfile) || db.Accounts.Any(a => a.Id == p.Id && a.Admin))
             && !db.Blocks.Any(b => (b.Owner == v && b.Subject == p.Id) || (b.Subject == v && b.Owner == p.Id)));
@@ -70,7 +70,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         return new(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
             p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), p.Instagram, p.LinkedIn, p.Website,
             p.Featured && p.Public && p.FeatureConsent, Viewer.HasValue && await db.Saved.AnyAsync(x => x.UserId == Viewer && x.TargetId == p.Id && x.Kind == "person"),
-            p.Id == Viewer ? "self" : state, await db.Accounts.Where(a => a.Id == p.Id).Select(a => a.Demo).SingleAsync(), p.Country, p.State);
+            p.Id == Viewer ? "self" : state, await db.Accounts.Where(a => a.Id == p.Id).Select(a => a.Demo).SingleAsync(), p.Country, p.State, p.IsVegan, p.VeganVerificationPending);
     }
     private void Notice(Guid user, string kind, string text, string url) => db.Notifications.Add(new() { UserId = user, Kind = kind, Text = text, Url = url });
     public async Task<object> Execute(string method, string path, JsonElement? body)
@@ -87,16 +87,20 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
             {
                 case "session":
                     var u = Viewer.HasValue ? await User() : null;
-                    return new Session(u?.Id, u?.Name ?? "Visitor", u != null && await db.Profiles.AnyAsync(p => p.Id == u.Id), u?.Admin ?? false,
+                    var ownProfile = u == null ? null : await db.Profiles.SingleOrDefaultAsync(p => p.Id == u.Id);
+                    return new Session(u?.Id, u?.Name ?? "Visitor", ownProfile != null, u?.Admin ?? false,
                         env.IsDevelopment() && config.GetValue<bool>("Development:Enabled"),
-                        new[] { config["Authentication:Firebase:ProjectId"], config["Authentication:Firebase:ApiKey"], config["Authentication:Firebase:AuthDomain"], config["Authentication:Firebase:AppId"] }.All(x => !string.IsNullOrWhiteSpace(x)), u?.Moderator ?? false);
+                        new[] { config["Authentication:Firebase:ProjectId"], config["Authentication:Firebase:ApiKey"], config["Authentication:Firebase:AuthDomain"], config["Authentication:Firebase:AppId"] }.All(x => !string.IsNullOrWhiteSpace(x)), u?.Moderator == true && ownProfile?.IsVegan == true && ownProfile?.VeganVerificationPending != true, ownProfile?.IsVegan, ownProfile?.VeganVerificationPending ?? false);
                 case "people":
                     if (parts.Length > 1)
                     {
-                        var p = await VisiblePeople().SingleOrDefaultAsync(p => p.Id == Guid.Parse(parts[1])) ?? throw Missing();
+                        var p = await VisiblePeople(includeRelatedProfiles: true).SingleOrDefaultAsync(p => p.Id == Guid.Parse(parts[1])) ?? throw Missing();
                         return await PersonDto(p);
                     }
                     var people = VisiblePeople();
+                    var includeNonVegan = Q("includeNonVegan") == "true";
+                    if (includeNonVegan && !Viewer.HasValue) throw new ApiException(401, "Sign in to include non-vegan profiles.");
+                    people = includeNonVegan ? people.Where(p => p.IsVegan != null) : people.Where(p => p.IsVegan == true);
                     if (Q("city") is { Length: > 0 } city && city != "All India") people = people.Where(p => p.City == city);
                     // Advanced search and intent filtering require an authenticated profile.
                     if (Viewer.HasValue)
@@ -124,7 +128,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
                 case "profile":
                     var me = await User(); var own = await db.Profiles.FindAsync(me.Id);
                     var canRefer = await CanCreateReferral(me.Id);
-                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, City = own.City, Country = own.Country, State = own.State, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer };
+                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, City = own.City, Country = own.Country, State = own.State, Bio = own.Bio, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, FeatureConsent = own.FeatureConsent, DefaultAttendeeVisible = own.DefaultAttendeeVisible, AdultConfirmed = true, Approved = own.Approved, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, VeganVerificationPending = own.VeganVerificationPending };
                 case "connections": return await Connections();
                 case "conversations":
                     if (parts.Length == 1) return await Conversations();
@@ -202,6 +206,7 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
     private async Task<object> SaveProfile(ProfileInput input)
     {
         var me = await User();
+        if (input.IsVegan is null) throw new ApiException(400, "Choose whether you are vegan or interested in meeting vegans.");
         if (!input.AdultConfirmed) throw new ApiException(400, "You must confirm that you are at least 18 years old.");
         var name = Text(input.Name, 80, true); var city = Text(input.City, 80, true); var bio = Text(input.Bio, 1000);
         var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
@@ -213,9 +218,10 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         var p = await db.Profiles.FindAsync(me.Id);
         var isNewProfile = p == null;
         if (p == null) { p = new Profile { Id = me.Id, AdultConfirmedAt = DateTimeOffset.UtcNow }; db.Profiles.Add(p); }
+        var needsVeganVerification = p.IsVegan == false && input.IsVegan == true;
         var reviewChanged = isNewProfile || p.Name != name || p.City != city || p.Country != country || p.State != state || p.Bio != bio || p.Photo != photo
             || !p.Interests.SequenceEqual(interests) || !p.LookingFor.SequenceEqual(input.LookingFor.Distinct())
-            || p.Instagram != instagram || p.LinkedIn != linkedIn || p.Website != website || p.Public != input.Public;
+            || p.Instagram != instagram || p.LinkedIn != linkedIn || p.Website != website || p.Public != input.Public || p.IsVegan != input.IsVegan;
         if (!string.IsNullOrWhiteSpace(input.ReferralCode) && !await db.Referrals.AnyAsync(r => r.ReferredId == me.Id))
         {
             if (!ValidReferralCode(input.ReferralCode)) throw new ApiException(400, "This referral link is invalid or expired.");
@@ -239,7 +245,9 @@ public partial class CommunityService(CommunityDb db, IActor actor, IChangeBus c
         p.Instagram = instagram; p.LinkedIn = linkedIn; p.Website = website;
         // A photo must belong to this account (or be its existing development fixture).
         if (photo != "" && photo != p.Photo && !System.IO.File.Exists(System.IO.Path.Combine(config["Storage:MediaPath"] ?? "uploads", photo[7..] + ".owner-" + me.Id.ToString("N")))) throw Denied();
-        p.Photo = photo; p.Public = input.Public; p.FeatureConsent = input.FeatureConsent; p.DefaultAttendeeVisible = input.DefaultAttendeeVisible;
+        p.Photo = photo; p.Public = input.Public; p.FeatureConsent = input.FeatureConsent; p.DefaultAttendeeVisible = input.DefaultAttendeeVisible; p.IsVegan = input.IsVegan;
+        if (needsVeganVerification) p.VeganVerificationPending = true;
+        if (input.IsVegan == false) { p.VeganVerificationPending = false; me.Moderator = false; }
         if (reviewChanged) { p.Approved = false; p.ReviewNote = null; p.ReviewedAt = null; p.ReviewedBy = null; }
         if (!p.Public || !p.FeatureConsent) p.Featured = false;
         me.Name = name;

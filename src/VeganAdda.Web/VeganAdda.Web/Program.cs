@@ -132,7 +132,7 @@ app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforge
     }
     if (account.Suspended) return Results.StatusCode(StatusCodes.Status403Forbidden);
     await tx.CommitAsync();
-    await ctx.SignInAsync(Principal(account));
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Principal(account), new AuthenticationProperties { IsPersistent = true });
     return Results.Ok(new Ok());
 });
 app.MapChatPush();
@@ -151,7 +151,7 @@ if (dev && builder.Configuration.GetValue<bool>("Development:Enabled"))
         if (!DevelopmentSeed.Subjects.Contains(persona)) return Results.NotFound();
         var account = await db.Accounts.SingleAsync(a => a.Subject == "dev:" + persona);
         if (account.Suspended) return Results.Forbid();
-        await ctx.SignInAsync(Principal(account)); return Results.Ok(new Ok());
+        await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Principal(account), new AuthenticationProperties { IsPersistent = true }); return Results.Ok(new Ok());
     });
 }
 app.MapMethods("/api/{**resource}", ["GET", "POST", "DELETE"], async (string resource, HttpContext ctx, CommunityService service, IAntiforgery csrf) =>

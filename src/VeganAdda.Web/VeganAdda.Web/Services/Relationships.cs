@@ -14,7 +14,7 @@ public partial class CommunityService
         foreach (var r in rows)
         {
             var other = r.A == me.Id ? r.B : r.A;
-            var p = await VisiblePeople().SingleOrDefaultAsync(p => p.Id == other);
+            var p = await VisiblePeople(includeRelatedProfiles: true).SingleOrDefaultAsync(p => p.Id == other);
             if (p != null) result.Add(new(r.Key, await PersonDto(p), r.State, r.RequestedBy != me.Id, r.Introduction, r.Updated));
         }
         return result;
@@ -22,6 +22,7 @@ public partial class CommunityService
     private async Task<object> ConnectionAction(string action, JsonElement? body)
     {
         var me = await User(true); var input = Read<ConnectionInput>(body);
+        if (await db.Profiles.AnyAsync(p => p.Id == me.Id && p.IsVegan == null)) throw new ApiException(409, "Choose your vegan status before connecting with members.");
         if (input.PersonId == me.Id) throw new ApiException(400, "You cannot connect with yourself.");
         var meIsTest = await db.Profiles.AnyAsync(p => p.Id == me.Id && p.TestProfile);
         var targetIsTest = await db.Profiles.AnyAsync(p => p.Id == input.PersonId && p.TestProfile);
@@ -29,8 +30,8 @@ public partial class CommunityService
         if (meIsTest && !targetIsTest && !targetIsAdmin) throw Denied();
         var key = Pair(me.Id, input.PersonId);
         await using var tx = await db.Database.BeginTransactionAsync(); await PairLock(key);
-        if (!await VisiblePeople().AnyAsync(p => p.Id == input.PersonId)) throw Missing();
         var r = await db.Relationships.FindAsync(key);
+        if (!await VisiblePeople(includeRelatedProfiles: r?.State is "pending" or "accepted").AnyAsync(p => p.Id == input.PersonId)) throw Missing();
         if (action == "request")
         {
             var intro = Text(input.Introduction, 300);
@@ -76,7 +77,7 @@ public partial class CommunityService
             await db.Blocks.Where(b => b.Owner == me.Id && b.Subject == id).ExecuteDeleteAsync();
             await tx.CommitAsync(); await changes.Changed(me.Id, id); return new Ok();
         }
-        if (!await VisiblePeople().AnyAsync(p => p.Id == id)) throw Missing();
+        if (!await VisiblePeople(includeRelatedProfiles: true).AnyAsync(p => p.Id == id)) throw Missing();
         switch (action)
         {
             case "save":

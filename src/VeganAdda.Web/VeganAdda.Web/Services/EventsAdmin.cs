@@ -57,7 +57,7 @@ public partial class CommunityService
         foreach (var a in accounts)
         {
             var profile = await db.Profiles.FindAsync(a.Id);
-            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, verifiedAccounts.Contains(a.Id), profile?.TestProfile ?? false, a.Moderator));
+            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, verifiedAccounts.Contains(a.Id), profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan));
         }
         return new AdminData(events, reports, people, await ProfileQueue(includeTestProfiles: true));
     }
@@ -72,7 +72,7 @@ public partial class CommunityService
             var referral = await db.Referrals.FindAsync(p.Id);
             var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
             profileReviews.Add(new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
-                referral == null ? null : referrer?.Name ?? "Deleted member", referral != null && verifiedAccounts.Contains(referral.ReferrerId), p.ReviewNote, p.Country, p.State));
+                referral == null ? null : referrer?.Name ?? "Deleted member", referral != null && verifiedAccounts.Contains(referral.ReferrerId), p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending));
         }
         return profileReviews;
     }
@@ -118,7 +118,7 @@ public partial class CommunityService
     private async Task<object> SaveEventSubmission(EventInput input)
     {
         var me = await User(profile: true);
-        if (!await db.Profiles.AnyAsync(p => p.Id == me.Id && p.Approved && !p.TestProfile)) throw new ApiException(403, "Only an approved member profile can submit an event.");
+        if (!await db.Profiles.AnyAsync(p => p.Id == me.Id && p.IsVegan == true && !p.VeganVerificationPending && p.Approved && !p.TestProfile)) throw new ApiException(403, "Only an approved vegan member can submit an event.");
         var title = Text(input.Title, 150, true); var description = Text(input.Description, 4000, true); var city = Text(input.City, 80, true);
         var venue = Text(input.Venue, 200, true); var organizer = Text(input.Organizer, 150, true); var registration = Url(input.Registration); var cover = Photo(input.Cover);
         try { _ = TimeZoneInfo.FindSystemTimeZoneById(input.TimeZone); } catch { throw new ApiException(400, "Choose a valid IANA time zone, such as Asia/Kolkata."); }
@@ -170,6 +170,7 @@ public partial class CommunityService
             else if (input.Action is "grant-moderator" or "revoke-moderator")
             {
                 if (u.Admin) throw new ApiException(409, "Administrators already have profile review access.");
+                if (input.Action == "grant-moderator" && !await db.Profiles.AnyAsync(p => p.Id == u.Id && p.IsVegan == true && !p.VeganVerificationPending && p.Approved && !p.TestProfile)) throw new ApiException(409, "Only an approved vegan member can become a moderator.");
                 u.Moderator = input.Action == "grant-moderator";
             }
             else if (input.Action is "verify" or "unverify")
@@ -214,6 +215,7 @@ public partial class CommunityService
         profile.Approved = input.Approve;
         profile.ReviewNote = input.Approve ? null : CommunityService.Text(input.Note, 500, true);
         profile.ReviewedBy = reviewer.Id; profile.ReviewedAt = DateTimeOffset.UtcNow;
+        if (input.Approve) profile.VeganVerificationPending = false;
         if (!input.Approve) profile.Featured = false;
         Notice(profile.Id, input.Approve ? "profile-approved" : "profile-review", input.Approve ? "Your profile was approved and is ready to be discovered." : "Your profile needs an update before it can be approved: " + profile.ReviewNote, "/settings/profile");
         await db.SaveChangesAsync();

@@ -5,6 +5,9 @@
 <div class="narrow"><a class="back-link" href="/events"><Icon Name="arrow_back" />Events</a><h1>Suggest an event</h1><Feedback Error="@Error" Success="@Success" />
 @if (Session?.Id == null) { <Empty Title="Sign in to suggest an event" Text="Event submissions are reviewed before publication."><a class="button" href="/signin?returnUrl=%2Fevents%2Fsuggest">Sign in</a></Empty> }
 else if (!Session.HasProfile) { <Empty Title="Create an approved profile first" Text="Approved community members can submit event suggestions."><a class="button" href="/onboarding?returnUrl=%2Fevents%2Fsuggest">Create profile</a></Empty> }
+else if (profile?.IsVegan == false) { <Empty Title="Event suggestions are for vegan members" Text="Your account is set to not vegan, so event submissions are unavailable."><a class="button secondary" href="/settings/profile">Edit profile</a></Empty> }
+else if (profile != null && profile.IsVegan is null) { <Empty Title="Choose your vegan status first" Text="Set your status in your profile before suggesting an event."><a class="button secondary" href="/settings/profile">Update profile</a></Empty> }
+else if (profile?.VeganVerificationPending == true) { <Empty Title="Vegan status is being reviewed" Text="You can suggest an event after moderator verification is complete."><a class="button secondary" href="/settings/profile">View profile status</a></Empty> }
 else if (profile != null && !profile.Approved) { <Empty Title="Your profile is awaiting approval" Text="You can suggest an event after your profile has been approved."><a class="button secondary" href="/settings/profile">View profile status</a></Empty> }
 else if (profile != null) {
     <p class="small muted">Submissions are checked by the community team before they appear in Events. Share public event details only.</p>

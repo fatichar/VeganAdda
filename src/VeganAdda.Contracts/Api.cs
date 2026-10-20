@@ -27,14 +27,14 @@ public class ApiException(int status, string message) : Exception(message)
     public int Status { get; } = status;
 }
 public record Ok(bool Success = true);
-public record Session(Guid? Id, string Name, bool HasProfile, bool IsAdmin, bool Development, bool AuthConfigured, bool IsModerator = false);
+public record Session(Guid? Id, string Name, bool HasProfile, bool IsAdmin, bool Development, bool AuthConfigured, bool IsModerator = false, bool? IsVegan = null, bool VeganVerificationPending = false);
 public record FirebaseClientConfig(string ApiKey, string AuthDomain, string ProjectId, string AppId, bool Configured);
 public record FirebaseLoginInput(string IdToken);
 public record Page<T>(List<T> Items, int Total, int PageNumber, int PageSize = 12);
 // This is the only profile projection returned to other people. Never add email or OAuth identity.
 public record Person(Guid Id, string Name, string City, string Bio, string Photo, string[] Interests,
     string[] LookingFor, string? Instagram, string? LinkedIn, string? Website, bool Featured,
-    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "");
+    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerificationPending = false);
 public class ProfileInput
 {
     public string Name { get; set; } = "";
@@ -52,6 +52,8 @@ public class ProfileInput
     public bool FeatureConsent { get; set; }
     public bool DefaultAttendeeVisible { get; set; }
     public bool AdultConfirmed { get; set; }
+    public bool? IsVegan { get; set; }
+    public bool VeganVerificationPending { get; set; }
     public bool Approved { get; set; }
     public string? ReviewNote { get; set; }
     public string? ReferralCode { get; set; }
@@ -97,8 +99,8 @@ public record NotificationSelection(Guid[] Ids, bool All = false);
 public record UnreadCounts(int Messages, int Notifications);
 public record ReportView(Guid Id, string Reporter, Guid SubjectId, string Subject, string Reason, bool Resolved, DateTimeOffset Created);
 public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People, List<ProfileReview> Profiles);
-public record AdminPerson(Guid Id, string Name, bool Suspended, bool Public, bool Consent, bool Featured, bool Verified = false, bool TestProfile = false, bool Moderator = false);
-public record ProfileReview(Guid Id, string Name, string City, string Bio, string[] Interests, string[] LookingFor, string Photo, string? Instagram, string? LinkedIn, string? Website, bool Public, bool TestProfile, string? ReferredBy, bool ReferrerVerified, string? ReviewNote, string Country = "India", string State = "");
+public record AdminPerson(Guid Id, string Name, bool Suspended, bool Public, bool Consent, bool Featured, bool Verified = false, bool TestProfile = false, bool Moderator = false, bool? IsVegan = null);
+public record ProfileReview(Guid Id, string Name, string City, string Bio, string[] Interests, string[] LookingFor, string Photo, string? Instagram, string? LinkedIn, string? Website, bool Public, bool TestProfile, string? ReferredBy, bool ReferrerVerified, string? ReviewNote, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerificationPending = false);
 public record ProfileReviewInput(Guid Id, bool Approve, string? Note = null);
 public record ReferralInviteResult(string Code, DateTimeOffset Expires);
 public record ModerateInput(Guid Id, string Action);

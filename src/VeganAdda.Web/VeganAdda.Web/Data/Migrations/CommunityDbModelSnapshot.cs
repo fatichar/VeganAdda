@@ -315,6 +315,9 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
+                    b.Property<bool?>("IsVegan")
+                        .HasColumnType("boolean");
+
                     b.PrimitiveCollection<string[]>("LookingFor")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -341,6 +344,9 @@ namespace VeganAdda.Web.Data.Migrations
 
                     b.Property<Guid?>("ReviewedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("VeganVerificationPending")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("State")
                         .IsRequired()

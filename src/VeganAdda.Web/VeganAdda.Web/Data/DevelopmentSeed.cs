@@ -7,7 +7,11 @@ public static class DevelopmentSeed
     public static readonly string[] Subjects = ["aarav", "ananya", "rohan", "sunita", "kabir", "new", "admin"];
     public static async Task Run(CommunityDb db, IConfiguration config, string contentRoot)
     {
-        if (await db.Accounts.AnyAsync(a => a.Subject.StartsWith("dev:"))) return;
+        if (await db.Accounts.AnyAsync(a => a.Subject.StartsWith("dev:")))
+        {
+            await db.Profiles.Where(p => p.TestProfile && p.IsVegan == null).ExecuteUpdateAsync(x => x.SetProperty(p => p.IsVegan, true));
+            return;
+        }
         var media = config["Storage:MediaPath"] ?? Path.Combine(contentRoot, "uploads"); Directory.CreateDirectory(media);
         var design = Path.GetFullPath(Path.Combine(contentRoot, "../../../design-reference"));
         string Asset(string prefix, string id)
@@ -29,7 +33,7 @@ public static class DevelopmentSeed
         };
         for (int i = 0; i < 5; i++) db.Profiles.Add(new()
         {
-            Id = accounts[i].Id, Name = names[i], City = i == 4 ? "Delhi NCR" : i == 1 || i == 3 ? "Bengaluru" : "Pune", State = i == 4 ? "Delhi" : i == 1 || i == 3 ? "Karnataka" : "Maharashtra", Bio = bios[i], Public = true, Approved = true, TestProfile = true,
+            Id = accounts[i].Id, Name = names[i], City = i == 4 ? "Delhi NCR" : i == 1 || i == 3 ? "Bengaluru" : "Pune", State = i == 4 ? "Delhi" : i == 1 || i == 3 ? "Karnataka" : "Maharashtra", Bio = bios[i], Public = true, Approved = true, IsVegan = true, TestProfile = true,
             FeatureConsent = true, Featured = i == 1, AdultConfirmedAt = DateTimeOffset.UtcNow,
             LookingFor = i == 2 ? ["Friendship", "Activism", "Dating"] : ["Friendship", "Business & networking"],
             Interests = i == 1 ? ["Design", "Running", "Zero waste", "Rescues"] : i == 2 ? ["Tech", "Sanctuaries", "Hiking"] : i == 3 ? ["Baking", "Gardening", "Heritage food"] : i == 4 ? ["Photography", "Music", "Coffee"] : ["Cooking", "Running", "Volunteering"],
