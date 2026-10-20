@@ -2,12 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
-using VeganAdda.Web.Features.Profiles;
-using VeganAdda.Web.Features.Referrals;
-using VeganAdda.Web.Features.Events;
-using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Events;
 
@@ -20,6 +15,7 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     }
     public async Task<Page<EventCard>> ListEvents(string city, int page, bool includePast = false, string country = "", string state = "")
     {
+        await ActiveViewer();
         var events = db.Events.Where(e => e.Published);
         if (!includePast) events = events.Where(e => e.End >= DateTimeOffset.UtcNow);
         country = Text(country, 80); state = Text(state, 80);
@@ -30,9 +26,9 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         }
         city = Text(city, 80).ToLowerInvariant();
         if (city.Length > 0 && city != "all india") events = events.Where(e => e.City.ToLower() == city);
-        var total = await events.CountAsync(); var result = new List<EventCard>();
-        foreach (var e in await events.OrderByDescending(e => e.Featured).ThenBy(e => e.Start).ThenBy(e => e.Id).Skip((page - 1) * 12).Take(12).ToListAsync()) result.Add(await projection.One(e));
-        return new Page<EventCard>(result, total, page);
+        var total = await events.CountAsync();
+        var rows = await events.OrderByDescending(e => e.Featured).ThenBy(e => e.Start).ThenBy(e => e.Id).Skip((page - 1) * 12).Take(12).ToListAsync();
+        return new Page<EventCard>(await projection.Many(rows), total, page);
     }
     public async Task<Ok> EventAction(Guid id, string action, JsonElement? body)
     {

@@ -47,6 +47,32 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
     private HubConnection? hub;
     private IJSObjectReference? firebaseModule;
     private bool starting;
+    private bool disposed;
+    private CancellationTokenSource? invalidation;
+    private ChangeArea pendingChanges;
+    public ChangeArea LastChange { get; private set; } = ChangeArea.All;
+    public async Task<bool> IsVisible()
+    {
+        try { return await js.InvokeAsync<bool>("veganAddaVisible"); }
+        catch (JSException) { return true; }
+    }
+    private async Task Notify(ChangeArea area)
+    {
+        if (disposed) return;
+        pendingChanges |= area;
+        invalidation?.Cancel();
+        invalidation?.Dispose();
+        invalidation = new CancellationTokenSource();
+        var token = invalidation.Token;
+        try
+        {
+            await Task.Delay(150, token);
+            if (disposed) return;
+            LastChange = pendingChanges; pendingChanges = 0;
+            Changed?.Invoke();
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
     public event Action? Changed;
     public Task<string> Upload(Stream stream, string filename, string contentType) => ((BrowserApi)api).Upload(stream, filename, contentType);
     public void SignIn(string returnTo) => navigation.NavigateTo("/signin?returnUrl=" + Uri.EscapeDataString(returnTo));
@@ -89,15 +115,20 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
     }
     public async Task StartRealtime()
     {
-        if (hub != null || starting) return;
+        if (starting || disposed) return;
         starting = true;
         try
         {
+            if (hub != null)
+            {
+                if (hub.State == HubConnectionState.Disconnected) await hub.StartAsync();
+                return;
+            }
             if ((await api.Get<Session>("session")).Id == null) return;
             hub = new HubConnectionBuilder().WithUrl(navigation.ToAbsoluteUri("/hubs/community")).WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15)]).Build();
-            hub.On("Changed", () => Changed?.Invoke());
-            hub.Reconnected += _ => { Changed?.Invoke(); return Task.CompletedTask; };
-            hub.Closed += _ => { Changed?.Invoke(); return Task.CompletedTask; };
+            hub.On<string>("Changed", area => Notify(Enum.TryParse<ChangeArea>(area, out var parsed) ? parsed : ChangeArea.All));
+            hub.Reconnected += _ => Notify(ChangeArea.All);
+            hub.Closed += _ => Notify(ChangeArea.All);
             await hub.StartAsync();
         }
         catch { if (hub != null) await hub.DisposeAsync(); hub = null; }
@@ -105,6 +136,8 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
     }
     public async ValueTask DisposeAsync()
     {
+        disposed = true;
+        invalidation?.Cancel(); invalidation?.Dispose();
         if (hub != null) await hub.DisposeAsync();
         if (firebaseModule != null) await firebaseModule.DisposeAsync();
     }

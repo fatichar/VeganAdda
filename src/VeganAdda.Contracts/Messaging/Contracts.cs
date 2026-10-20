@@ -5,3 +5,9 @@ public record Message(long Id, Guid SenderId, Guid ClientId, string Text, DateTi
 public record MessagePage(List<Message> Items, bool HasOlder, bool CanMessage, bool HasNewer = false);
 public record MessageInput(Guid ClientId, string Text);
 public record ReadInput(long ThroughId);
+
+public record Inbox(Page<Conversation> Chats, Page<ConnectionItem> Requests, Conversation? Selected, ConnectionItem? SelectedRequest);
+public interface IMessagingApi
+{
+    Task<Inbox> GetInbox(int chatPage = 1, int requestPage = 1, string? key = null);
+}

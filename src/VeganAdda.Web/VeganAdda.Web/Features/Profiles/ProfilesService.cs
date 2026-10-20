@@ -1,12 +1,8 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
-using VeganAdda.Web.Features.Profiles;
 using VeganAdda.Web.Features.Referrals;
-using VeganAdda.Web.Features.Events;
 using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Profiles;
@@ -44,14 +40,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
             var invite = await db.ReferralInvites.SingleOrDefaultAsync(i => i.TokenHash == inviteHash);
             if (invite == null || invite.Revoked || invite.ReferredId.HasValue || invite.Expires <= DateTimeOffset.UtcNow || invite.ReferrerId == me.Id || !await trust.IsVerified(invite.ReferrerId) || !await db.Profiles.AnyAsync(p => p.Id == invite.ReferrerId && p.Approved && !p.TestProfile))
                 throw new ApiException(400, "This referral link is invalid or expired.");
-            var parent = await db.Referrals.ToDictionaryAsync(r => r.ReferredId, r => r.ReferrerId);
-            var ancestor = invite.ReferrerId;
-            var visited = new HashSet<Guid>();
-            while (visited.Add(ancestor))
-            {
-                if (ancestor == me.Id) throw new ApiException(400, "This referral link is invalid or expired.");
-                if (!parent.TryGetValue(ancestor, out ancestor)) break;
-            }
+            if ((await trust.Ancestors(invite.ReferrerId)).Contains(me.Id))
+                throw new ApiException(400, "This referral link is invalid or expired.");
             invite.ReferredId = me.Id;
             db.Referrals.Add(new() { ReferredId = me.Id, ReferrerId = invite.ReferrerId });
         }

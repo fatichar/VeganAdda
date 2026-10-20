@@ -1,3 +1,4 @@
+using VeganAdda.Web.Features.Events;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;

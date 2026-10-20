@@ -13,7 +13,7 @@ else if (!Busy && Error == "") { <Empty Title="This profile isn't available" Tex
     Person? person, connecting; string reason = ""; bool actionDone, confirmBlock;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); }
     protected override Task OnParametersSetAsync() => Run(Refresh);
-    protected override async Task Refresh() => person = await Api.Get<Person>("people/" + Id);
+    protected override async Task Refresh() => person = await Profiles.GetPerson(Id);
     protected override async Task OnAfterRenderAsync(bool first) { await base.OnAfterRenderAsync(first); if (!actionDone && Action != null && person != null && Session?.Id != null) { actionDone = true; if (!ReadyForAction(Current)) return; if (Action == "connect") await Connect(); else if (Action == "save" && !person.Saved) await Save(); Nav.NavigateTo("/people/" + Id, replace: true); StateHasChanged(); } }
     Task Connect() { if (Session?.Id == null) Platform.SignIn($"/people/{Id}?action=connect"); else if (!Session.HasProfile) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{Id}?action=connect")}"); else if (person!.Relationship == "connected") Nav.NavigateTo("/messages/" + Pair()); else if (person.Relationship is "sent" or "received") Nav.NavigateTo("/messages/" + Pair()); else connecting = person; return Task.CompletedTask; }
     string Pair() => string.CompareOrdinal(Session!.Id.ToString(), Id.ToString()) < 0 ? $"{Session.Id:N}_{Id:N}" : $"{Id:N}_{Session.Id:N}";

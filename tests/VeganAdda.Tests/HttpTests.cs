@@ -209,7 +209,7 @@ public class HttpTests : IDisposable
         using var anon = Client(); Assert.Equal(HttpStatusCode.Unauthorized,(await anon.PostAsync("/hubs/community/negotiate?negotiateVersion=1",null)).StatusCode);
         ca.DefaultRequestHeaders.Add("Origin","https://evil.test"); Assert.Equal(HttpStatusCode.Forbidden,(await ca.PostAsync("/hubs/community/negotiate?negotiateVersion=1",null)).StatusCode); ca.DefaultRequestHeaders.Remove("Origin");
         await using var hub = new HubConnectionBuilder().WithUrl("http://localhost/hubs/community", o => { o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler(); o.Transports = HttpTransportType.LongPolling; o.Headers["X-Test-User"] = b.ToString(); }).Build();
-        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); hub.On("Changed", () => changed.TrySetResult()); await hub.StartAsync();
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); hub.On<string>("Changed", area => { Assert.Equal("Messaging", area); changed.TrySetResult(); }); await hub.StartAsync();
         var key = CommunityServicePair(a,b);
         var response = await Post(ca,$"/api/conversations/{key}/messages",new MessageInput(Guid.NewGuid(),"Realtime integration test")); Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(8));

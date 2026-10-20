@@ -1,13 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
-using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
-using VeganAdda.Web.Features.Profiles;
-using VeganAdda.Web.Features.Referrals;
-using VeganAdda.Web.Features.Events;
-using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Notifications;
 
@@ -43,7 +37,7 @@ public sealed class NotificationsService(FeatureContext context) : FeatureServic
             await (selection.All ? owned : owned.Where(n => selection.Ids.Contains(n.Id))).ExecuteDeleteAsync();
         }
         else throw Missing();
-        await changes.Changed(me.Id);
+        await changes.Changed(ChangeArea.Notifications, me.Id);
         return new Ok();
     }
     public async Task<NotificationList> GetNotifications(int page = 1)

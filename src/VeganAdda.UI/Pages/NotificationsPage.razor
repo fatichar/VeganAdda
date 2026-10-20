@@ -39,6 +39,7 @@
     }
 </div>
 @code {
+    protected override ChangeArea ChangeInterests => ChangeArea.Notifications | ChangeArea.Connections | ChangeArea.Profiles;
     NotificationList? items;
     readonly HashSet<Guid> selected = [];
     bool confirmAll; int page = 1;

@@ -20,6 +20,8 @@ public interface IPlatform
     Task ClearFirebaseSession();
     Task StartRealtime();
     Task<string> Upload(Stream stream, string filename, string contentType);
+    ChangeArea LastChange => ChangeArea.All;
+    Task<bool> IsVisible() => Task.FromResult(true);
     event Action? Changed;
 }
 public class ApiException(int status, string message) : Exception(message)
@@ -28,4 +30,9 @@ public class ApiException(int status, string message) : Exception(message)
 }
 public record Ok(bool Success = true);
 public record Page<T>(List<T> Items, int Total, int PageNumber, int PageSize = 12);
-// This is the only profile projection returned to other people. Never add email or OAuth identity.
+[Flags]
+public enum ChangeArea
+{
+    Profiles = 1, Connections = 2, Messaging = 4, Notifications = 8, Events = 16,
+    All = Profiles | Connections | Messaging | Notifications | Events
+}

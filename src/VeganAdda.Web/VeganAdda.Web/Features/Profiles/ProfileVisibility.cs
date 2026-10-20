@@ -1,13 +1,7 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
-using VeganAdda.Web.Features.Profiles;
-using VeganAdda.Web.Features.Referrals;
-using VeganAdda.Web.Features.Events;
-using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Profiles;
 
@@ -22,4 +16,8 @@ public sealed class ProfileVisibility(FeatureContext context) : FeatureService(c
             && (db.Accounts.Any(a => a.Id == v && a.Admin) || p.Id == v || !db.Profiles.Any(x => x.Id == v && x.TestProfile) || db.Accounts.Any(a => a.Id == p.Id && a.Admin))
             && !db.Blocks.Any(b => (b.Owner == v && b.Subject == p.Id) || (b.Subject == v && b.Owner == p.Id)));
     }
+    public Task<bool> CanReadPhoto(string url, Guid? id, bool isAdmin, bool isModerator)
+        => db.Profiles.AnyAsync(p => p.Photo == url && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended)
+                && ((id.HasValue && p.Id == id) || isAdmin || (isModerator && !p.Approved && !p.TestProfile) || (p.Approved && (!p.TestProfile || isAdmin) && (id.HasValue || p.Public)
+                    && (!id.HasValue || !db.Blocks.Any(b => (b.Owner == id && b.Subject == p.Id) || (b.Subject == id && b.Owner == p.Id))))));
 }

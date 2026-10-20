@@ -1,26 +1,36 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
-using VeganAdda.Web.Features.Profiles;
-using VeganAdda.Web.Features.Referrals;
-using VeganAdda.Web.Features.Events;
 using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Profiles;
 
 public sealed class PeopleProjection(FeatureContext context) : FeatureService(context)
 {
-    public async Task<Person> One(Profile p)
+    public async Task<Person> One(Profile profile) => (await Many([profile])).Single();
+
+    // A fixed number of queries per page, never one query per card.
+    public async Task<List<Person>> Many(List<Profile> profiles)
     {
-        bool dating = Viewer is { } v && await db.Profiles.AnyAsync(x => x.Id == v && x.LookingFor.Contains("Dating"));
-        var relation = Viewer is { } id ? await db.Relationships.FindAsync(Pair(id, p.Id)) : null;
-        var state = relation?.State == "accepted" ? "connected" : relation?.State == "pending" ? (relation.RequestedBy == Viewer ? "sent" : "received") : "none";
-        return new(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
-            p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), p.Instagram, p.LinkedIn, p.Website,
-            p.Featured && p.Public && p.FeatureConsent, Viewer.HasValue && await db.Saved.AnyAsync(x => x.UserId == Viewer && x.TargetId == p.Id && x.Kind == "person"),
-            p.Id == Viewer ? "self" : state, await db.Accounts.Where(a => a.Id == p.Id).Select(a => a.Demo).SingleAsync(), p.Country, p.State, p.IsVegan, p.VeganVerificationPending, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate));
+        if (profiles.Count == 0) return [];
+        var ids = profiles.Select(p => p.Id).ToArray();
+        var dating = Viewer is { } viewer && await db.Profiles.AnyAsync(p => p.Id == viewer && p.LookingFor.Contains("Dating"));
+        var relationships = Viewer is { } member
+            ? await db.Relationships.Where(r => (r.A == member && ids.Contains(r.B)) || (r.B == member && ids.Contains(r.A))).ToDictionaryAsync(r => r.A == member ? r.B : r.A)
+            : [];
+        var saved = Viewer is { } saver
+            ? await db.Saved.Where(s => s.UserId == saver && s.Kind == "person" && ids.Contains(s.TargetId)).Select(s => s.TargetId).ToHashSetAsync()
+            : [];
+        var demos = await db.Accounts.Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Demo);
+        return profiles.Select(p =>
+        {
+            relationships.TryGetValue(p.Id, out var relation);
+            var state = relation?.State == "accepted" ? "connected" : relation?.State == "pending" ? (relation.RequestedBy == Viewer ? "sent" : "received") : "none";
+            return new Person(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
+                p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), p.Instagram, p.LinkedIn, p.Website,
+                p.Featured && p.Public && p.FeatureConsent, saved.Contains(p.Id), p.Id == Viewer ? "self" : state,
+                demos[p.Id], p.Country, p.State, p.IsVegan, p.VeganVerificationPending, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate));
+        }).ToList();
     }
 }

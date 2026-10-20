@@ -76,6 +76,7 @@
     }
 </DiscoveryPanel>
 @code {
+    protected override ChangeArea ChangeInterests => ChangeArea.Profiles | ChangeArea.Events | ChangeArea.Connections;
     [SupplyParameterFromQuery] public string? City { get; set; }
     [SupplyParameterFromQuery(Name = "event")] public string? Event { get; set; }
     [SupplyParameterFromQuery(Name = "checkedIn")] public bool CheckedIn { get; set; }
@@ -97,7 +98,7 @@
         await base.OnInitializedAsync();
         if (Session?.HasProfile == true) await Run(async () =>
         {
-            profile = await Api.Get<ProfileInput>("profile"); dating = profile.LookingFor.Contains("Dating");
+            profile = await Profiles.GetProfile(); dating = profile.LookingFor.Contains("Dating");
         });
     }
     protected override async Task OnParametersSetAsync()
@@ -133,9 +134,9 @@
         if (eventId != "" && selectedEvent?.Id.ToString() != eventId) selectedEvent = await Api.Get<EventCard>("events/" + eventId);
         Page<Person> result;
         if (nearby)
-            result = await Api.Send<Page<Person>>("people/search", new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, MinAge = minAge, MaxAge = maxAge, Page = page });
+            result = await Profiles.SearchPeople( new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, MinAge = minAge, MaxAge = maxAge, Page = page });
         else
-            result = await Api.Get<Page<Person>>($"people?event={E(eventId)}&checkedIn={checkedIn.ToString().ToLowerInvariant()}&country={E(country)}&state={E(state)}&city={E(city)}&search={E(search)}&interest={E(interest)}&intent={E(intent)}&includeNonVegan={includeNonVegan.ToString().ToLowerInvariant()}&minAge={minAge}&maxAge={maxAge}&page={page}");
+            result = await Profiles.SearchPeople(new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, MinAge = minAge, MaxAge = maxAge, Page = page });
         people = result.Items; total = result.Total;
     }
     void OpenPanel(string value) { panelError = ""; panel = value; }

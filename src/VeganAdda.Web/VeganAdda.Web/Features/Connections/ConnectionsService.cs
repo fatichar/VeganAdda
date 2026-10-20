@@ -2,28 +2,32 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Profiles;
-using VeganAdda.Web.Features.Referrals;
-using VeganAdda.Web.Features.Events;
-using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Connections;
 
 public sealed class ConnectionsService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people) : FeatureService(context)
 {
-    public async Task<List<ConnectionItem>> Connections()
+    public async Task<List<ConnectionItem>> Connections() => (await ConnectionsPage(pageSize: 20)).Items;
+
+    public async Task<Page<ConnectionItem>> ConnectionsPage(int page = 1, string state = "", string? key = null, int pageSize = 10)
     {
-        var me = await User(true); var result = new List<ConnectionItem>();
-        var rows = await db.Relationships.Where(r => (r.A == me.Id || r.B == me.Id) && (r.State == "pending" || r.State == "accepted")).OrderByDescending(r => r.Updated).ToListAsync();
-        foreach (var r in rows)
-        {
-            var other = r.A == me.Id ? r.B : r.A;
-            var p = await visibility.Query(includeRelatedProfiles: true).SingleOrDefaultAsync(p => p.Id == other);
-            if (p != null) result.Add(new(r.Key, await people.One(p), r.State, r.RequestedBy != me.Id, r.Introduction, r.Updated));
-        }
-        return result;
+        var me = await User(true);
+        var relationships = db.Relationships.Where(r => (r.A == me.Id || r.B == me.Id) && (r.State == "pending" || r.State == "accepted"));
+        if (state is not ("" or "pending" or "accepted")) throw new ApiException(400, "Choose a supported connection state.");
+        if (state != "") relationships = relationships.Where(r => r.State == state);
+        if (key != null) relationships = relationships.Where(r => r.Key == key);
+        var query = relationships.Join(visibility.Query(true), r => r.A == me.Id ? r.B : r.A, p => p.Id, (r, p) => new { Relationship = r, Profile = p });
+        var total = await query.CountAsync();
+        pageSize = Math.Clamp(pageSize, 1, 20);
+        page = Math.Clamp(page, 1, Math.Max(1, (total + pageSize - 1) / pageSize));
+        var rows = await query.OrderByDescending(x => x.Relationship.State == "pending" && x.Relationship.RequestedBy != me.Id)
+            .ThenByDescending(x => x.Relationship.Updated).ThenBy(x => x.Relationship.Key)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        var cards = (await people.Many(rows.Select(x => x.Profile).ToList())).ToDictionary(p => p.Id);
+        return new(rows.Select(x => new ConnectionItem(x.Relationship.Key, cards[x.Profile.Id], x.Relationship.State,
+            x.Relationship.RequestedBy != me.Id, x.Relationship.Introduction, x.Relationship.Updated)).ToList(), total, page, pageSize);
     }
     public async Task<Ok> ConnectionAction(string action, JsonElement? body)
     {
@@ -67,7 +71,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
             else throw new ApiException(409, "This connection has changed. Refresh to see its current state.");
         }
         r!.Updated = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(me.Id, input.PersonId); return new Ok();
+        await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(ChangeArea.Connections, me.Id, input.PersonId); return new Ok();
     }
     public async Task<Ok> PersonAction(Guid id, string action, JsonElement? body)
     {
@@ -81,7 +85,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         if (action == "unblock")
         {
             await db.Blocks.Where(b => b.Owner == me.Id && b.Subject == id).ExecuteDeleteAsync();
-            await tx.CommitAsync(); await changes.Changed(me.Id, id); return new Ok();
+            await tx.CommitAsync(); await changes.Changed(ChangeArea.Connections, me.Id, id); return new Ok();
         }
         if (!await visibility.Query(includeRelatedProfiles: true).AnyAsync(p => p.Id == id)) throw Missing();
         switch (action)
@@ -101,7 +105,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
                 break;
             default: throw Missing();
         }
-        await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(me.Id, id); return new Ok();
+        await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(ChangeArea.Connections, me.Id, id); return new Ok();
     }
     public async Task<List<AdminPerson>> GetBlocked()
     {

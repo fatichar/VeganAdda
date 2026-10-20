@@ -44,12 +44,17 @@ public class CommunityHub(CommunityDb db) : Hub
     // No conversation join or message method: all access and writes go through the authorized API.
     // Events contain only invalidation, never names, content, identifiers or message bodies.
 }
-public interface IChangeBus { Task Changed(params Guid[] users); }
+public interface IChangeBus
+{
+    Task Changed(params Guid[] users);
+    Task Changed(ChangeArea area, params Guid[] users) => Changed(users);
+}
 public class ChangeBus(IHubContext<CommunityHub> hub, ILogger<ChangeBus> log) : IChangeBus
 {
-    public async Task Changed(params Guid[] users)
+    public Task Changed(params Guid[] users) => Changed(ChangeArea.All, users);
+    public async Task Changed(ChangeArea area, params Guid[] users)
     {
-        try { await hub.Clients.Users(users.Select(x => x.ToString()).ToList()).SendAsync("Changed"); }
+        try { await hub.Clients.Users(users.Select(x => x.ToString()).ToList()).SendAsync("Changed", area.ToString()); }
         catch (Exception ex) { log.LogWarning("Realtime invalidation failed: {Type}", ex.GetType().Name); }
     }
 }

@@ -8,6 +8,7 @@ else { <div class="events-grid">@foreach (var ev in items) { <EventCardView Even
 <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
 <a href="/help" class="text-button suggest-event">Suggest an event<Icon Name="arrow_forward" /></a>
 @code {
+    protected override ChangeArea ChangeInterests => ChangeArea.Events;
     [SupplyParameterFromQuery] public string? City { get; set; }
     string country = "", state = "", city = ""; string? lastCity; ProfileInput? profile;
     List<EventCard> items = []; int page = 1, total;

@@ -5,6 +5,7 @@ namespace VeganAdda.UI;
 
 public class Screen : ComponentBase, IDisposable
 {
+    [Inject] protected IProfilesApi Profiles { get; set; } = default!;
     [Inject] protected ICommunityApi Api { get; set; } = default!;
     [Inject] protected IPlatform Platform { get; set; } = default!;
     [Inject] protected NavigationManager Nav { get; set; } = default!;
@@ -45,8 +46,13 @@ public class Screen : ComponentBase, IDisposable
         if (!Session.HasProfile) { Nav.NavigateTo("/onboarding?returnUrl=" + E(target)); return false; }
         return true;
     }
+    protected virtual ChangeArea ChangeInterests => ChangeArea.All;
     protected virtual Task Refresh() => Task.CompletedTask;
-    private void Changed() => _ = InvokeAsync(async () => { await Run(Refresh); StateHasChanged(); });
+    private void Changed()
+    {
+        if ((Platform.LastChange & ChangeInterests) == 0) return;
+        _ = InvokeAsync(async () => { await Run(Refresh); StateHasChanged(); });
+    }
     protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender && Session?.Id != null) await Platform.StartRealtime(); }
     public virtual void Dispose() => Platform.Changed -= Changed;
     protected static string E(string? value) => Uri.EscapeDataString(value ?? "");

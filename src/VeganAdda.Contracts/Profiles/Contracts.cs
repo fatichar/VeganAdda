@@ -1,5 +1,6 @@
 namespace VeganAdda.Contracts;
 
+// Public/member projection: never include private birth details, coordinates, or identity credentials.
 public record Person(Guid Id, string Name, string City, string Bio, string Photo, string[] Interests,
     string[] LookingFor, string? Instagram, string? LinkedIn, string? Website, bool Featured,
     bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerificationPending = false, int? Age = null, bool IsBirthday = false);
@@ -32,4 +33,12 @@ public class ProfileInput
     public string? ReviewNote { get; set; }
     public string? ReferralCode { get; set; }
     public bool CanRefer { get; set; }
+}
+
+public interface IProfilesApi
+{
+    Task<ProfileInput> GetProfile();
+    Task<Person> GetPerson(Guid id);
+    Task<Page<Person>> SearchPeople(DiscoveryInput input);
+    Task<Ok> SaveProfile(ProfileInput input);
 }

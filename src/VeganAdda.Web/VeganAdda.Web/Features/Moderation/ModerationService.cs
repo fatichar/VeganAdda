@@ -1,13 +1,9 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
-using VeganAdda.Web.Features.Profiles;
 using VeganAdda.Web.Features.Referrals;
 using VeganAdda.Web.Features.Events;
-using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Moderation;
 
@@ -46,9 +42,8 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         }
         var profilesTotal = await db.Profiles.CountAsync(p => !p.Approved);
         var profiles = await db.Profiles.Where(p => !p.Approved).OrderBy(p => p.Name).ThenBy(p => p.Id).Take(pageSize).ToListAsync();
-        var verified = await trust.VerifiedAccounts();
         var pendingProfiles = new List<ProfileReview>();
-        foreach (var profile in profiles) pendingProfiles.Add(await ProfileReviewDto(profile, verified));
+        foreach (var profile in profiles) pendingProfiles.Add(await ProfileReviewDto(profile));
         var activePage = section == "Events" ? eventsPage : section == "Reports" ? reportsPage : membersPage;
         return new AdminData(events, reports, people, pendingProfiles, eventsTotal, reportsTotal, membersTotal, profilesTotal, activePage, pageSize);
     }
@@ -56,7 +51,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
     {
         await User(admin: true);
         var profile = await db.Profiles.FindAsync(id) ?? throw Missing();
-        return await ProfileReviewDto(profile, await trust.VerifiedAccounts());
+        return await ProfileReviewDto(profile);
     }
     public async Task<ModerationData> Moderation(string section, int page)
     {
@@ -72,22 +67,21 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         var events = section == "Events" ? await eventService.EventQueue(includeTestEvents: false, page, pageSize) : [];
         return new ModerationData(profiles, events, profilesTotal, eventsTotal, page, pageSize);
     }
-    public async Task<ProfileReview> ProfileReviewDto(Profile p, HashSet<Guid> verifiedAccounts)
+    private async Task<ProfileReview> ProfileReviewDto(Profile p)
     {
         var referral = await db.Referrals.FindAsync(p.Id);
         var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
-        var referrerCanRefer = referral != null && verifiedAccounts.Contains(referral.ReferrerId)
+        var referrerCanRefer = referral != null && await trust.IsVerified(referral.ReferrerId)
             && await db.Profiles.AnyAsync(p => p.Id == referral.ReferrerId && p.Approved && !p.TestProfile);
         return new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
             referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending);
     }
-    public async Task<List<ProfileReview>> ProfileQueue(bool includeTestProfiles, int page = 1, int pageSize = 20)
+    private async Task<List<ProfileReview>> ProfileQueue(bool includeTestProfiles, int page = 1, int pageSize = 20)
     {
         if (includeTestProfiles) await User(admin: true); else await User(moderator: true);
-        var verifiedAccounts = await trust.VerifiedAccounts();
         var reviewRows = await db.Profiles.Where(p => !p.Approved && (includeTestProfiles || !p.TestProfile)).OrderBy(p => p.Name).ThenBy(p => p.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var profileReviews = new List<ProfileReview>();
-        foreach (var p in reviewRows) profileReviews.Add(await ProfileReviewDto(p, verifiedAccounts));
+        foreach (var p in reviewRows) profileReviews.Add(await ProfileReviewDto(p));
         return profileReviews;
     }
     public async Task<Ok> Moderate(ModerateInput input)
@@ -128,11 +122,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
                 u.TrustRevoked = input.Action == "unverify";
                 if (input.Action == "unverify")
                 {
-                    var children = await db.Referrals.Select(r => new { r.ReferrerId, r.ReferredId }).ToListAsync();
-                    var byReferrer = children.GroupBy(r => r.ReferrerId).ToDictionary(g => g.Key, g => g.Select(r => r.ReferredId).ToArray());
-                    var queue = new Queue<Guid>(); queue.Enqueue(input.Id);
-                    while (queue.TryDequeue(out var parentId))
-                        if (byReferrer.TryGetValue(parentId, out var descendants)) foreach (var child in descendants) if (affected.Add(child)) queue.Enqueue(child);
+                    foreach (var descendant in await trust.Descendants(input.Id)) affected.Add(descendant);
                     var referredAccounts = await db.Accounts.Where(a => affected.Contains(a.Id) && a.Id != input.Id).ToListAsync();
                     foreach (var child in referredAccounts) { child.Verified = false; child.TrustRevoked = true; }
                 }

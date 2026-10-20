@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using VeganAdda.Contracts;
 
-namespace VeganAdda.Web.Services;
+namespace VeganAdda.Web.Features.Events;
 
 // Events currently store a city, so broader filters resolve that city against the
 // same location catalog used by the picker. Embed it so published builds work too.

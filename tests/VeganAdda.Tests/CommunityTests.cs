@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -28,14 +29,19 @@ public sealed class DatabaseFixture : IAsyncLifetime
         var b = new NpgsqlConnectionStringBuilder(baseConnection) { Database = name }; Connection = b.ConnectionString;
         await using var db = Db(); await db.Database.MigrateAsync();
     }
-    public CommunityDb Db() => new(new DbContextOptionsBuilder<CommunityDb>().UseNpgsql(Connection).Options);
-    public async Task<object> Call(Guid? id, string path, object? body = null, string method = "GET")
+    public CommunityDb Db(DbCommandInterceptor? interceptor = null)
+    {
+        var options = new DbContextOptionsBuilder<CommunityDb>().UseNpgsql(Connection);
+        if (interceptor != null) options.AddInterceptors(interceptor);
+        return new(options.Options);
+    }
+    public async Task<object> Call(Guid? id, string path, object? body = null, string method = "GET", DbCommandInterceptor? interceptor = null)
     {
         using var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddSingleton<IWebHostEnvironment>(new TestEnvironment())
             .AddScoped<IActor>(_ => new Actor(id)).AddScoped<IChangeBus, Bus>()
-            .AddScoped(_ => Db()).AddCommunityFeatures().BuildServiceProvider();
+            .AddScoped(_ => Db(interceptor)).AddCommunityFeatures().BuildServiceProvider();
         await using var scope = services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<CommunityService>()
             .Execute(method, path, body == null ? null : JsonSerializer.SerializeToElement(body, Wire.Json));
@@ -47,6 +53,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     }
     public async Task DisposeAsync()
     {
+        if (string.IsNullOrEmpty(Connection)) return;
         NpgsqlConnection.ClearAllPools(); var b = new NpgsqlConnectionStringBuilder(Connection) { Database = "postgres" };
         await using var c = new NpgsqlConnection(b.ConnectionString); await c.OpenAsync(); await new NpgsqlCommand($"DROP DATABASE {name} WITH (FORCE)", c).ExecuteNonQueryAsync();
     }

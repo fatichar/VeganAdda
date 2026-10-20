@@ -17,9 +17,9 @@
     Session? session; int unread, unreadMessages; ErrorBoundary? boundary; CancellationTokenSource stop = new();
     protected override async Task OnInitializedAsync() { try { session = await Api.Get<Session>("session"); await Refresh(); } catch { } Platform.Changed += Changed; Nav.LocationChanged += Location; }
     protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) { await Platform.StartRealtime(); _ = Poll(); } }
-    async Task Poll() { try { using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30)); while (await timer.WaitForNextTickAsync(stop.Token)) { await Platform.StartRealtime(); Changed(); } } catch (OperationCanceledException) { } }
-    async Task Refresh() { if (session?.Id != null) { session = await Api.Get<Session>("session"); var counts = await Api.Get<UnreadCounts>("unread"); unread = counts.Notifications; unreadMessages = counts.Messages; } }
-    void Changed() => _ = InvokeAsync(async () => { try { await Refresh(); StateHasChanged(); } catch { } });
+    async Task Poll() { try { using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2)); while (await timer.WaitForNextTickAsync(stop.Token)) { if (await Platform.IsVisible()) { await Platform.StartRealtime(); await InvokeAsync(async () => { await Refresh(); StateHasChanged(); }); } } } catch (OperationCanceledException) { } }
+    async Task Refresh(bool refreshSession = true) { if (session?.Id != null) { if (refreshSession) session = await Api.Get<Session>("session"); var counts = await Api.Get<UnreadCounts>("unread"); unread = counts.Notifications; unreadMessages = counts.Messages; } }
+    void Changed() => _ = InvokeAsync(async () => { try { await Refresh((Platform.LastChange & ChangeArea.Profiles) != 0); StateHasChanged(); } catch { } });
     void Location(object? sender, LocationChangedEventArgs e) { boundary?.Recover(); Changed(); }
     public void Dispose() { stop.Cancel(); stop.Dispose(); Platform.Changed -= Changed; Nav.LocationChanged -= Location; }
 }

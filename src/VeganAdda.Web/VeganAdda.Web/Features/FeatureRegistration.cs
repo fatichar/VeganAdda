@@ -1,13 +1,9 @@
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
-using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Profiles;
 using VeganAdda.Web.Features.Referrals;
 using VeganAdda.Web.Features.Events;
-using static VeganAdda.Web.Features.Profiles.BirthDetails;
 using VeganAdda.Web.Features.Discovery;
 using VeganAdda.Web.Features.Connections;
 using VeganAdda.Web.Features.Messaging;
@@ -39,6 +35,7 @@ public static class FeatureRegistration
     {
         services.AddScoped<FeatureContext>();
         services.AddScoped<CommunityService>();
+        services.AddScoped<InboxService>();
         services.AddScoped<ProfileVisibility>();
         services.AddScoped<PeopleProjection>();
         services.AddScoped<ReferralTrust>();

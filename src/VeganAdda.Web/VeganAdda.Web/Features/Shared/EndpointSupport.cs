@@ -9,6 +9,7 @@ public static class EndpointSupport
 {
     internal const string BodyKey = "VeganAdda.ApiBody";
     public static string Q(HttpContext ctx, string name) => ctx.Request.Query[name].ToString();
+    public static int PageFor(string value) => int.TryParse(value, out var n) ? Math.Clamp(n, 1, 10000) : 1;
     public static int Page(HttpContext ctx, string name = "page") => int.TryParse(Q(ctx, name), out var n) ? Math.Clamp(n, 1, 10000) : 1;
     public static JsonElement? RawBody(HttpContext ctx) => ctx.Items.TryGetValue(BodyKey, out var b) ? (JsonElement?)b : null;
     public static T Body<T>(HttpContext ctx) where T : class => RawBody(ctx)?.Deserialize<T>(Wire.Json) ?? throw new ApiException(400, "Please check the form and try again.");

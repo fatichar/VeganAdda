@@ -29,7 +29,7 @@ public sealed class CommunityService(FeatureContext context,
     NotificationsService notifications,
     ReferralsService referrals,
     SessionService session,
-    SavedService saved) : FeatureService(context)
+    SavedService saved, InboxService inbox) : FeatureService(context)
 {
     public async Task<object> Execute(string method, string path, JsonElement? body)
     {
@@ -56,7 +56,8 @@ public sealed class CommunityService(FeatureContext context,
                     if (parts.Length == 1) return await messaging.Conversations();
                     return await messaging.Messages(parts[1], long.TryParse(Q("before"), out var before) ? before : long.MaxValue, long.TryParse(Q("after"), out var after) ? after : null);
                 case "events": return parts.Length > 1 ? await events.GetEvent(Guid.Parse(parts[1])) : await events.ListEvents(Q("city"), page, Q("includePast") == "true", Q("country"), Q("state"));
-                case "saved": return await saved.GetSaved();
+                case "saved": return await saved.GetSaved(EndpointSupport.PageFor(Q("peoplePage")), EndpointSupport.PageFor(Q("eventsPage")));
+                case "inbox": return await inbox.GetInbox(EndpointSupport.PageFor(Q("chatPage")), EndpointSupport.PageFor(Q("requestPage")), Q("key") is { Length: > 0 } key ? key : null);
                 case "notifications": return await notifications.GetNotifications(page);
                 case "unread": return await notifications.Unread();
                 case "blocked": return await connections.GetBlocked();

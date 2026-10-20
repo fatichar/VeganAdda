@@ -1,13 +1,8 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
-using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Profiles;
-using VeganAdda.Web.Features.Referrals;
-using VeganAdda.Web.Features.Events;
-using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Discovery;
 
@@ -15,6 +10,7 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
 {
     public async Task<Page<Person>> SearchPeople(DiscoveryInput input)
     {
+        await ActiveViewer();
         var nearby = input.Latitude.HasValue || input.Longitude.HasValue || input.RadiusKm.HasValue;
         if (!Viewer.HasValue && (nearby || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan
             || !string.IsNullOrEmpty(input.Search) || !string.IsNullOrEmpty(input.Interest) || !string.IsNullOrEmpty(input.Intent) || !string.IsNullOrEmpty(input.Event) || input.CheckedIn))
@@ -81,7 +77,7 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
         var total = await people.CountAsync();
         var rows = await people.OrderByDescending(p => p.Featured && p.Public && p.FeatureConsent).ThenBy(p => p.Name).ThenBy(p => p.Id)
             .Skip((page - 1) * 12).Take(12).ToListAsync();
-        var dtos = new List<Person>(); foreach (var p in rows) dtos.Add(await projection.One(p));
+        var dtos = await projection.Many(rows);
         return new(dtos, total, page);
     }
 }

@@ -54,7 +54,11 @@ if (!dev && !migrationOnly && string.IsNullOrWhiteSpace(Environment.GetEnvironme
 builder.Services.AddDbContext<CommunityDb>(o => o.UseNpgsql(connection));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IActor, HttpActor>(); builder.Services.AddCommunityFeatures();
-builder.Services.AddScoped<ICommunityApi, ServerApi>(); builder.Services.AddScoped<IPlatform, ServerPlatform>();
+builder.Services.AddScoped<ICommunityApi, ServerApi>();
+builder.Services.AddScoped<ServerFeatures>();
+builder.Services.AddScoped<IMessagingApi>(s => s.GetRequiredService<ServerFeatures>());
+builder.Services.AddScoped<ISavedApi>(s => s.GetRequiredService<ServerFeatures>());
+builder.Services.AddScoped<IProfilesApi>(s => s.GetRequiredService<ServerFeatures>()); builder.Services.AddScoped<IPlatform, ServerPlatform>();
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
 builder.Services.AddSingleton<IFirebaseIdentityVerifier, FirebaseIdentityVerifier>();
 builder.Services.AddHostedService<ChatPushWorker>();
