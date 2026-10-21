@@ -15,6 +15,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         var me = await User(allowIncomplete: true);
         if (input.IsVegan is null) throw new ApiException(400, "Choose whether you are vegan or interested in meeting vegans.");
         var birthDate = ReadBirthDetails(input);
+        var gender = Text(input.Gender, 40);
+        if (gender != "" && !Wire.Genders.Contains(gender)) throw new ApiException(400, "Choose a supported gender or prefer not to say.");
         var name = Text(input.Name, 80, true); var city = Text(input.City, 80, true); var bio = Text(input.Bio, 1000); var profession = Text(input.Profession, 80);
         var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
         if (input.SavePreciseLocation && (input.Latitude is not double latitude || !double.IsFinite(latitude) || latitude < -90 || latitude > 90
@@ -43,6 +45,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         }
         p.Name = name; p.City = city; p.Country = country; p.State = state; p.Bio = bio; p.Profession = profession; p.LookingFor = input.LookingFor.Distinct().ToArray(); p.Interests = interests;
         p.BirthDate = birthDate;
+        p.Gender = gender;
         p.HasExactBirthDate = input.BirthDay.HasValue;
         p.Latitude = input.SavePreciseLocation ? input.Latitude : null;
         p.Longitude = input.SavePreciseLocation ? input.Longitude : null;
@@ -78,7 +81,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
     {
         var me = await User(allowIncomplete: true); var own = await db.Profiles.FindAsync(me.Id);
                     var canRefer = await trust.CanCreateReferral(me.Id);
-                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, BirthYear = own.BirthDate?.Year, BirthMonth = own.BirthDate?.Month, BirthDay = own.HasExactBirthDate ? own.BirthDate?.Day : null, City = own.City, Country = own.Country, State = own.State, SavePreciseLocation = own.Latitude.HasValue && own.Longitude.HasValue, Latitude = own.Latitude, Longitude = own.Longitude, Bio = own.Bio, Profession = own.Profession, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, DefaultAttendeeVisible = own.DefaultAttendeeVisible, VeganVerified = own.VeganVerified, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, HasReferrer = await db.Referrals.AnyAsync(r => r.ReferredId == me.Id) };
+                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, BirthYear = own.BirthDate?.Year, BirthMonth = own.BirthDate?.Month, BirthDay = own.HasExactBirthDate ? own.BirthDate?.Day : null, City = own.City, Country = own.Country, State = own.State, SavePreciseLocation = own.Latitude.HasValue && own.Longitude.HasValue, Latitude = own.Latitude, Longitude = own.Longitude, Bio = own.Bio, Profession = own.Profession, Gender = own.Gender, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, DefaultAttendeeVisible = own.DefaultAttendeeVisible, VeganVerified = own.VeganVerified, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, HasReferrer = await db.Referrals.AnyAsync(r => r.ReferredId == me.Id) };
     }
     public async Task<Person> GetPerson(Guid id)
     {

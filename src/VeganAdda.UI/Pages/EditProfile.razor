@@ -34,6 +34,7 @@ else if (model != null) {
 
 </div>
 <BirthDetails Model="@model" />
+<label for="gender">Gender <span class="muted">(optional)</span></label><select id="gender" @bind="model.Gender"><option value="">Prefer not to say</option>@foreach (var gender in Wire.Genders) { <option>@gender</option> }</select><small>Used to match gender filters in Discover.</small>
 <LocationPicker Model="@model" BusyChanged="value => locationBusy = value" />
 <p class="small muted">VeganAdda is for adults aged 18 and over. Your birth details are checked when you save.</p>
 </section>

@@ -4,8 +4,10 @@
     @if (!string.IsNullOrWhiteSpace(Person.Profession)) { <p class="person-profession">@Person.Profession</p> }
     @if (!string.IsNullOrWhiteSpace(Person.Bio)) { <p class="bio">@Person.Bio</p> }
     @if (Person.IsBirthday) { <p class="birthday-highlight"><Icon Name="cake" />Birthday today</p> }
+    <div class="person-details">
     @if (Person.Interests.Length > 0) { <div class="tags">@foreach (var i in Person.Interests.Take(3)) { <span>@i</span> }</div> }
     @if (Person.LookingFor.Length > 0) { <p class="person-intentions"><span class="sr-only">Looking for: </span>@string.Join(" · ", Person.LookingFor)</p> }
+    </div>
     <div class="person-footer">@if (Person.Demo) { <span class="muted small">Sample profile</span> }
         @if (Person.Relationship == "self") { <a class="button small-button secondary" href="/settings">Your profile</a> }
         else if (Person.Relationship == "connected") { <a class="button small-button" href="/messages/@Pair"><Icon Name="chat_bubble" />Message</a> }

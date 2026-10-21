@@ -49,7 +49,7 @@ public sealed class CommunityService(FeatureContext context,
                     {
                         return await profiles.GetPerson(Guid.Parse(parts[1]));
                     }
-                    return await discovery.SearchPeople(new DiscoveryInput { Event = Q("event"), CheckedIn = Q("checkedIn") == "true", Country = Q("country"), State = Q("state"), City = Q("city"), Search = Q("search"), Interest = Q("interest"), Intent = Q("intent"), VerifiedVegansOnly = Q("verifiedVegansOnly") == "true", IncludeNonVegan = Q("includeNonVegan") == "true", MinAge = ParseAge(Q("minAge")), MaxAge = ParseAge(Q("maxAge")), Page = page });
+                    return await discovery.SearchPeople(new DiscoveryInput { Event = Q("event"), CheckedIn = Q("checkedIn") == "true", Country = Q("country"), State = Q("state"), City = Q("city"), Search = Q("search"), Genders = Q("gender").Split(',', StringSplitOptions.RemoveEmptyEntries), Interest = Q("interest"), Intent = Q("intent"), VerifiedVegansOnly = Q("verifiedVegansOnly") == "true", IncludeNonVegan = Q("includeNonVegan") == "true", MinAge = ParseAge(Q("minAge")), MaxAge = ParseAge(Q("maxAge")), Page = page });
                 case "profile": return await profiles.GetProfile();
                 case "connections": return await connections.Connections();
                 case "conversations":

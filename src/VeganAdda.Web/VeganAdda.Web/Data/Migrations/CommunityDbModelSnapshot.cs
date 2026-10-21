@@ -312,6 +312,13 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<bool>("Featured")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Gender")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("");
+
                     b.Property<bool>("HasExactBirthDate")
                         .HasColumnType("boolean");
 

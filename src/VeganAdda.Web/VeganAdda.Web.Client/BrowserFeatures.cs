@@ -24,6 +24,7 @@ public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISave
             ["city"] = input.City,
             ["search"] = input.Search,
             ["interest"] = input.Interest,
+            ["gender"] = string.Join(",", input.Genders),
             ["intent"] = input.Intent,
             ["verifiedVegansOnly"] = input.VerifiedVegansOnly.ToString().ToLowerInvariant(),
             ["includeNonVegan"] = input.IncludeNonVegan.ToString().ToLowerInvariant(),

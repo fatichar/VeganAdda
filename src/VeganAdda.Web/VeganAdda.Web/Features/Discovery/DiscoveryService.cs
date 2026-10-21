@@ -11,8 +11,9 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
     public async Task<Page<Person>> SearchPeople(DiscoveryInput input)
     {
         await ActiveViewer();
+        var genders = input.Genders ?? throw new ApiException(400, "Choose supported genders.");
         var nearby = input.Latitude.HasValue || input.Longitude.HasValue || input.RadiusKm.HasValue;
-        if (!Viewer.HasValue && (nearby || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan
+        if (!Viewer.HasValue && (nearby || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan || genders.Length > 0
             || !string.IsNullOrEmpty(input.Search) || !string.IsNullOrEmpty(input.Interest) || !string.IsNullOrEmpty(input.Intent) || !string.IsNullOrEmpty(input.Event) || input.CheckedIn))
             throw new ApiException(401, "Sign in to use member filters.");
         if (input.MinAge is < 18 or > 120 || input.MaxAge is < 18 or > 120 || input.MinAge > input.MaxAge)
@@ -21,6 +22,11 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
             || input.Longitude is not double lon || !double.IsFinite(lon) || lon < -180 || lon > 180 || input.RadiusKm is not (>= 1 and <= 500)))
             throw new ApiException(400, "Choose a valid current location and a radius between 1 and 500 km.");
         var people = visibility.Query().Where(p => p.Id != Viewer);
+        if (genders.Length > 0)
+        {
+            if (genders.Length > Wire.GenderFilters.Length || genders.Any(gender => !Wire.GenderFilters.Contains(gender))) throw new ApiException(400, "Choose supported genders.");
+            people = people.Where(p => genders.Contains(p.Gender) || (genders.Contains("Unspecified") && p.Gender == ""));
+        }
         people = input.IncludeNonVegan ? people.Where(p => p.IsVegan != null) : people.Where(p => p.IsVegan == true);
         if (input.VerifiedVegansOnly) people = people.Where(p => p.IsVegan == true && p.VeganVerified);
         if (nearby)

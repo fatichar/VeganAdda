@@ -9,6 +9,7 @@ public class DiscoveryInput
     public string City { get; set; } = "";
     public string Search { get; set; } = "";
     public string Interest { get; set; } = "";
+    public string[] Genders { get; set; } = [];
     public string Intent { get; set; } = "";
     public bool VerifiedVegansOnly { get; set; }
     public bool IncludeNonVegan { get; set; }

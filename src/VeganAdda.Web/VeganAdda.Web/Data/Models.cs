@@ -29,6 +29,7 @@ public class Profile
     public string State { get; set; } = "";
     public string Bio { get; set; } = "";
     public string Profession { get; set; } = "";
+    public string Gender { get; set; } = "";
     public string Photo { get; set; } = "";
     public string[] Interests { get; set; } = [];
     public string[] LookingFor { get; set; } = [];
@@ -203,6 +204,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ReferralInvite>().HasIndex(x => x.ReferredId).IsUnique();
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
+        b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
         b.Entity<PushDevice>().HasIndex(x => x.Token).IsUnique();
         b.Entity<PushDevice>().Property(x => x.Token).HasMaxLength(4096);

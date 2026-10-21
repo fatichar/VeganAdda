@@ -21,6 +21,7 @@ public class ProfileInput
     public string State { get; set; } = "";
     public string Bio { get; set; } = "";
     public string Profession { get; set; } = "";
+    public string Gender { get; set; } = "";
     public string Photo { get; set; } = "";
     public string[] Interests { get; set; } = [];
     public string[] LookingFor { get; set; } = ["Friendship"];

@@ -6,6 +6,9 @@ public static class Wire
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public static readonly string[] Intents = ["Friendship", "Business & networking", "Dating", "Activism"];
+    public static readonly string[] Genders = ["Man", "Woman", "Other"];
+    public static readonly string[] GenderFilters = ["Man", "Woman", "Other", "Unspecified"];
+    public static string GenderFilterLabel(string value) => value switch { "Man" => "Men", "Woman" => "Women", "Other" => "Others", _ => value };
     public static readonly string[] Cities = ["All India", "Pune", "Bengaluru", "Mumbai", "Delhi NCR", "Hyderabad", "Chennai"];
 }
 public interface ICommunityApi
