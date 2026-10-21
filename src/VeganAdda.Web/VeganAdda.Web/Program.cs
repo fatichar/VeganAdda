@@ -48,7 +48,7 @@ var firebaseApiKey = builder.Configuration["Authentication:Firebase:ApiKey"];
 var firebaseAuthDomain = builder.Configuration["Authentication:Firebase:AuthDomain"];
 var firebaseAppId = builder.Configuration["Authentication:Firebase:AppId"];
 var firebaseConfigured = new[] { firebaseProjectId, firebaseApiKey, firebaseAuthDomain, firebaseAppId }.All(x => !string.IsNullOrWhiteSpace(x));
-var migrationOnly = args.Contains("--migrate", StringComparer.Ordinal);
+var migrationOnly = args.Contains("--migrate", StringComparer.Ordinal) || args.Contains("--check-migrations", StringComparer.Ordinal);
 if (!dev && !migrationOnly && !firebaseConfigured) throw new InvalidOperationException("Authentication:Firebase project ID, API key, auth domain and app ID are required.");
 if (!dev && !migrationOnly && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS")))
     throw new InvalidOperationException("GOOGLE_APPLICATION_CREDENTIALS must point to a mounted Firebase Admin service-account file.");
@@ -205,6 +205,16 @@ app.MapMedia();
 app.MapHub<CommunityHub>("/hubs/community").RequireAuthorization();
 app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveWebAssemblyRenderMode().AddAdditionalAssemblies(typeof(VeganAdda.Web.Client._Imports).Assembly, typeof(VeganAdda.UI._Imports).Assembly);
+if (args.Contains("--check-migrations"))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
+    var knownMigrations = db.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
+    if ((await db.Database.GetAppliedMigrationsAsync()).Any(id => !knownMigrations.Contains(id)))
+        throw new InvalidOperationException("The database contains migrations unknown to this image.");
+    Environment.ExitCode = (await db.Database.GetPendingMigrationsAsync()).Any() ? 10 : 0;
+    return;
+}
 if (args.Contains("--migrate"))
 {
     await using var scope = app.Services.CreateAsyncScope();

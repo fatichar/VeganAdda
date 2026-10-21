@@ -61,6 +61,28 @@ services:
     logging:
       driver: json-file
       options: {max-size: 10m, max-file: '3'}
+  web_standby:
+    profiles: [rollout]
+    build: .
+    image: ${IMAGE_REF:-veganadda:local}
+    restart: unless-stopped
+    secrets: [firebase_admin]
+    environment:
+      <<: *app_environment
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_admin
+      Analytics__Umami__ScriptUrl: ${UMAMI_SCRIPT_URL:-}
+      Analytics__Umami__WebsiteId: ${UMAMI_WEBSITE_ID:-}
+      Monitoring__BetterStack__SourceToken: ${BETTERSTACK_SOURCE_TOKEN:-}
+      Monitoring__BetterStack__Endpoint: ${BETTERSTACK_ENDPOINT:-}
+    ports: ["127.0.0.1:${APP_STANDBY_PORT:-5081}:8080"]
+    volumes: [media:/data/media, keys:/data/keys]
+    depends_on:
+      db: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    networks: [backend]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
 networks:
   backend:
     ipam:

@@ -16,7 +16,8 @@ server {
     # Avoid query-string logging of personal discovery terms and return targets.
     access_log off;
     location / {
-        proxy_pass http://127.0.0.1:5080;
+        # Include the active slot; rollout updates only this file, then reloads Nginx.
+        include /opt/veganadda/nginx-upstream.conf;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;

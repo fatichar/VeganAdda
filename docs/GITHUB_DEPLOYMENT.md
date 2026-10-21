@@ -63,6 +63,8 @@ Set Firebase web configuration, `ADMIN_FIREBASE_UID`, a private Firebase Admin s
 
 Finish DNS, certificate issuance, and the **separate** VeganAdda Nginx vhost as described in the [README](../README.md#vps-deployment-requires-explicit-authorization). CI checks loopback readiness; public HTTPS, trusted proxy handling and real Firebase Google sign-in still require staging verification. The action does not create DNS, issue certificates, modify Nginx, prune Docker images, remove volumes, or restart unrelated services.
 
+For short cutovers on releases without pending migrations, configure the existing VeganAdda vhost's `location /` to include `/opt/veganadda/nginx-upstream.conf` in place of its fixed `proxy_pass`; see `deploy/nginx.veganadda.conf.example`. Initialize that file from `deploy/nginx-upstream.conf.example` with port 5080. Keep the path under `/opt/veganadda` writable by the deployment user and readable by the root Nginx master. Reserve a second loopback port with `APP_STANDBY_PORT=5081` (or another unused port) in `.env`. The deployment user must be able to run `sudo -n nginx -t`, `sudo -n nginx -T`, and `sudo -n systemctl reload nginx`; scope passwordless sudo to those commands. Validate the Nginx configuration and reload it once after installing the include. The rollout verifies the include is active before switching slots. With no include, the rollout uses a single-port replacement.
+
 Once setup and deployment are authorized, push the workflow/source to master or run **Actions → Build and Deploy to VPS → Run workflow** on master. Its first actual run will validate Linux container behavior; that has not been executed on this workstation because Docker is stopped.
 
 ## Operations and recovery
@@ -72,18 +74,19 @@ The successful release's `image-ref` records its digest. For manual Compose oper
 ```bash
 cd /opt/veganadda/current
 export COMPOSE_PROJECT_NAME=veganadda
+export COMPOSE_PROFILES=rollout
 export COMPOSE_FILE="$PWD/compose.yaml"
 export COMPOSE_ENV_FILES=/opt/veganadda/.env
 if [ -s "$PWD/analytics.env" ]; then export COMPOSE_ENV_FILES="/opt/veganadda/.env,$PWD/analytics.env"; fi
 export IMAGE_REF="$(cat image-ref)"
 docker compose ps
-docker compose logs --tail 100 web
+docker compose logs --tail 100 web web_standby
 bash backup.sh /opt/veganadda/backups
 ```
 
-Regular backups restart web afterward; rollout's `BACKUP_KEEP_STOPPED=1` keeps the same maintenance window open until migration completes. Encrypt/copy backups off-host and remove those copies within 30 days. After a successful deployment, rollout deletes timestamped VeganAdda backup bundles older than 30 days. If deployments pause, expired bundles may remain until cleanup runs again. Monitor disk space on this shared VPS.
+Regular backups stop and restart whichever VeganAdda web slots are running. When the incoming image has pending migrations, rollout's `BACKUP_KEEP_STOPPED=1` keeps the same maintenance window open until migration completes. With no pending migrations, rollout skips the deployment backup and migration command; the existing backup schedule remains necessary for recovery from data loss. If the Nginx include is configured, the new image starts on the inactive loopback port and passes readiness before Nginx reloads onto it. The old slot is stopped after the switch. Existing WebSocket connections may reconnect during the switch. Encrypt/copy backups off-host and remove those copies within 30 days. After a successful deployment, rollout deletes timestamped VeganAdda backup bundles older than 30 days. If deployments pause, expired bundles may remain until cleanup runs again. Monitor disk space on this shared VPS.
 
-On a failed migration or readiness check, inspect the workflow log and that release's container logs; `/opt/veganadda/current` still identifies the last successful release. Do not rerun migration blindly or assume an app rollback reverses schema changes. If the previous image is compatible with the current schema, select that release's Compose file/digest and start web with `--no-deps --no-build --pull never --wait`. Otherwise restore the pre-deployment backup to a **new isolated project** with `restore.sh`, a distinct port and subnet, verify it, then switch only VeganAdda's upstream. See README backup/restore instructions.
+On a failed release before an Nginx switch, the prior slot keeps serving. If the public readiness check after the switch fails, rollout restores the old upstream. Inspect the workflow log and both web slot logs; `/opt/veganadda/current` still identifies the last successful release. Do not rerun migration blindly or assume an app rollback reverses schema changes. For a manual rollback, verify the previous image against the current schema, start it on the inactive slot, check its readiness, then switch the VeganAdda Nginx upstream. Otherwise restore the pre-deployment backup to a **new isolated project** with `restore.sh`, a distinct port and subnet, verify it, then switch only VeganAdda's upstream. See README backup/restore instructions.
 
 The isolated restore and a production HTTPS/Firebase/chat smoke test remain required launch checks. This workflow is deployment preparation, not evidence of a completed live deployment.
 
