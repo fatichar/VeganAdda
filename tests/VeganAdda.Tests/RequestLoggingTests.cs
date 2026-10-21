@@ -57,6 +57,9 @@ public class RequestLoggingTests
     [InlineData("/health/ready", 503, LogEventLevel.Error)]
     [InlineData("/api/profiles", 500, LogEventLevel.Error)]
     [InlineData("/api/profiles", 429, LogEventLevel.Warning)]
+    [InlineData("//wp1/wp-includes/wlwmanifest.xml", 404, LogEventLevel.Debug)]
+    [InlineData("/wp-includes/wlwmanifest.xml", 404, LogEventLevel.Debug)]
+    [InlineData("/api/conversations/abc/messages", 404, LogEventLevel.Warning)]
     [InlineData("/api/profiles", 200, LogEventLevel.Information)]
     public void Failures_remain_visible_while_successful_health_checks_are_quiet(string path, int status, LogEventLevel expected)
     {

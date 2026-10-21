@@ -49,6 +49,10 @@ public static class RequestLogging
 
     public static LogEventLevel Level(HttpContext context, Exception? exception) =>
         exception != null || context.Response.StatusCode >= 500 ? LogEventLevel.Error :
+        context.Response.StatusCode == 404 && IsWordPressManifestProbe(context.Request.Path) ? LogEventLevel.Debug :
         context.Response.StatusCode >= 400 ? LogEventLevel.Warning :
         context.Request.Path.StartsWithSegments("/health") ? LogEventLevel.Debug : LogEventLevel.Information;
+
+    private static bool IsWordPressManifestProbe(PathString path) =>
+        path.Value?.EndsWith("/wp-includes/wlwmanifest.xml", StringComparison.OrdinalIgnoreCase) == true;
 }
