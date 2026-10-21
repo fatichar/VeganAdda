@@ -161,6 +161,11 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
                     b.Property<string>("Cover")
                         .IsRequired()
                         .HasMaxLength(600)
@@ -207,6 +212,11 @@ namespace VeganAdda.Web.Data.Migrations
 
                     b.Property<DateTimeOffset?>("Start")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
 
                     b.Property<DateTimeOffset?>("SubmittedAt")
                         .HasColumnType("timestamp with time zone");

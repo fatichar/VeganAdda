@@ -1,12 +1,11 @@
 @page "/events"
 @inherits Screen
 <PageTitle>Community gatherings · VeganAdda</PageTitle>
-<div class="discovery-heading"><h1 class="sr-only">Events</h1><LocationFilter Country="@country" State="@state" City="@city" Profile="profile" Selected="PlaceSelected" ApplyLabel="Show events" /></div><a class="button secondary event-suggest" href="/events/suggest"><Icon Name="add" />Suggest an event</a><Feedback Error="@Error" Success="@Success" />
+<div class="discovery-heading"><h1 class="sr-only">Events</h1><EventLocationFilter Country="@country" State="@state" City="@city" Profile="profile" Selected="PlaceSelected" /></div><a class="button secondary event-suggest" href="/events/suggest"><Icon Name="add" />Suggest an event</a><Feedback Error="@Error" Success="@Success" />
 @if (!Loaded || Busy) { <p class="loading" role="status">Loading events…</p> }
 else if (items.Count == 0) { <Empty Icon="festival" Title="No upcoming events" Text="Check back soon for events in your city." /> }
 else { <div class="events-grid">@foreach (var ev in items) { <EventCardView Event="ev" Save="Save" /> }</div> }
 <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
-<a href="/help" class="text-button suggest-event">Suggest an event<Icon Name="arrow_forward" /></a>
 @code {
     protected override ChangeArea ChangeInterests => ChangeArea.Events;
     [SupplyParameterFromQuery] public string? City { get; set; }

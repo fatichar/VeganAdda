@@ -6,24 +6,37 @@
 else if (data != null) {
     <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => SwitchTab(t)">@t@if (t == "Members" && data.ProfilesTotal > 0) { <span class="badge" aria-label="Vegans awaiting verification">@data.ProfilesTotal</span> }</button> }</div>
     @if (tab == "Events") {
-        <div class="admin-events"><aside class="card"><button @onclick="NewEvent"><Icon Name="add" />Create event</button>@foreach (var item in data.Events) { <button class="admin-event-link secondary" @onclick="() => Edit(item)">@item.Title<span class="badge">@(item.Published ? "Published" : "Draft")</span></button> }</aside>
+        <div class="admin-event-toolbar"><EventLocationFilter Country="@country" State="@state" City="@city" Profile="adminProfile" Selected="FilterEvents" /><button @onclick="NewEvent"><Icon Name="add" />Create event</button></div>
+        <div class="admin-events @(edit != null ? "editing" : "")"><section class="admin-event-list" aria-label="Events">
+        @if (data.Events.Count == 0) { <Empty Icon="festival" Title="No events found" Text="Try another location or create an event." /> }
+        @foreach (var item in data.Events) {
+            <article class="card admin-event-card" @key="item.Id">
+                @if (item.Cover != "") { <img class="admin-event-thumb" src="@item.Cover" alt="" loading="lazy" /> }
+                <div class="admin-event-summary"><div class="section-heading"><h2>@item.Title</h2><span class="badge">@(item.Published ? "Published" : item.SubmissionStatus)</span></div>
+                <p class="small"><Icon Name="calendar_today" />@Date(item.Start, item.TimeZone) @if (item.End.HasValue) { <span>– @Date(item.End, item.TimeZone)</span> }</p>
+                <p class="small muted">@string.Join(", ", new[] { item.Venue, item.City, item.State, item.Country }.Where(x => x != ""))</p>
+                @if (item.Description != "") { <p class="admin-event-description">@item.Description</p> }
+                @if (item.Organizer != "") { <small>Contact: @item.Organizer</small> }
+                <div class="actions"><button class="secondary small-button" @onclick="() => Edit(item)">Edit event</button>@if (item.Published) { <a class="text-button" href="/events/@item.Id">View event<Icon Name="arrow_forward" /></a> }</div></div>
+            </article>
+        }</section>
         @if (edit != null) {
             <form class="form-card" @onsubmit="SaveEvent" @onsubmit:preventDefault><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
-                <h2>@(edit.Id == Guid.Empty ? "New gathering" : "Edit gathering")</h2>
-                <label for="event-title">Title</label><input id="event-title" required maxlength="150" @bind="edit.Title" @bind:event="oninput" />
+                <div class="section-heading"><h2>@(edit.Id == Guid.Empty ? "New event" : "Edit event")</h2><button type="button" class="text-button" @onclick="() => edit = null">Close</button></div>
+                <label for="event-title">Event name <RequiredMark /></label><input id="event-title" required maxlength="150" @bind="edit.Title" @bind:event="oninput" />
                 <label for="event-description">Description</label><textarea id="event-description" rows="5" maxlength="4000" @bind="edit.Description" @bind:event="oninput"></textarea>
                 <label for="cover">Cover image</label><InputFile id="cover" OnChange="Upload" accept="image/jpeg,image/png,image/webp" />
                 @if (edit.Cover != "") { <img class="admin-cover" src="@edit.Cover" alt="Event cover preview" /> }
-                <label for="event-city">City</label><input id="event-city" maxlength="80" @bind="edit.City" @bind:event="oninput" />
-                <label for="venue">Venue</label><input id="venue" maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
-                <label for="organizer">Organizer</label><input id="organizer" maxlength="150" @bind="edit.Organizer" @bind:event="oninput" />
-                <label for="zone">IANA time zone</label><input id="zone" required @bind="edit.TimeZone" @bind:event="oninput" placeholder="Asia/Kolkata" />
-                <label for="start">Local start date and time</label><input id="start" type="datetime-local" @bind="start" />
-                <label for="end">Local end date and time</label><input id="end" type="datetime-local" @bind="end" />
+                <LocationPicker @key="edit" Model="eventPlace" ProfileLocation="false" BusyChanged="value => locationBusy = value" />
+                <label for="venue">Venue <RequiredMark /></label><input id="venue" required maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
+                <label for="organizer">Contact person <span class="muted">(optional)</span></label><input id="organizer" maxlength="150" @bind="edit.Organizer" @bind:event="oninput" />
+                <p class="small muted">Times are local to the event venue.</p>
+                <label for="start">Start date and time <RequiredMark /></label><input id="start" type="datetime-local" required @bind="start" />
+                <label for="end">End date and time <span class="muted">(optional)</span></label><input id="end" type="datetime-local" @bind="end" />
                 <label for="registration">Official registration / information URL</label><input id="registration" type="url" @bind="edit.Registration" @bind:event="oninput" placeholder="https://" />
                 <label class="check-row"><input type="checkbox" @bind="edit.Featured" />Feature this event</label>
                 <label class="check-row"><input type="checkbox" @bind="edit.Published" />Publish · details are verified and image rights confirmed</label>
-                <button disabled="@Busy">Save event</button><small>Leave Ekatva as a draft until official details and affiliation wording are confirmed by the owner.</small>
+                <div class="actions"><button disabled="@(Busy || locationBusy)">Save event</button></div>
             </fieldset></form>
         }</div>
         <Pagination PageNumber="@eventsPage" PageSize="20" Total="@data.EventsTotal" Busy="@Busy" PageChanged="SetPage" />
@@ -73,10 +86,10 @@ else if (data != null) {
     }
 }
 @code {
-    AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(Refresh); }
+    string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(async () => { adminProfile = await Api.Get<ProfileInput>("profile"); await Refresh(); }); }
     protected override async Task Refresh() {
-        data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}");
+        data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}&country={E(country)}&state={E(state)}&city={E(city)}");
         if (tab == "Events") eventsPage = data.PageNumber; else if (tab == "Reports") reportsPage = data.PageNumber; else membersPage = data.PageNumber;
         if (expandedMember is { } id && data.People.Any(p => p.Id == id && p.HasProfile)) memberProfile = await Api.Get<ProfileReview>($"admin/members/{id}");
         else { expandedMember = null; memberProfile = null; }
@@ -89,9 +102,10 @@ else if (data != null) {
         if (expandedMember == id) { expandedMember = null; memberProfile = null; }
         else { var profile = await Api.Get<ProfileReview>($"admin/members/{id}"); memberProfile = profile; expandedMember = id; }
     });
-    void NewEvent() { edit = new(); start = end = null; }
-    void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
-    Task SaveEvent() => Run(async () => { try { var zone = TimeZoneInfo.FindSystemTimeZoneById(edit!.TimeZone); edit.Start = start.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start.Value, DateTimeKind.Unspecified), zone)) : null; edit.End = end.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end.Value, DateTimeKind.Unspecified), zone)) : null; } catch { throw new ApiException(400, "Check the time zone and local event times."); } await Api.Send<Ok>("admin/events", edit); await Refresh(); Success = "Event saved."; });
+    Task FilterEvents(DiscoveryInput place) { country = place.Country; state = place.State; city = place.City; eventsPage = 1; return Run(Refresh); }
+    void NewEvent() { edit = new(); eventPlace = new() { Country = adminProfile?.Country ?? "India", State = adminProfile?.State ?? "", City = adminProfile?.City ?? "" }; start = end = null; }
+    void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); eventPlace = new() { Country = item.Country, State = item.State, City = item.City }; var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
+    Task SaveEvent() => Run(async () => { edit!.Country = eventPlace.Country; edit.State = eventPlace.State; edit.City = eventPlace.City; edit.LocalStart = start; edit.LocalEnd = end; await Api.Send<Ok>("admin/events", edit); await Refresh(); Success = "Event saved."; });
     Task Moderate(Guid id, string action) => Run(async () => { await Api.Send<Ok>("admin/moderate", new ModerateInput(id, action)); await Refresh(); Success = action == "confirm-vegan" ? "Vegan status verified." : action == "remove-vegan-verification" ? "Vegan verification removed." : "Community record updated."; });
     Task ReviewProfile(Guid id, bool approve) => Run(async () => { var note = reviewNotes.GetValueOrDefault(id); await Api.Send<Ok>("admin/profile-review", new VeganVerificationInput(id, approve, note, memberProfile?.Verification?.Id)); reviewNotes.Remove(id); await Refresh(); Success = approve ? "Vegan status verified." : "Changes requested."; });
     Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 2 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 2 MB."); await using var stream = e.File.OpenReadStream(2 * 1024 * 1024); edit!.Cover = await Platform.Upload(stream, e.File.Name, e.File.ContentType); });

@@ -41,7 +41,7 @@ public class ProfileGenderTests(DatabaseFixture f)
             await using (var db = isolated.Db())
             {
                 var migrator = db.GetService<IMigrator>();
-                await migrator.MigrateAsync("20261021180000_VerificationRequests");
+                await migrator.MigrateAsync("20261021170000_NormalizeProfileGender");
                 (await db.Profiles.FindAsync(missing))!.Gender = "";
                 await db.SaveChangesAsync();
                 await migrator.MigrateAsync();

@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\VeganAdda.UI\VeganAdda.UI.csproj" />
     <ProjectReference Include="..\..\VeganAdda.Contracts\VeganAdda.Contracts.csproj" />
     <EmbeddedResource Include="..\..\VeganAdda.UI\wwwroot\data\locations\*.json" LogicalName="EventLocations.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\VeganAdda.UI\wwwroot\data\locations\time-zones.json.gz" LogicalName="EventLocations.time-zones.json.gz" />
   </ItemGroup>
 
 </Project>

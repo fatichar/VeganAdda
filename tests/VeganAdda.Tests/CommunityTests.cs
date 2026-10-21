@@ -343,7 +343,7 @@ public class CommunityTests(DatabaseFixture f)
     [Fact] public async Task Events_require_independent_attendee_consent_and_saves_are_private()
     {
         var a=await f.Member(); var b=await f.Member(); var admin=await f.Member(admin:true);
-        var e=new EventInput{Title="Test gathering",Description="Verified test details",City="Pune",Venue="Test venue",Organizer="Test organizer",Published=true,Start=DateTimeOffset.UtcNow.AddDays(1),End=DateTimeOffset.UtcNow.AddDays(1).AddHours(1)};
+        var e=new EventInput{Country="India",State="Maharashtra",Title="Test gathering",Description="Verified test details",City="Pune",Venue="Test venue",Organizer="Test organizer",Published=true,LocalStart=DateTime.Now.AddDays(1),LocalEnd=DateTime.Now.AddDays(1).AddHours(1)};
         await f.Call(admin,"admin/events",e,"POST");
         Guid id; await using(var db=f.Db()) id=(await db.Events.SingleAsync(x=>x.Title==e.Title)).Id;
         await f.Call(a,$"events/{id}/attendance",new AttendanceInput(true,false),"POST");

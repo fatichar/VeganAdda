@@ -8,8 +8,12 @@ public class EventInput
     public string Description { get; set; } = "";
     public DateTimeOffset? Start { get; set; }
     public DateTimeOffset? End { get; set; }
+    public DateTime? LocalStart { get; set; }
+    public DateTime? LocalEnd { get; set; }
     public string TimeZone { get; set; } = "Asia/Kolkata";
     public string City { get; set; } = "Pune";
+    public string Country { get; set; } = "";
+    public string State { get; set; } = "";
     public string Venue { get; set; } = "";
     public string Organizer { get; set; } = "";
     public string? Registration { get; set; }

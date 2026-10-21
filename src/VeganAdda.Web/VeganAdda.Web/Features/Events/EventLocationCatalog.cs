@@ -1,11 +1,11 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using VeganAdda.Contracts;
+using VeganAdda.Web.Data;
 
 namespace VeganAdda.Web.Features.Events;
 
-// Events currently store a city, so broader filters resolve that city against the
-// same location catalog used by the picker. Embed it so published builds work too.
+// The catalog also supports location filters for older events that only stored a city.
 public static class EventLocationCatalog
 {
     private record Country(string Code, string Name);
@@ -18,6 +18,19 @@ public static class EventLocationCatalog
         using var stream = typeof(EventLocationCatalog).Assembly.GetManifestResourceStream($"EventLocations.{file}.json")
             ?? throw new InvalidOperationException("The event location catalog is missing.");
         return JsonSerializer.Deserialize<T[]>(stream, Wire.Json) ?? [];
+    }
+
+    public static IQueryable<Gathering> Filter(IQueryable<Gathering> events, string country, string state, string city)
+    {
+        country = country.ToLowerInvariant(); state = state.ToLowerInvariant(); city = city.ToLowerInvariant();
+        if (country != "" || state != "")
+        {
+            var legacyCities = Cities(country, state);
+            events = events.Where(e => (e.Country != "" && (country == "" || e.Country.ToLower() == country) && (state == "" || e.State.ToLower() == state))
+                || (e.Country == "" && legacyCities.Contains(e.City.ToLower())));
+        }
+        if (city != "" && city != "all india") events = events.Where(e => e.City.ToLower() == city);
+        return events;
     }
 
     public static string[] Cities(string country, string state)

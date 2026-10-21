@@ -1,0 +1,31 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+<LocationFilter Country="@Country" State="@State" City="@City" Profile="@(string.IsNullOrWhiteSpace(Profile?.City) ? null : Profile)" Selected="Selected" NearbyRequested="NearMe" ApplyLabel="Show events" />
+@if (locating) { <p class="small muted" role="status">Finding your city…</p> }
+@if (error != "") { <p class="small error-text" role="status">@error</p> }
+@code {
+    [Parameter] public string Country { get; set; } = "";
+    [Parameter] public string State { get; set; } = "";
+    [Parameter] public string City { get; set; } = "";
+    [Parameter] public ProfileInput? Profile { get; set; }
+    [Parameter] public EventCallback<DiscoveryInput> Selected { get; set; }
+    bool locating;
+    string error = "";
+    async Task NearMe()
+    {
+        if (locating) return;
+        locating = true; error = "";
+        try
+        {
+            await using var location = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/location.js");
+            var detected = await location.InvokeAsync<LocationPicker.Place>("locate", false);
+            if (detected.Error != "") { error = detected.Error; return; }
+            await using var data = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/location-data.js");
+            var place = await data.InvokeAsync<LocationPicker.Place>("resolve", detected);
+            if (place.City == "") { error = "Your city couldn't be found. Choose a location instead."; return; }
+            await Selected.InvokeAsync(new() { Country = place.Country, State = place.State, City = place.City });
+        }
+        catch (JSException) { error = "Your city couldn't be found. Choose a location instead."; }
+        finally { locating = false; }
+    }
+}

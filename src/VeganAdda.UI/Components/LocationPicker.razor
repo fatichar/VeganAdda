@@ -29,17 +29,20 @@
     <option value="__other__">Other city</option>
 </select>
 @if (customCity) { <label for="other-city" class="sr-only">City name</label><input id="other-city" required maxlength="80" placeholder="City name" @bind="Model.City" @bind:event="oninput" @bind:after="ClearCoordinates" /> }
+@if (ProfileLocation) {
 <label class="check-row location-precision"><input type="checkbox" checked="@Model.SavePreciseLocation" @onchange="PreciseLocationChanged" disabled="@(loading || locating)" aria-describedby="precise-location-help" /><span>Save precise location <span class="muted">(optional)</span></span></label>
 <small id="precise-location-help">Helps nearby members find you by distance. Your coordinates are private and aren't shown to other members. Uncheck and save your profile to remove them. Detecting your location sends coordinates to BigDataCloud; VeganAdda saves them only if you opt in and save your profile.</small>
 @if (Model.SavePreciseLocation)
 {
     <small role="status">@(Model.Latitude.HasValue && Model.Longitude.HasValue ? "Precise location ready. Save your profile to keep it." : "Select Detect my location before saving your profile.")</small>
 }
+}
 <small class="location-credit">Location lists: <a href="/_content/VeganAdda.UI/data/locations/README.md" target="_blank" rel="noopener">CSC · ODbL</a></small>
 </section>
 
 @code {
     [Parameter, EditorRequired] public ProfileInput Model { get; set; } = default!;
+    [Parameter] public bool ProfileLocation { get; set; } = true;
     [Parameter] public EventCallback<bool> BusyChanged { get; set; }
     IJSObjectReference? data, geolocation;
     CountryOption[] countryOptions = [];
@@ -123,7 +126,7 @@
                 Model.Country = place.Country; Model.State = place.State; Model.City = place.City;
                 await LoadStates();
             }
-            status = detected.Error != "" ? detected.Error : "Check your location, then save your profile.";
+            status = detected.Error != "" ? detected.Error : ProfileLocation ? "Check your location, then save your profile." : "Check that this is the event's location.";
         }
         catch (JSException) { status = "Location lookup failed. Choose your country, state and city below."; }
         finally { locating = false; await BusyChanged.InvokeAsync(false); }

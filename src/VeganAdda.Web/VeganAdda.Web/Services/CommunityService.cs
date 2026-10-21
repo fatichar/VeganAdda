@@ -62,7 +62,7 @@ public sealed class CommunityService(FeatureContext context,
                 case "unread": return await notifications.Unread();
                 case "blocked": return await connections.GetBlocked();
                 case "admin":
-                    if (parts.Length == 1) return await moderation.Admin(Q("verification"), Q("section") is { Length: > 0 } section ? section : "Members", page);
+                    if (parts.Length == 1) return await moderation.Admin(Q("verification"), Q("section") is { Length: > 0 } section ? section : "Members", page, Q("country"), Q("state"), Q("city"));
                     if (parts.Length == 3 && parts[1] == "members" && Guid.TryParse(parts[2], out var memberId)) return await moderation.AdminMemberProfile(memberId);
                     throw Missing();
                 case "moderation": return await moderation.Moderation(Q("section") is { Length: > 0 } moderationSection ? moderationSection : "Profiles", page);

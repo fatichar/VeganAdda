@@ -77,7 +77,7 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
             {
                 var now = DateTimeOffset.UtcNow;
                 people = people.Where(p => db.Attendance.Any(a => a.EventId == eventId && a.UserId == p.Id && a.CheckedInUntil > now)
-                    && db.Events.Any(e => e.Id == eventId && e.Start <= now && e.End > now));
+                    && db.Events.Any(e => e.Id == eventId && e.Start <= now && (e.End ?? e.Start.Value.AddHours(4)) > now));
             }
         }
         var page = Math.Clamp(input.Page, 1, 10000);

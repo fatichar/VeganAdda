@@ -14,15 +14,15 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
     private IQueryable<Profile> ReviewableProfiles() => db.Profiles.Where(BasicProfile.Complete)
         .Where(p => p.IsVegan == true && !p.VeganVerified && db.VerificationRequests.Any(r => r.ApplicantId == p.Id && r.Status == VerificationStates.UnderReview) && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
 
-    public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1)
+    public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1, string country = "", string state = "", string city = "")
     {
         await User(admin: true);
         const int pageSize = 20;
         if (section is not ("Events" or "Members" or "Reports")) throw new ApiException(400, "Choose a supported administration section.");
-        var eventsQuery = db.Events.AsQueryable();
+        var eventsQuery = EventLocationCatalog.Filter(db.Events, Text(country, 80), Text(state, 80), Text(city, 80));
         var eventsTotal = await eventsQuery.CountAsync();
         var eventsPage = section == "Events" ? Math.Min(page, Math.Max(1, (eventsTotal + pageSize - 1) / pageSize)) : 1;
-        var events = section == "Events" ? await eventsQuery.OrderBy(e => e.Start).ThenBy(e => e.Id).Skip((eventsPage - 1) * pageSize).Take(pageSize).Select(e => new EventInput { Id = e.Id, Title = e.Title, Cover = e.Cover, Description = e.Description, Start = e.Start, End = e.End, TimeZone = e.TimeZone, City = e.City, Venue = e.Venue, Organizer = e.Organizer, Registration = e.Registration, Published = e.Published, Featured = e.Featured, SubmissionStatus = e.PendingReview ? "Pending review" : e.Published ? "Approved" : e.ReviewNote != null ? "Changes requested" : "Draft", ReviewNote = e.ReviewNote }).ToListAsync() : [];
+        var events = section == "Events" ? await eventsQuery.OrderBy(e => e.Start).ThenBy(e => e.Id).Skip((eventsPage - 1) * pageSize).Take(pageSize).Select(e => new EventInput { Id = e.Id, Title = e.Title, Cover = e.Cover, Description = e.Description, Start = e.Start, End = e.End, TimeZone = e.TimeZone, Country = e.Country, State = e.State, City = e.City, Venue = e.Venue, Organizer = e.Organizer, Registration = e.Registration, Published = e.Published, Featured = e.Featured, SubmissionStatus = e.PendingReview ? "Pending review" : e.Published ? "Approved" : e.ReviewNote != null ? "Changes requested" : "Draft", ReviewNote = e.ReviewNote }).ToListAsync() : [];
         var reportsQuery = db.Reports.AsQueryable();
         var reportsTotal = await reportsQuery.CountAsync();
         var reportsPage = section == "Reports" ? Math.Min(page, Math.Max(1, (reportsTotal + pageSize - 1) / pageSize)) : 1;

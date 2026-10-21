@@ -13,18 +13,18 @@ else if (profile != null) {
     @if (edit != null) {
         <form class="form-card event-submission" @onsubmit="Save" @onsubmit:preventDefault><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
             <h2>@(edit.Id == Guid.Empty ? "Event details" : "Edit submission")</h2>
-            <label for="event-title">Event name</label><input id="event-title" required maxlength="150" @bind="edit.Title" @bind:event="oninput" />
+            <label for="event-title">Event name <RequiredMark /></label><input id="event-title" required maxlength="150" @bind="edit.Title" @bind:event="oninput" />
             <label for="event-description">Description <span class="muted">(optional)</span></label><textarea id="event-description" rows="5" maxlength="4000" @bind="edit.Description" @bind:event="oninput"></textarea>
             <label for="event-cover">Cover image <span class="muted">(optional)</span></label><InputFile id="event-cover" OnChange="Upload" accept="image/jpeg,image/png,image/webp" />
             @if (edit.Cover != "") { <img class="admin-cover" src="@edit.Cover" alt="Event cover preview" /> }
-            <label for="event-city">City</label><input id="event-city" required maxlength="80" @bind="edit.City" @bind:event="oninput" />
-            <label for="event-venue">Venue</label><input id="event-venue" required maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
-            <label for="event-organizer">Organizer</label><input id="event-organizer" required maxlength="150" @bind="edit.Organizer" @bind:event="oninput" />
-            <label for="event-zone">IANA time zone</label><input id="event-zone" required @bind="edit.TimeZone" @bind:event="oninput" placeholder="Asia/Kolkata" />
-            <label for="event-start">Local start date and time</label><input id="event-start" type="datetime-local" required @bind="start" />
-            <label for="event-end">Local end date and time</label><input id="event-end" type="datetime-local" required @bind="end" />
+            <LocationPicker @key="edit" Model="eventPlace" ProfileLocation="false" BusyChanged="value => locationBusy = value" />
+            <label for="event-venue">Venue <RequiredMark /></label><input id="event-venue" required maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
+            <label for="event-organizer">Contact person <span class="muted">(optional)</span></label><input id="event-organizer" maxlength="150" @bind="edit.Organizer" @bind:event="oninput" />
+            <p class="small muted">Times are local to the event venue.</p>
+            <label for="event-start">Start date and time <RequiredMark /></label><input id="event-start" type="datetime-local" required @bind="start" />
+            <label for="event-end">End date and time <span class="muted">(optional)</span></label><input id="event-end" type="datetime-local" @bind="end" />
             <label for="event-registration">Official information / registration link <span class="muted">(optional)</span></label><input id="event-registration" type="url" @bind="edit.Registration" @bind:event="oninput" placeholder="https://" />
-            <div class="actions"><button disabled="@Busy">@(Busy ? "Submitting…" : edit.Id == Guid.Empty ? "Submit for review" : "Resubmit for review")<Icon Name="arrow_forward" /></button></div>
+            <div class="actions"><button disabled="@(Busy || locationBusy)">@(Busy ? "Submitting…" : edit.Id == Guid.Empty ? "Submit for review" : "Resubmit for review")<Icon Name="arrow_forward" /></button></div>
         </fieldset></form>
     }
     <div class="section-heading"><h2>Your submissions</h2><button class="secondary" @onclick="NewEvent" disabled="@Busy">Suggest another</button></div>
@@ -35,12 +35,12 @@ else if (profile != null) {
 </div>
 @code {
     [Parameter] public Guid? Id { get; set; }
-    ProfileInput? profile; List<EventInput> submissions = []; EventInput? edit; DateTime? start, end; int submissionPage = 1;
+    ProfileInput eventPlace = new(); bool locationBusy; ProfileInput? profile; List<EventInput> submissions = []; EventInput? edit; DateTime? start, end; int submissionPage = 1;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null && Session.BasicProfileComplete) await Run(Refresh); }
     protected override async Task Refresh() { profile = await Api.Get<ProfileInput>("profile"); submissions = await Api.Get<List<EventInput>>("event-submissions"); submissionPage = Math.Min(submissionPage, Math.Max(1, (submissions.Count + 11) / 12)); if (Id.HasValue) { var item = submissions.FirstOrDefault(x => x.Id == Id.Value); if (item != null && item.SubmissionStatus != "Pending review") Edit(item); } if (edit == null) NewEvent(); }
     Task SetSubmissionPage(int value) { submissionPage = value; return Task.CompletedTask; }
-    void NewEvent() { edit = new() { City = profile?.City ?? "Pune" }; start = end = null; }
-    void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
-    Task Save() => Run(async () => { try { var zone = TimeZoneInfo.FindSystemTimeZoneById(edit!.TimeZone); edit.Start = start.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start.Value, DateTimeKind.Unspecified), zone)) : null; edit.End = end.HasValue ? new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(end.Value, DateTimeKind.Unspecified), zone)) : null; } catch { throw new ApiException(400, "Check the time zone and local event times."); } await Api.Send<Ok>("event-submissions", edit); edit = null; await Refresh(); Success = "Your event was submitted for review."; });
+    void NewEvent() { edit = new(); eventPlace = new() { Country = profile?.Country ?? "India", State = profile?.State ?? "", City = profile?.City ?? "" }; start = end = null; }
+    void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); eventPlace = new() { Country = item.Country, State = item.State, City = item.City }; var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
+    Task Save() => Run(async () => { edit!.Country = eventPlace.Country; edit.State = eventPlace.State; edit.City = eventPlace.City; edit.LocalStart = start; edit.LocalEnd = end; await Api.Send<Ok>("event-submissions", edit); edit = null; await Refresh(); Success = "Your event was submitted for review."; });
     Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 2 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 2 MB."); await using var stream = e.File.OpenReadStream(2 * 1024 * 1024); edit!.Cover = await Platform.Upload(stream, e.File.Name, e.File.ContentType); });
 }

@@ -19,8 +19,9 @@ public sealed class EventProjection(FeatureContext context) : FeatureService(con
         return events.Select(e =>
         {
             attendance.TryGetValue(e.Id, out var a);
-            var checkedIn = a?.Visible == true && a.CheckedInUntil > now && e.Start <= now && e.End > now
-                ? (a.CheckedInUntil < e.End ? a.CheckedInUntil : e.End) : null;
+            var end = e.End ?? e.Start?.AddHours(4);
+            var checkedIn = a?.Visible == true && a.CheckedInUntil > now && e.Start <= now && end > now
+                ? (a.CheckedInUntil < end ? a.CheckedInUntil : end) : null;
             return new EventCard(e.Id, e.Title, e.Cover, e.Description, e.Start, e.End, e.TimeZone, e.City, e.Venue, e.Organizer, e.Registration,
                 e.Featured, saved.Contains(e.Id), a != null, a?.Visible ?? false, e.Demo, checkedIn);
         }).ToList();

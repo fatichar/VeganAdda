@@ -21,7 +21,7 @@ else if (data != null) {
     } else {
         @if (data.Events.Count == 0) { <Empty Icon="event_available" Title="No events to review" Text="Member event submissions will appear here." /> }
         @foreach (var item in data.Events) { var ev = item.Details;
-            <article class="card admin-profile-review">@if (!string.IsNullOrWhiteSpace(ev.Cover)) { <img class="admin-cover" src="@ev.Cover" alt="Event cover" /> }<div><h2>@ev.Title</h2><small>Submitted by @(item.SubmittedBy ?? "Deleted member") · @ev.City</small></div><p>@ev.Description</p><p><strong>@ev.Organizer</strong> · @ev.Venue<br />@Date(ev.Start, ev.TimeZone) – @Date(ev.End, ev.TimeZone)</p>
+            <article class="card admin-profile-review">@if (!string.IsNullOrWhiteSpace(ev.Cover)) { <img class="admin-cover" src="@ev.Cover" alt="Event cover" /> }<div><h2>@ev.Title</h2><small>Submitted by @(item.SubmittedBy ?? "Deleted member") · @ev.City</small></div><p>@ev.Description</p><p>@if (ev.Organizer != "") { <span>Contact: @ev.Organizer · </span> }@ev.Venue<br />@Date(ev.Start, ev.TimeZone)@if (ev.End.HasValue) { <span> – @Date(ev.End, ev.TimeZone)</span> }</p>
                 @if (!string.IsNullOrWhiteSpace(ev.Registration)) { <a href="@ev.Registration" target="_blank" rel="noopener noreferrer">Official information / registration <Icon Name="open_in_new" /></a> }
                 @if (ev.ReviewNote != null) { <p class="notice">Previous review: @ev.ReviewNote</p> }
                 <label for="event-note-@ev.Id">Note for organizer if changes are needed</label><input id="event-note-@ev.Id" value="@eventNotes.GetValueOrDefault(ev.Id)" @oninput="e => eventNotes[ev.Id] = e.Value?.ToString() ?? string.Empty" maxlength="500" placeholder="Explain what needs updating" />

@@ -81,6 +81,8 @@ public class ChatMessage
 }
 public class Gathering
 {
+    public string Country { get; set; } = "";
+    public string State { get; set; } = "";
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Title { get; set; } = "";
     public string Cover { get; set; } = "";
