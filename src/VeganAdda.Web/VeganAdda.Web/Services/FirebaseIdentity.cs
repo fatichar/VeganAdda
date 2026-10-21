@@ -50,7 +50,7 @@ public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebH
         }
         catch (FirebaseAuthException ex)
         {
-            logger.LogWarning(ex, "Firebase rejected the ID token: {FirebaseError}", ex.Message);
+            logger.LogWarning(ex, "Firebase rejected the ID token. Auth error code: {FirebaseErrorCode}", ex.AuthErrorCode?.ToString() ?? "unknown");
             throw Rejected($"Firebase rejected the ID token: {ex.Message}");
         }
 

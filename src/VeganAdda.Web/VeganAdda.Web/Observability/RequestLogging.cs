@@ -23,9 +23,29 @@ public static class RequestLogging
         };
     }
 
-    // Route values (including referral codes) and query strings stay out of logs.
-    public static string SafePath(HttpContext context) =>
-        (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "[unmatched]";
+    // Keep matched route values and all query strings private. For unmatched requests,
+    // retain the diagnostic path, redacting known private paths and account IDs.
+    public static string SafePath(HttpContext context)
+    {
+        if ((context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText is { } route) return route;
+        var path = context.Request.Path.Value ?? "/";
+        var segments = path.Split('/');
+        for (var i = 0; i < segments.Length; i++)
+        {
+            var segment = Uri.UnescapeDataString(segments[i]);
+            if (segment.Equals("referrals", StringComparison.OrdinalIgnoreCase)
+                || segment.Equals("referral", StringComparison.OrdinalIgnoreCase)
+                || segment.Equals("media", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < segments.Length) return LimitPath(string.Join('/', segments.Take(i + 1)) + "/[redacted]");
+            }
+            if (Guid.TryParse(segment, out _)) segments[i] = "[id]";
+        }
+        return LimitPath(string.Join('/', segments));
+    }
+
+    private static string LimitPath(string path) =>
+        new(path.Take(256).Select(c => char.IsControl(c) ? '_' : c).ToArray());
 
     public static LogEventLevel Level(HttpContext context, Exception? exception) =>
         exception != null || context.Response.StatusCode >= 500 ? LogEventLevel.Error :

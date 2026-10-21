@@ -1,5 +1,17 @@
 name: veganadda-dev
 services:
+  aspire-dashboard:
+    image: ${ASPIRE_DASHBOARD_IMAGE:-mcr.microsoft.com/aspire/dashboard:latest}
+    profiles: [observability]
+    environment:
+      ASPIRE_DASHBOARD_APPLICATION_NAME: VeganAdda.Local
+      ASPIRE_DASHBOARD_DATA_DIRECTORY: /home/app/dashboard-data
+      ASPIRE_DASHBOARD_PERSISTENCE_MODE: run
+    ports:
+      - "127.0.0.1:18888:18888"
+      - "127.0.0.1:4317:18889"
+      - "127.0.0.1:4318:18890"
+    volumes: [aspire-dashboard-data:/home/app]
   db:
     image: postgres:18-bookworm
     environment:
@@ -15,3 +27,4 @@ services:
       retries: 10
 volumes:
   dev-database:
+  aspire-dashboard-data:

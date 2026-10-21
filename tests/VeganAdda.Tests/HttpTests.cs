@@ -14,6 +14,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SkiaSharp;
 using VeganAdda.Contracts;
+using VeganAdda.Web.Observability;
+using Serilog.Core;
+using Serilog.Events;
 
 namespace VeganAdda.Tests;
 
@@ -24,6 +27,7 @@ public class HttpTests : IDisposable
     private readonly WebApplicationFactory<Program> factory;
     private readonly string storage = Path.Combine(Path.GetTempPath(), "veganadda-http-" + Guid.NewGuid().ToString("N"));
     private readonly Dictionary<string, string?> oldFirebaseEnvironment = new();
+    private readonly CapturedLogs logs = new();
     public HttpTests(DatabaseFixture database)
     {
         f = database;
@@ -38,6 +42,7 @@ public class HttpTests : IDisposable
             { ["ConnectionStrings:Database"] = f.Connection, ["Development:Enabled"] = "false", ["Development:Seed"] = "false", ["Storage:MediaPath"] = storage, ["Storage:KeysPath"] = Path.Combine(storage, "keys"), ["Authentication:Firebase:ProjectId"] = "test-firebase", ["Authentication:Firebase:ApiKey"] = "public-test-key", ["Authentication:Firebase:AuthDomain"] = "test-firebase.firebaseapp.com", ["Authentication:Firebase:AppId"] = "1:test:web:test" }));
             b.ConfigureTestServices(s =>
             {
+                s.AddSingleton<ILogEventSink>(logs);
                 var pushWorker = s.FirstOrDefault(d => d.ImplementationType == typeof(VeganAdda.Web.Services.ChatPushWorker));
                 if (pushWorker != null) s.Remove(pushWorker);
                 s.AddAuthentication().AddScheme<AuthenticationSchemeOptions, TestAuth>("Test", _ => { });
@@ -84,6 +89,35 @@ public class HttpTests : IDisposable
         Assert.Contains("https://api.bigdatacloud.net", origins);
         Assert.Contains("https://api-bdc.io", origins);
         Assert.DoesNotContain("*", connect);
+    }
+    [Fact] public async Task Approved_profile_warns_before_edits_and_saved_changes_show_pending_review()
+    {
+        var member = await f.Member();
+        using var client = Client(member);
+        var approvedHtml = await client.GetStringAsync("/settings/profile");
+        Assert.Contains("Profile changes may need another review.", approvedHtml);
+        Assert.Contains("until a moderator approves it again", approvedHtml);
+
+        var profile = (await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!;
+        await Post(client, "/api/profile", profile);
+        Assert.True((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
+
+        profile.Bio = "Updated profile for review";
+        await Post(client, "/api/profile", profile);
+        Assert.False((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
+        var pendingHtml = await client.GetStringAsync("/settings/profile");
+        Assert.Contains("Your profile is awaiting review.", pendingHtml);
+        Assert.DoesNotContain("Profile changes may need another review.", pendingHtml);
+        AssertLifecycle("ProfileResubmitted", member, member);
+
+        var admin = await f.Member(admin: true);
+        using var reviewer = Client(admin);
+        await Post(reviewer, "/api/admin/moderate", new ModerateInput(member, "approve"));
+        Assert.True((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
+        AssertLifecycle("ProfileApproved", member, admin);
+        await Post(reviewer, "/api/admin/moderate", new ModerateInput(member, "revoke-approval"));
+        Assert.False((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
+        AssertLifecycle("ProfileApprovalRevoked", member, admin);
     }
     [Fact] public async Task Production_analytics_scripts_and_csp_are_enabled_only_with_configuration()
     {
@@ -159,6 +193,9 @@ public class HttpTests : IDisposable
         {
             var db = scope.ServiceProvider.GetRequiredService<VeganAdda.Web.Data.CommunityDb>();
             Assert.Equal(1, await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Accounts.Where(a => a.Subject == "firebase:test-firebase:test-google-uid")));
+            var account = db.Accounts.Single(a => a.Subject == "firebase:test-firebase:test-google-uid");
+            AssertLifecycle("AccountRegistered", account.Id, account.Id);
+            Assert.Equal(2, logs.Events.Count(e => e.Properties.GetValueOrDefault("EventName") is ScalarValue { Value: "AccountSignedIn" }));
         }
         Assert.Equal(HttpStatusCode.MethodNotAllowed, (await c.PostAsJsonAsync("/auth/dev/aarav", new { })).StatusCode);
     }
@@ -220,6 +257,19 @@ public class HttpTests : IDisposable
     public void Dispose() { factory.Dispose(); foreach (var item in oldFirebaseEnvironment) Environment.SetEnvironmentVariable(item.Key, item.Value); if (Directory.Exists(storage)) Directory.Delete(storage, true); }
     record Csrf(string Token);
     record UploadResult(string Path);
+    void AssertLifecycle(string eventName, Guid accountId, Guid actorId)
+    {
+        var entry = Assert.Single(logs.Events, e => e.Properties.GetValueOrDefault("EventName") is ScalarValue { Value: string name } && name == eventName);
+        var safe = Assert.IsType<LogEvent>(SafeOperationalLogSink.Sanitize(entry));
+        Assert.Equal(accountId, ((ScalarValue)safe.Properties["AccountId"]).Value);
+        Assert.Equal(actorId, ((ScalarValue)safe.Properties["ActorId"]).Value);
+        Assert.DoesNotContain("Updated profile for review", safe.RenderMessage());
+    }
+    private sealed class CapturedLogs : ILogEventSink
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<LogEvent> Events { get; } = new();
+        public void Emit(LogEvent logEvent) => Events.Enqueue(logEvent);
+    }
     private sealed class TestFirebaseVerifier : VeganAdda.Web.Services.IFirebaseIdentityVerifier
     {
         public Task<VeganAdda.Web.Services.VerifiedFirebaseIdentity?> Verify(string idToken) => Task.FromResult<VeganAdda.Web.Services.VerifiedFirebaseIdentity?>(idToken switch

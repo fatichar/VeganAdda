@@ -16,11 +16,11 @@ public static class BetterStackLogging
             uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0 || uri.AbsolutePath != "/")
             throw new InvalidOperationException("Better Stack requires a source token and its HTTPS betterstackdata.com ingestion origin.");
 
-        var destination = new LoggerConfiguration().MinimumLevel.Warning()
+        var destination = new LoggerConfiguration().MinimumLevel.Information()
             .WriteTo.BetterStack(sourceToken: token, betterStackEndpoint: uri.GetLeftPart(UriPartial.Authority),
                 queueLimitBytes: 5 * 1024 * 1024, retries: 3, maxFlushTime: TimeSpan.FromSeconds(5))
             .CreateLogger();
-        logger.WriteTo.Sink(new SafeOperationalLogSink(destination), LogEventLevel.Warning);
+        logger.WriteTo.Sink(new SafeOperationalLogSink(destination), LogEventLevel.Information);
     }
 }
 
@@ -29,17 +29,19 @@ public static class BetterStackLogging
 public sealed class SafeOperationalLogSink(Logger destination) : ILogEventSink, IDisposable
 {
     private static readonly HashSet<string> Allowed =
-    ["Application", "Environment", "SourceContext", "RequestId", "TraceId", "ExceptionType", "StackTrace", "Type",
+    ["Application", "Environment", "SourceContext", "RequestId", "TraceId", "ExceptionType", "StackTrace", "Type", "FirebaseErrorCode",
      "StatusCode", "Elapsed", "RequestMethod"];
 
     public static LogEvent? Sanitize(LogEvent source)
     {
         var category = source.Properties.GetValueOrDefault("SourceContext") is ScalarValue { Value: string value } ? value : "";
         var request = category == "Serilog.AspNetCore.RequestLoggingMiddleware";
-        if (source.Level < LogEventLevel.Warning ||
+        var lifecycle = category == LifecycleEvents.Category;
+        if (source.Level < LogEventLevel.Information || (source.Level < LogEventLevel.Warning && !lifecycle) ||
             !(category.StartsWith("VeganAdda.", StringComparison.Ordinal) || request || source.Level == LogEventLevel.Fatal)) return null;
         var properties = source.Properties
-            .Where(p => Allowed.Contains(p.Key) || (request && p.Key == "RequestPath"))
+            .Where(p => Allowed.Contains(p.Key) || (request && p.Key == "RequestPath")
+                || (lifecycle && p.Key is "EventName" or "AccountId" or "ActorId"))
             .Select(p => new LogEventProperty(p.Key, p.Value)).ToList();
         if (source.Exception is not null && !source.Properties.ContainsKey("ExceptionType"))
             properties.Add(new("ExceptionType", new ScalarValue(source.Exception.GetType().Name)));

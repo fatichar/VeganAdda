@@ -10,6 +10,31 @@ namespace VeganAdda.Tests;
 
 public class ObservabilityTests
 {
+    [Fact]
+    public void Lifecycle_information_reaches_external_sink_with_account_correlation_only()
+    {
+        var accountId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var source = new LogEvent(DateTimeOffset.UtcNow, LogEventLevel.Information, null,
+            new MessageTemplateParser().Parse("Lifecycle {EventName} for account {AccountId} by actor {ActorId}"),
+            [new("SourceContext", new ScalarValue(LifecycleEvents.Category)),
+             new("EventName", new ScalarValue("ProfileApproved")),
+             new("AccountId", new ScalarValue(accountId)),
+             new("ActorId", new ScalarValue(actorId)),
+             new("Name", new ScalarValue("private-name")),
+             new("RequestPath", new ScalarValue("/referrals/private-code"))]);
+        var safe = Assert.IsType<LogEvent>(SafeOperationalLogSink.Sanitize(source));
+        Assert.Equal(accountId, ((ScalarValue)safe.Properties["AccountId"]).Value);
+        Assert.Equal(actorId, ((ScalarValue)safe.Properties["ActorId"]).Value);
+        Assert.Contains("ProfileApproved", safe.RenderMessage());
+        Assert.DoesNotContain("private", string.Join(" ", safe.Properties));
+        foreach (var category in new[] { "VeganAdda.Web.Features.Profiles.ProfilesService", "Serilog.AspNetCore.RequestLoggingMiddleware", "Microsoft.Hosting.Lifetime" })
+        {
+            source.AddOrUpdateProperty(new("SourceContext", new ScalarValue(category)));
+            Assert.Null(SafeOperationalLogSink.Sanitize(source));
+        }
+    }
+
     private static IConfiguration Config(params (string Key, string? Value)[] values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values.ToDictionary(v => v.Key, v => v.Value)).Build();
 

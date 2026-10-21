@@ -4,10 +4,11 @@ using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Referrals;
 using VeganAdda.Web.Features.Events;
+using VeganAdda.Web.Observability;
 
 namespace VeganAdda.Web.Features.Moderation;
 
-public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService) : FeatureService(context)
+public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle) : FeatureService(context)
 {
     public async Task<AdminData> Admin(string approval = "", string section = "Members", int page = 1)
     {
@@ -150,6 +151,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         await UserLock(input.Id);
         var profile = await db.Profiles.FindAsync(input.Id) ?? throw Missing();
         if (!reviewer.Admin && profile.TestProfile) throw Denied();
+        var wasApproved = profile.Approved;
         profile.Approved = input.Approve;
         profile.ReviewNote = input.Approve ? null : Text(input.Note, 500, true);
         profile.ReviewedBy = reviewer.Id; profile.ReviewedAt = DateTimeOffset.UtcNow;
@@ -163,6 +165,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         Notice(profile.Id, input.Approve ? "profile-approved" : "profile-review", input.Approve ? "Your profile was approved and is ready to be discovered." : "Your profile needs an update before it can be approved: " + profile.ReviewNote, "/settings/profile");
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+        lifecycle.Record(input.Approve ? LifecycleEvent.ProfileApproved : wasApproved ? LifecycleEvent.ProfileApprovalRevoked : LifecycleEvent.ProfileChangesRequested, profile.Id, reviewer.Id);
         await changes.Changed(input.Id);
         return new Ok();
     }

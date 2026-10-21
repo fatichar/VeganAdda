@@ -11,6 +11,7 @@ using VeganAdda.Web.Features.Moderation;
 using VeganAdda.Web.Features.Notifications;
 using VeganAdda.Web.Features.Accounts;
 using VeganAdda.Web.Features.Saved;
+using VeganAdda.Web.Observability;
 
 namespace VeganAdda.Web.Features;
 
@@ -33,6 +34,8 @@ public static class FeatureRegistration
 
     public static IServiceCollection AddCommunityFeatures(this IServiceCollection services)
     {
+        services.AddLogging();
+        services.AddSingleton<LifecycleEvents>();
         services.AddScoped<FeatureContext>();
         services.AddScoped<CommunityService>();
         services.AddScoped<InboxService>();

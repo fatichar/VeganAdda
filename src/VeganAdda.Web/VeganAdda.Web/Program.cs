@@ -32,6 +32,7 @@ builder.Services.AddSerilog((services, logger) =>
     .Enrich.WithProperty("Environment", builder.Environment.EnvironmentName)
     .WriteTo.Console(new CompactJsonFormatter());
     BetterStackLogging.Configure(logger, builder.Configuration);
+    AspireDashboardLogging.Configure(logger, builder.Configuration, builder.Environment);
 });
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 3 * 1024 * 1024);
 var dev = builder.Environment.IsDevelopment();
@@ -110,6 +111,7 @@ builder.Services.AddRateLimiter(o =>
     o.OnRejected = async (c, ct) => await c.HttpContext.Response.WriteAsJsonAsync(new { error = "Please slow down and try again in a minute." }, ct);
 });
 var app = builder.Build();
+var diagnosticLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("VeganAdda.Web.Hosting");
 app.UseForwardedHeaders();
 app.UseSerilogRequestLogging(RequestLogging.Configure);
 if (dev) app.UseWebAssemblyDebugging(); else { app.UseHsts(); app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/health"), branch => branch.UseHttpsRedirection()); }
@@ -131,17 +133,29 @@ app.Use(async (ctx, next) =>
     catch (AntiforgeryValidationException) when (!ctx.Response.HasStarted) { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsJsonAsync(new { error = "Your session changed. Refresh this page and try again." }); }
     catch (Exception ex) when (!ctx.Response.HasStarted)
     {
-        app.Logger.LogError("Request failed. Type={ExceptionType} Trace={TraceId} Stack={StackTrace}", ex.GetType().Name, ctx.TraceIdentifier, ex.StackTrace);
+        diagnosticLog.LogError("Request failed. Type={ExceptionType} RequestId={RequestId} Stack={StackTrace}", ex.GetType().Name, ctx.TraceIdentifier, ex.StackTrace);
         ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { error = "Something went wrong. Please try again.", traceId = ctx.TraceIdentifier });
     }
 });
 app.UseStaticFiles();
 app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter(); app.UseAntiforgery();
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
-app.MapGet("/health/ready", async (CommunityDb db) => await db.Database.CanConnectAsync() ? Results.Ok(new { status = "ready" }) : Results.StatusCode(503));
+app.MapGet("/health/ready", async (CommunityDb db) =>
+{
+    try
+    {
+        if (await db.Database.CanConnectAsync()) return Results.Ok(new { status = "ready" });
+        diagnosticLog.LogWarning("Readiness check failed: PostgreSQL is not reachable.");
+    }
+    catch (Exception ex)
+    {
+        diagnosticLog.LogError(ex, "Readiness check failed while connecting to PostgreSQL.");
+    }
+    return Results.StatusCode(503);
+});
 app.MapGet("/api/csrf", (HttpContext ctx, IAntiforgery csrf) => Results.Ok(new { token = csrf.GetAndStoreTokens(ctx).RequestToken }));
 app.MapGet("/api/auth/config", () => Results.Json(new FirebaseClientConfig(firebaseApiKey ?? "", firebaseAuthDomain ?? "", firebaseProjectId ?? "", firebaseAppId ?? "", firebaseConfigured), Wire.Json));
-app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforgery csrf, IFirebaseIdentityVerifier verifier, FirebaseLoginInput? input) =>
+app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforgery csrf, IFirebaseIdentityVerifier verifier, LifecycleEvents lifecycle, FirebaseLoginInput? input) =>
 {
     await csrf.ValidateRequestAsync(ctx);
     if (!firebaseConfigured) return Results.Json(new { error = "Firebase Authentication is not configured for this environment." }, statusCode: StatusCodes.Status503ServiceUnavailable);
@@ -152,6 +166,7 @@ app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforge
     await using var tx = await db.Database.BeginTransactionAsync();
     await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({subject}, 0))");
     var account = await db.Accounts.SingleOrDefaultAsync(a => a.Subject == subject);
+    var registered = account == null;
     if (account == null)
     {
         var name = CommunityService.Text(identity.Name, 80);
@@ -160,7 +175,9 @@ app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforge
     }
     if (account.Suspended) return Results.StatusCode(StatusCodes.Status403Forbidden);
     await tx.CommitAsync();
+    if (registered) lifecycle.Record(LifecycleEvent.AccountRegistered, account.Id);
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Principal(account), new AuthenticationProperties { IsPersistent = true });
+    lifecycle.Record(LifecycleEvent.AccountSignedIn, account.Id);
     return Results.Ok(new Ok());
 });
 app.MapChatPush();
@@ -189,15 +206,25 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveWebAssemblyRenderMode().AddAdditionalAssemblies(typeof(VeganAdda.Web.Client._Imports).Assembly, typeof(VeganAdda.UI._Imports).Assembly);
 if (args.Contains("--migrate"))
 {
-    await using var scope = app.Services.CreateAsyncScope(); await scope.ServiceProvider.GetRequiredService<CommunityDb>().Database.MigrateAsync(); return;
+    await using var scope = app.Services.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
+    diagnosticLog.LogInformation("Database migrations started.");
+    await db.Database.MigrateAsync();
+    diagnosticLog.LogInformation("Database migrations completed.");
+    return;
 }
 if (dev)
 {
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
+    diagnosticLog.LogInformation("Database migrations started.");
     await db.Database.MigrateAsync();
+    diagnosticLog.LogInformation("Database migrations completed.");
     if (builder.Configuration.GetValue<bool>("Development:Seed"))
+    {
         await DevelopmentSeed.Run(db, builder.Configuration, builder.Environment.ContentRootPath);
+        diagnosticLog.LogInformation("Development fixtures seeded.");
+    }
 }
 else
 {

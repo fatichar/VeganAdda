@@ -3,11 +3,12 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Referrals;
+using VeganAdda.Web.Observability;
 using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Profiles;
 
-public sealed class ProfilesService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ReferralTrust trust) : FeatureService(context)
+public sealed class ProfilesService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ReferralTrust trust, LifecycleEvents lifecycle) : FeatureService(context)
 {
     public async Task<Ok> SaveProfile(ProfileInput input)
     {
@@ -29,6 +30,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         var isNewProfile = p == null;
         if (p == null) { p = new Profile { Id = me.Id, AdultConfirmedAt = DateTimeOffset.UtcNow }; db.Profiles.Add(p); }
         var needsVeganVerification = p.IsVegan == false && input.IsVegan == true;
+        var wasApproved = p.Approved;
         var reviewChanged = isNewProfile || p.BirthDate != birthDate || p.Name != name || p.City != city || p.Country != country || p.State != state || p.Bio != bio || p.Photo != photo
             || !p.Interests.SequenceEqual(interests) || !p.LookingFor.SequenceEqual(input.LookingFor.Distinct())
             || p.Instagram != instagram || p.LinkedIn != linkedIn || p.Website != website || p.Public != input.Public || p.IsVegan != input.IsVegan;
@@ -59,7 +61,9 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         if (reviewChanged) { p.Approved = false; p.ReviewNote = null; p.ReviewedAt = null; p.ReviewedBy = null; }
         if (!p.Public || !p.FeatureConsent) p.Featured = false;
         me.Name = name;
-        await db.SaveChangesAsync(); await tx.CommitAsync(); return new Ok();
+        await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.Record(isNewProfile ? LifecycleEvent.ProfileCreated : wasApproved && reviewChanged ? LifecycleEvent.ProfileResubmitted : LifecycleEvent.ProfileUpdated, me.Id);
+        return new Ok();
     }
     public async Task<Ok> DeleteAccount()
     {
@@ -70,6 +74,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         await db.Saved.Where(s => s.TargetId == me.Id && s.Kind == "person").ExecuteDeleteAsync();
         // Cascade removes all conversations and both participants' messages in those conversations.
         db.Accounts.Remove(me); await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.Record(LifecycleEvent.AccountDeleted, me.Id);
         var media = config["Storage:MediaPath"] ?? "uploads";
         if (Directory.Exists(media)) foreach (var marker in Directory.EnumerateFiles(media, "*.owner-" + me.Id.ToString("N")))
         { File.Delete(marker[..marker.LastIndexOf(".owner-", StringComparison.Ordinal)]); File.Delete(marker); }

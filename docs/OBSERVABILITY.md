@@ -6,13 +6,26 @@ The web host uses Serilog.AspNetCore 10 with compact JSON on stdout. Existing
 `ILogger<T>` calls flow through Serilog. Docker retains three 10 MB web log files;
 this is local troubleshooting storage, not a central log archive.
 
-Each request completion includes method, route template, status, elapsed milliseconds,
+Each request completion includes method, route template (or a bounded unmatched path), status, elapsed milliseconds,
 request ID, application and environment. Trace/span IDs are included when an Activity
-exists. Route values, query strings, request bodies, cookies, tokens, IP addresses and
+exists. Matched route values, query strings, request bodies, cookies, tokens, IP addresses and
 member identities are not added by request logging. Successful health checks are Debug
 (hidden by default), 4xx are Warning, and 5xx are Error. API failures include a safe
 exception type and stack trace without exception messages or data values. Keep EF
 sensitive-data logging disabled and review new log statements for private data.
+
+Unmatched paths are limited to 256 characters; known referral/media path values and
+GUIDs are redacted. This makes missing assets and scanner paths diagnosable without
+recording query parameters. Avoid placing sensitive data in URLs.
+
+Selected Information-level lifecycle events record account registration, sign-in,
+deletion, profile creation/update, resubmission after an approved profile changes,
+approval, revocation and change requests. They include `EventName`, `AccountId` and
+`ActorId` (internal UUIDs), never names, Firebase identifiers, profile field values or
+review notes. Database transitions are logged after commit; sign-in is logged after
+the session cookie is issued. These are best-effort operational logs, not a durable
+audit ledger. Filter by `AccountId` to follow a member's approval history, especially
+`ProfileApproved` followed by `ProfileResubmitted` or `ProfileApprovalRevoked`.
 
 Startup failures produce a Fatal event and shutdown flushes the logger. The process
 also rethrows startup exceptions to preserve a nonzero exit; runtime stderr can contain
@@ -38,7 +51,8 @@ before enabling paid features.
    and `BETTERSTACK_ENDPOINT`. Both must be set together. Keep tokens out of Git,
    public Actions variables, browser code, and screenshots.
 2. The official `BetterStack.Logs.Serilog` sink forwards Warning and above from app
-   categories and request completions. A property allowlist removes raw request scopes,
+   categories and request completions, plus selected lifecycle Information events.
+   Successful HTTP request logs remain local. A property allowlist removes raw request scopes,
    exception messages, exception objects and unrelated properties. Framework logs stay
    local. Queue memory is capped at 5 MB, retries at 3, and shutdown flushing at 5 seconds.
    Delivery is best effort; keep stdout/Docker logs as the local fallback.
@@ -102,13 +116,30 @@ real browser pageview visible in the Umami dashboard remain required validation 
 
 Reference: [Umami tracker configuration](https://docs.umami.is/docs/tracker-configuration).
 
-## Aspire decision
+## Local Aspire Dashboard
 
-Keep Docker Compose for this web app and PostgreSQL deployment. Aspire can be evaluated
-later for local orchestration and OpenTelemetry diagnostics as dependencies grow.
-Its standalone dashboard can be used without adopting AppHost, but it targets development
-and short-term diagnostics. It does not replace production telemetry retention,
-external availability monitoring or critical notification delivery.
+The standalone Aspire Dashboard provides a browser for local structured logs without
+replacing Docker Compose or adding an AppHost. The development script starts it and
+configures the web app to export allowlisted logs over OTLP/gRPC:
+
+```powershell
+pwsh -File scripts/dev.ps1 -Aspire
+```
+
+Open `http://localhost:18888`. The dashboard uses browser-token authentication; retrieve
+its login URL from Docker Desktop or run:
+
+```powershell
+docker compose -f compose.dev.yaml --profile observability logs aspire-dashboard
+```
+
+The web app accepts the Aspire endpoint only in Development and only when it points to
+loopback. Dashboard UI and OTLP ports bind to localhost. The dashboard persists local
+diagnostic data in a Docker volume; restrict local access to that volume. It is intended
+for development and short-term diagnosis, not production retention or alerting.
+Production continues to send selected warnings, errors and lifecycle events to Better
+Stack. The production Compose file does not start the dashboard.
 
 References: [Serilog ASP.NET Core](https://github.com/serilog/serilog-aspnetcore),
-[Aspire standalone dashboard](https://aspire.dev/dashboard/standalone/).
+[Aspire standalone dashboard](https://aspire.dev/dashboard/standalone/),
+[Aspire dashboard security](https://aspire.dev/dashboard/security-considerations/).
