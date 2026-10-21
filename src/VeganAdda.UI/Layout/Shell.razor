@@ -26,7 +26,7 @@ else {
         && !(session.IsAdmin && new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.Ordinal));
     Session? session; int unread, unreadMessages; ErrorBoundary? boundary; CancellationTokenSource stop = new();
     protected override async Task OnInitializedAsync() { try { session = await Api.Get<Session>("session"); await Refresh(); } catch { } Platform.Changed += Changed; Nav.LocationChanged += Location; }
-    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) { if (session?.BasicProfileComplete == true) await Platform.StartRealtime(); _ = Poll(); } }
+    protected override async Task OnAfterRenderAsync(bool firstRender) { if (session?.BasicProfileComplete == true) await Platform.StartRealtime(); if (firstRender) _ = Poll(); }
     async Task Poll() { try { using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2)); while (await timer.WaitForNextTickAsync(stop.Token)) { if (await Platform.IsVisible()) { if (session?.BasicProfileComplete == true) await Platform.StartRealtime(); await InvokeAsync(async () => { await Refresh(); StateHasChanged(); }); } } } catch (OperationCanceledException) { } }
     async Task Refresh(bool refreshSession = true) { if (session?.Id != null) { if (refreshSession) session = await Api.Get<Session>("session"); if (!session!.BasicProfileComplete) { unread = unreadMessages = 0; return; } var counts = await Api.Get<UnreadCounts>("unread"); unread = counts.Notifications; unreadMessages = counts.Messages; } }
     void Changed() => _ = InvokeAsync(async () => { try { await Refresh((Platform.LastChange & ChangeArea.Profiles) != 0); StateHasChanged(); } catch { } });

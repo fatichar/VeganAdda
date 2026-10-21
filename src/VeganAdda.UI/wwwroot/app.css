@@ -114,6 +114,7 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .chat-confirm { flex-shrink:0; }
 .composer-form { border-top:1px solid var(--line);flex-shrink:0; }
 .composer-form .composer { border-top:0;padding-bottom:5px; }
+.composer textarea { flex:1;min-width:0;width:0; }
 .enter-send { display:flex;align-items:center;gap:7px;font-size:.7rem;font-weight:400;min-height:40px;padding:0 16px 6px;margin:0;flex-wrap:wrap; }
 .enter-send input { width:18px;height:18px;margin:0;flex-shrink:0; }
 .notification-heading { flex-wrap:wrap;gap:12px; }

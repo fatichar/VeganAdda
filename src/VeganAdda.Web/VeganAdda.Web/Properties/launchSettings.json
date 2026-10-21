@@ -8,7 +8,9 @@
         "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
         "applicationUrl": "http://localhost:5080",
         "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "Push__SenderId": "1042536751762",
+          "Push__VapidKey": "BIpbOssf2XVVVQboqMZOxHpcVtiYTy4CTqva90pLQpJMiNXYiUQSTbSuxfrhWFuXLGU6-LgsSYX8sayQ46pkbyc"
         }
       },
       "https": {

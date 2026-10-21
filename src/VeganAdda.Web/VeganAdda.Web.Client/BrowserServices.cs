@@ -46,6 +46,8 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
 {
     private HubConnection? hub;
     private IJSObjectReference? firebaseModule;
+    private IJSObjectReference? lifecycleModule;
+    private DotNetObjectReference<BrowserPlatform>? lifecycleReference;
     private bool starting;
     private bool disposed;
     private CancellationTokenSource? invalidation;
@@ -119,9 +121,19 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
         starting = true;
         try
         {
+            if (lifecycleModule == null)
+            {
+                lifecycleModule = await js.InvokeAsync<IJSObjectReference>("import", "./js/realtime.js");
+                lifecycleReference = DotNetObjectReference.Create(this);
+                await lifecycleModule.InvokeVoidAsync("attach", lifecycleReference);
+            }
             if (hub != null)
             {
-                if (hub.State == HubConnectionState.Disconnected) await hub.StartAsync();
+                if (hub.State == HubConnectionState.Disconnected)
+                {
+                    await hub.StartAsync();
+                    await Notify(ChangeArea.All);
+                }
                 return;
             }
             if ((await api.Get<Session>("session")).Id == null) return;
@@ -130,14 +142,33 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
             hub.Reconnected += _ => Notify(ChangeArea.All);
             hub.Closed += _ => Notify(ChangeArea.All);
             await hub.StartAsync();
+            // Recover changes made between the page's initial query and hub startup.
+            await Notify(ChangeArea.All);
         }
-        catch { if (hub != null) await hub.DisposeAsync(); hub = null; }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Realtime connection could not start: {Type}", ex.GetType().Name);
+            if (hub != null) await hub.DisposeAsync(); hub = null;
+        }
         finally { starting = false; }
+    }
+    [JSInvokable]
+    public async Task ResumeRealtime()
+    {
+        if (disposed) return;
+        await StartRealtime();
+        await Notify(ChangeArea.All);
     }
     public async ValueTask DisposeAsync()
     {
         disposed = true;
         invalidation?.Cancel(); invalidation?.Dispose();
+        if (lifecycleModule != null)
+        {
+            await lifecycleModule.InvokeVoidAsync("detach");
+            await lifecycleModule.DisposeAsync();
+        }
+        lifecycleReference?.Dispose();
         if (hub != null) await hub.DisposeAsync();
         if (firebaseModule != null) await firebaseModule.DisposeAsync();
     }

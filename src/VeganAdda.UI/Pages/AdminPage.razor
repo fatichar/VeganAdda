@@ -30,7 +30,7 @@ else if (data != null) {
     }
     else if (tab == "Members") {
         <div class="admin-member-toolbar">
-            <select id="member-verification" aria-label="Filter members by vegan verification" @bind="memberVerification" @bind:after="FilterMembers" disabled="@Busy"><option value="all">All members</option><option value="verified">Verified vegan</option><option value="unverified">Unverified</option><option value="no-profile">No profile</option></select>
+            <select id="member-verification" aria-label="Filter members by vegan verification" @bind="memberVerification" @bind:after="FilterMembers" disabled="@Busy"><option value="pending">Profiles waiting approval</option><option value="all">All members</option><option value="verified">Verified vegan</option><option value="unverified">Unverified</option><option value="no-profile">No profile</option></select>
             <p class="small muted">Select a name to view their profile.</p>
         </div>
         @if (data.People.Count == 0) { <Empty Icon="group" Title="No members found" Text="Choose another verification filter." /> }
@@ -72,7 +72,7 @@ else if (data != null) {
     }
 }
 @code {
-    AdminData? data; EventInput? edit; string tab = "Events", memberVerification = "all"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(Refresh); }
     protected override async Task Refresh() {
         data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}");

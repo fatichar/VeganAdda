@@ -99,6 +99,10 @@ SignalR sends only invalidation categories, never member IDs/names or message bo
 The browser coalesces bursts for 150 ms; screens refresh only relevant categories.
 Two-minute recovery polling pauses in hidden tabs, and a disconnected hub can be
 restarted after automatic reconnect is exhausted. Authorized API queries supply data.
+Realtime startup waits for the loaded session even when it completes after the
+first render. Connecting, returning to a visible tab, and coming back online trigger
+catch-up queries. The chat fetch cursor advances only through queried history;
+a concurrent send acknowledgement cannot skip intervening incoming messages.
 
 ## Push worker and releases
 

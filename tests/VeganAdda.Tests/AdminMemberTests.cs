@@ -9,6 +9,31 @@ namespace VeganAdda.Tests;
 public class AdminMemberTests(DatabaseFixture f)
 {
     [Fact]
+    public async Task Waiting_approval_filter_matches_reviewable_profiles()
+    {
+        var admin = await f.Member(admin: true);
+        var pending = await f.Member();
+        var verified = await f.Member();
+        var nonVegan = await f.Member();
+        var suspended = await f.Member();
+        var incomplete = await f.Member();
+        await using (var db = f.Db())
+        {
+            foreach (var id in new[] { pending, nonVegan, suspended, incomplete })
+                (await db.Profiles.FindAsync(id))!.VeganVerified = false;
+            (await db.Profiles.FindAsync(nonVegan))!.IsVegan = false;
+            (await db.Accounts.FindAsync(suspended))!.Suspended = true;
+            (await db.Profiles.FindAsync(incomplete))!.City = "";
+            await db.SaveChangesAsync();
+        }
+        var rows = (await AllMembers(admin, "pending")).People;
+        Assert.Contains(rows, p => p.Id == pending);
+        foreach (var id in new[] { verified, nonVegan, suspended, incomplete })
+            Assert.DoesNotContain(rows, p => p.Id == id);
+        Assert.All(rows, p => Assert.True(p.HasProfile && p.IsVegan == true && !p.VeganVerified && !p.Suspended));
+    }
+
+    [Fact]
     public async Task Approval_filters_separate_approved_pending_and_incomplete_members()
     {
         var admin = await f.Member(admin: true);

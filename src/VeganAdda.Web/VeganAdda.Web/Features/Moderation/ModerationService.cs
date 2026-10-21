@@ -27,10 +27,12 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         var reportsPage = section == "Reports" ? Math.Min(page, Math.Max(1, (reportsTotal + pageSize - 1) / pageSize)) : 1;
         var reports = section == "Reports" ? await reportsQuery.OrderByDescending(r => r.Created).ThenByDescending(r => r.Id).Skip((reportsPage - 1) * pageSize).Take(pageSize).Select(r => new ReportView(r.Id, r.ReporterId == null ? "Deleted account" : "Member", r.SubjectId ?? Guid.Empty, r.SubjectId == null ? "Deleted account" : db.Accounts.Where(a => a.Id == r.SubjectId).Select(a => a.Name).FirstOrDefault() ?? "Unavailable", r.Reason, r.Resolved, r.Created)).ToListAsync() : [];
         var members = db.Accounts.AsQueryable();
+        var reviewableProfiles = ReviewableProfiles();
         members = verification switch
         {
             "" or "all" => members,
             "verified" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && p.VeganVerified)),
+            "pending" => members.Where(a => reviewableProfiles.Any(p => p.Id == a.Id)),
             "unverified" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && !p.VeganVerified)),
             "no-profile" => members.Where(a => !db.Profiles.Any(p => p.Id == a.Id)),
             _ => throw new ApiException(400, "Choose a supported vegan verification filter.")

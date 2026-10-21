@@ -2,13 +2,12 @@ import { initializeApp } from 'firebase/app';
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw';
 
 self.addEventListener('notificationclick', event => {
+  event.stopImmediatePropagation();
   event.notification.close();
-  event.waitUntil((async () => {
-    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const client = windows.find(w => new URL(w.url).origin === self.location.origin);
-    if (client) { await client.navigate('/messages'); await client.focus(); }
-    else await self.clients.openWindow('/messages');
-  })());
+  // Request the window directly in the click handler, including when no tabs
+  // exist. Keep the worker alive until opening and focusing have completed.
+  const url = new URL('/messages', self.location.origin).href;
+  event.waitUntil(self.clients.openWindow(url).then(client => client?.focus()));
 });
 onBackgroundMessage(getMessaging(initializeApp(self.firebaseConfig)), async payload => {
   if (payload.data?.kind !== 'chat') return;

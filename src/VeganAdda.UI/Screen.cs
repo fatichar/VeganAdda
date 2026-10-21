@@ -53,7 +53,7 @@ public class Screen : ComponentBase, IDisposable
         if ((Platform.LastChange & ChangeInterests) == 0) return;
         _ = InvokeAsync(async () => { await Run(Refresh); StateHasChanged(); });
     }
-    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender && Session?.BasicProfileComplete == true) await Platform.StartRealtime(); }
+    protected override async Task OnAfterRenderAsync(bool firstRender) { if (Session?.BasicProfileComplete == true) await Platform.StartRealtime(); }
     public virtual void Dispose() => Platform.Changed -= Changed;
     protected static string E(string? value) => Uri.EscapeDataString(value ?? "");
     protected static string Date(DateTimeOffset? value, string zone = "Asia/Kolkata")

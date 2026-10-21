@@ -139,6 +139,7 @@ else
     bool sending, refreshing, refreshAgain, hasOlder, menuOpen;
     int requestPage = 1, chatPage = 1;
     bool scrollToLatest;
+    long latestFetchedMessageId;
     ElementReference historyElement;
     readonly CancellationTokenSource stop = new();
     readonly Dictionary<Guid, PendingMessage> pending = new();
@@ -155,7 +156,7 @@ else
     class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; }
     protected override async Task OnParametersSetAsync()
     {
-        if (Key != loadedKey) { history.Clear(); messagePage = null; hasOlder = false; confirmAction = ""; menuOpen = false; loadedKey = Key ?? ""; }
+        if (Key != loadedKey) { history.Clear(); latestFetchedMessageId = 0; messagePage = null; hasOlder = false; confirmAction = ""; menuOpen = false; loadedKey = Key ?? ""; }
         if (Session?.Id != null) await Run(Refresh);
     }
     protected override async Task OnAfterRenderAsync(bool first)
@@ -194,14 +195,18 @@ else
                     result = await Api.Get<MessagePage>($"conversations/{key}/messages");
                     if (Key != key) return;
                     hasOlder = result.HasOlder; history = result.Items; scrollToLatest = true;
+                    latestFetchedMessageId = history.LastOrDefault()?.Id ?? 0;
                 }
                 else
                 {
                     do
                     {
-                        result = await Api.Get<MessagePage>($"conversations/{key}/messages?after={history[^1].Id}");
+                        result = await Api.Get<MessagePage>($"conversations/{key}/messages?after={latestFetchedMessageId}");
                         if (Key != key) return;
+                        var previousCount = history.Count;
                         history = history.Concat(result.Items).DistinctBy(m => m.Id).OrderBy(m => m.Id).ToList();
+                        if (result.Items.Count > 0) latestFetchedMessageId = result.Items[^1].Id;
+                        if (history.Count > previousCount) scrollToLatest = true;
                     } while (result.HasNewer);
                 }
                 if (Key != key) return;
