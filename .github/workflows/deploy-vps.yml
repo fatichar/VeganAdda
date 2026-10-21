@@ -45,7 +45,7 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet restore VeganAdda.sln
       - run: dotnet test tests/VeganAdda.Tests -c Release --no-restore -m:1 /nr:false
-      - run: node --test tests/analytics.test.mjs
+      - run: node --test tests/analytics.test.mjs tests/startup.test.mjs
 
   build:
     runs-on: ubuntu-latest
