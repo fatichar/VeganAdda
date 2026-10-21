@@ -8,8 +8,8 @@ public sealed class ReferralsService(FeatureContext context, ReferralTrust trust
 {
     public async Task<ReferralInviteResult> CreateReferralInvite()
     {
-        var me = await User(true);
-        if (!await trust.CanCreateReferral(me.Id)) throw new ApiException(403, "Referrals require a verified account and an approved community profile.");
+        var me = await User();
+        if (!await trust.CanCreateReferral(me.Id)) throw new ApiException(403, "Referrals require a complete profile and verified vegan status.");
         var now = DateTimeOffset.UtcNow;
         if (await db.ReferralInvites.CountAsync(i => i.ReferrerId == me.Id && !i.Revoked && !i.ReferredId.HasValue && i.Expires > now) >= 5)
             throw new ApiException(429, "Use or let an earlier referral link expire before creating another.");

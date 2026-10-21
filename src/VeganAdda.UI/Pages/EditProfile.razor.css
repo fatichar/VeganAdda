@@ -1,0 +1,6 @@
+.profile-tabs { display: flex; gap: 4px; border-bottom: 1px solid #d9dfd9; margin-bottom: 16px; }
+.profile-tabs button { flex: 1; border-radius: 0; padding: 12px 4px; background: transparent; color: #53635b; border: 0; border-bottom: 3px solid transparent; font-size: .85rem; }
+.profile-tabs button[aria-selected="true"] { border-bottom-color: #237b48; color: #073c2c; font-weight: 700; }
+.profile-tabs button:focus-visible { outline: 2px solid #237b48; outline-offset: -2px; }
+.profile-panel[hidden] { display: none; }
+.profile-verification-links { margin-bottom: 24px; }

@@ -10,6 +10,7 @@ public class DiscoveryInput
     public string Search { get; set; } = "";
     public string Interest { get; set; } = "";
     public string Intent { get; set; } = "";
+    public bool VerifiedVegansOnly { get; set; }
     public bool IncludeNonVegan { get; set; }
     public int? MinAge { get; set; }
     public int? MaxAge { get; set; }

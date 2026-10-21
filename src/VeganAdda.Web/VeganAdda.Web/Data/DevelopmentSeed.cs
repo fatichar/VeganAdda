@@ -36,7 +36,7 @@ public static class DevelopmentSeed
             if (await db.Profiles.AnyAsync(p => p.Id == accounts[i].Id)) continue;
             db.Profiles.Add(new()
             {
-                Id = accounts[i].Id, Name = names[i], City = i == 4 ? "Delhi NCR" : i == 1 || i == 3 ? "Bengaluru" : "Pune", State = i == 4 ? "Delhi" : i == 1 || i == 3 ? "Karnataka" : "Maharashtra", Bio = bios[i], Public = true, Approved = true, IsVegan = true, TestProfile = true,
+                Id = accounts[i].Id, Name = names[i], City = i == 4 ? "Delhi NCR" : i == 1 || i == 3 ? "Bengaluru" : "Pune", State = i == 4 ? "Delhi" : i == 1 || i == 3 ? "Karnataka" : "Maharashtra", Bio = bios[i], Public = true, VeganVerified = true, IsVegan = true, TestProfile = true, BirthDate = new DateOnly(1990, 1, 31),
                 FeatureConsent = true, Featured = i == 1, AdultConfirmedAt = DateTimeOffset.UtcNow,
                 LookingFor = i == 2 ? ["Friendship", "Activism", "Dating"] : ["Friendship", "Business & networking"],
                 Interests = i == 1 ? ["Design", "Running", "Zero waste", "Rescues"] : i == 2 ? ["Tech", "Sanctuaries", "Hiking"] : i == 3 ? ["Baking", "Gardening", "Heritage food"] : i == 4 ? ["Photography", "Music", "Coffee"] : ["Cooking", "Running", "Volunteering"],
@@ -58,8 +58,8 @@ public static class DevelopmentSeed
             db.Profiles.Add(new Profile
             {
                 Id = account.Id, Name = names[sample.Account], City = sample.City, State = sample.State, Country = "India",
-                Bio = sample.Bio, Public = true, Approved = true, IsVegan = true, TestProfile = true,
-                AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = ["Friendship", "Community"], Interests = sample.Interests
+                Bio = sample.Bio, Public = true, VeganVerified = true, IsVegan = true, TestProfile = true, BirthDate = new DateOnly(1990, 1, 31),
+                AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = ["Friendship"], Interests = sample.Interests
             });
         }
         var evt = new Gathering { Id = Guid.Parse("20000000-0000-0000-0000-000000000001"), Title = "Sunday community potluck", Description = "Development sample event. Bring a favourite plant-based dish and meet your local community. This is fictional test data and is not a real gathering.", City = "Pune", Venue = "Sample community garden (test venue)", Organizer = "VeganAdda demo team", Start = DateTimeOffset.UtcNow.AddDays(7), End = DateTimeOffset.UtcNow.AddDays(7).AddHours(3), Published = true, Featured = true, Demo = true, Cover = Asset("vibrant_welcoming", "20000000000000000000000000000001") };

@@ -24,7 +24,7 @@ public class PreciseLocationTests(DatabaseFixture f)
         saved = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
         Assert.True(saved.SavePreciseLocation);
         Assert.Equal(input.Latitude, saved.Latitude); Assert.Equal(input.Longitude, saved.Longitude);
-        Assert.True(saved.Approved); // Private coordinate changes do not require profile review.
+        Assert.True(saved.VeganVerified); // Private coordinate changes do not require profile review.
         foreach (var audience in new Guid?[] { null, viewer })
         {
             var person = JsonSerializer.Serialize(await f.Call(audience, "people/" + id), Wire.Json);
@@ -37,7 +37,7 @@ public class PreciseLocationTests(DatabaseFixture f)
         var admin = await f.Member(admin: true);
         await using (var db = f.Db())
         {
-            (await db.Profiles.FindAsync(id))!.Approved = false;
+            (await db.Profiles.FindAsync(id))!.VeganVerified = false;
             await db.SaveChangesAsync();
         }
         var review = JsonSerializer.Serialize(await f.Call(admin, "moderation"), Wire.Json);

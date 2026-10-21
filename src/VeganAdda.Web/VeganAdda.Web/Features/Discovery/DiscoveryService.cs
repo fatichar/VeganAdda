@@ -22,6 +22,7 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
             throw new ApiException(400, "Choose a valid current location and a radius between 1 and 500 km.");
         var people = visibility.Query().Where(p => p.Id != Viewer);
         people = input.IncludeNonVegan ? people.Where(p => p.IsVegan != null) : people.Where(p => p.IsVegan == true);
+        if (input.VerifiedVegansOnly) people = people.Where(p => p.IsVegan == true && p.VeganVerified);
         if (nearby)
         {
             // Evaluate distance in PostgreSQL before counting/pagination. Search coordinates

@@ -29,6 +29,7 @@
                 @if (intent != "") { <button class="discovery-chip" aria-label="Remove looking for filter" @onclick='() => RemoveFilter("intent")'>@intent<Icon Name="close" /></button> }
                 @if (interest != "") { <button class="discovery-chip" aria-label="Remove interest filter" @onclick='() => RemoveFilter("interest")'>@interest<Icon Name="close" /></button> }
                 @if (minAge.HasValue || maxAge.HasValue) { <button class="discovery-chip" aria-label="Remove age filter" @onclick='() => RemoveFilter("age")'>Age @(minAge ?? 18)–@(maxAge ?? 120)<Icon Name="close" /></button> }
+                @if (verifiedVegansOnly) { <button class="discovery-chip" aria-label="Remove verified vegans filter" @onclick='() => RemoveFilter("verified")'>Verified vegans only<Icon Name="close" /></button> }
                 @if (includeNonVegan) { <button class="discovery-chip" aria-label="Remove non-vegan filter" @onclick='() => RemoveFilter("nonvegan")'>Includes non-vegans<Icon Name="close" /></button> }
             </div>
         }
@@ -69,6 +70,7 @@
             <fieldset><legend>Age</legend><AgeRange @bind-Min="draftMinAge" @bind-Max="draftMaxAge" /><small>Profiles without an age won't appear when an age filter is set.</small></fieldset>
             <label for="intent">Looking for</label><select id="intent" @bind="draftIntent"><option value="">Any connection</option>@foreach (var tag in Wire.Intents.Where(x => x != "Dating" || dating)) { <option>@tag</option> }</select>
             <label for="interest">Interest</label><select id="interest" @bind="draftInterest"><option value="">All interests</option>@foreach (var tag in new[] { "Running", "Baking", "Sanctuaries", "Design", "Hiking", "Cooking", "Volunteering", "Photography" }) { <option>@tag</option> }</select>
+            <label class="check-row"><input type="checkbox" @bind="draftVerifiedVegansOnly" /><span>Verified vegans only</span></label>
             <label class="check-row"><input type="checkbox" @bind="draftNonVegan" /><span>Include non-vegan profiles</span></label>
             <Feedback Error="@panelError" />
             <div class="discovery-panel-actions"><button type="button" class="text-button" @onclick="ResetDraftFilters">Reset filters</button><button type="submit" disabled="@eventsLoading">Show people</button></div>
@@ -85,18 +87,19 @@
     EventCard? selectedEvent; List<EventCard> eventOptions = []; bool eventsLoading;
     string country = "", state = "", city = "", search = "", interest = "", intent = "", panel = "", panelError = "";
     string draftIntent = "", draftInterest = "";
+    bool verifiedVegansOnly, draftVerifiedVegansOnly;
     bool dating, includeNonVegan, draftNonVegan, nearby, locating; int page = 1, total, radius = 25, draftRadius = 25;
     int? minAge, maxAge, draftMinAge, draftMaxAge;
     double? latitude, longitude;
     ProfileInput? profile; string? lastCity; int locationRequest;
     bool locationReady;
     List<Person> people = []; Person? connecting;
-    bool HasFilters => eventId != "" || interest != "" || intent != "" || includeNonVegan || minAge.HasValue || maxAge.HasValue;
+    bool HasFilters => eventId != "" || interest != "" || intent != "" || includeNonVegan || verifiedVegansOnly || minAge.HasValue || maxAge.HasValue;
     string PanelTitle => panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        if (Session?.HasProfile == true) await Run(async () =>
+        if (Session?.BasicProfileComplete == true) await Run(async () =>
         {
             profile = await Profiles.GetProfile(); dating = profile.LookingFor.Contains("Dating");
         });
@@ -134,9 +137,9 @@
         if (eventId != "" && selectedEvent?.Id.ToString() != eventId) selectedEvent = await Api.Get<EventCard>("events/" + eventId);
         Page<Person> result;
         if (nearby)
-            result = await Profiles.SearchPeople( new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, MinAge = minAge, MaxAge = maxAge, Page = page });
+            result = await Profiles.SearchPeople( new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = page });
         else
-            result = await Profiles.SearchPeople(new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, MinAge = minAge, MaxAge = maxAge, Page = page });
+            result = await Profiles.SearchPeople(new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = page });
         people = result.Items; total = result.Total;
     }
     void OpenPanel(string value) { panelError = ""; panel = value; }
@@ -177,7 +180,7 @@
     async Task OpenFilters()
     {
         draftEvent = eventId; draftCheckedIn = checkedIn;
-        draftIntent = intent; draftInterest = interest; draftNonVegan = includeNonVegan; draftMinAge = minAge; draftMaxAge = maxAge; OpenPanel("filters");
+        draftVerifiedVegansOnly = verifiedVegansOnly; draftIntent = intent; draftInterest = interest; draftNonVegan = includeNonVegan; draftMinAge = minAge; draftMaxAge = maxAge; OpenPanel("filters");
         eventsLoading = true; eventOptions = [];
         try
         {
@@ -197,22 +200,22 @@
     async Task ApplyFilters()
     {
         if (draftMinAge is < 18 or > 120 || draftMaxAge is < 18 or > 120 || draftMinAge > draftMaxAge) { panelError = "Choose an age range between 18 and 120, with From no higher than To."; return; }
-        intent = draftIntent; interest = draftInterest; includeNonVegan = draftNonVegan; minAge = draftMinAge; maxAge = draftMaxAge; ClosePanel();
+        verifiedVegansOnly = draftVerifiedVegansOnly; intent = draftIntent; interest = draftInterest; includeNonVegan = draftNonVegan; minAge = draftMinAge; maxAge = draftMaxAge; ClosePanel();
         if (draftEvent != eventId || (draftEvent != "" && draftCheckedIn != checkedIn)) NavigateEvent(draftEvent, draftCheckedIn);
         else await Search();
     }
     void NavigateEvent(string id, bool onlyCheckedIn) => Nav.NavigateTo(id == "" ? "/" : $"/?event={E(id)}&checkedIn={onlyCheckedIn.ToString().ToLowerInvariant()}");
-    void ResetDraftFilters() { draftEvent = draftIntent = draftInterest = panelError = ""; draftCheckedIn = draftNonVegan = false; draftMinAge = draftMaxAge = null; }
-    Task ClearFilters() { search = interest = intent = ""; includeNonVegan = false; minAge = maxAge = null; if (eventId != "") { NavigateEvent("", false); return Task.CompletedTask; } return Search(); }
+    void ResetDraftFilters() { draftEvent = draftIntent = draftInterest = panelError = ""; draftCheckedIn = draftNonVegan = false; draftVerifiedVegansOnly = false; draftMinAge = draftMaxAge = null; }
+    Task ClearFilters() { search = interest = intent = ""; includeNonVegan = false; verifiedVegansOnly = false; minAge = maxAge = null; if (eventId != "") { NavigateEvent("", false); return Task.CompletedTask; } return Search(); }
     Task RemoveFilter(string filter)
     {
         if (filter == "event" || filter == "checkin") { NavigateEvent(filter == "event" ? "" : eventId, false); return Task.CompletedTask; }
-        if (filter == "intent") intent = ""; else if (filter == "interest") interest = ""; else if (filter == "age") minAge = maxAge = null; else includeNonVegan = false;
+        if (filter == "verified") verifiedVegansOnly = false; else if (filter == "intent") intent = ""; else if (filter == "interest") interest = ""; else if (filter == "age") minAge = maxAge = null; else includeNonVegan = false;
         return Search();
     }
     Task Search() { page = 1; return Run(Refresh); }
     Task SetPage(int value) { page = value; return Run(Refresh); }
-    Task Connect(Person p) { if (Session?.Id == null) Platform.SignIn($"/people/{p.Id}?action=connect"); else if (!Session.HasProfile) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{p.Id}?action=connect")}"); else connecting = p; return Task.CompletedTask; }
+    Task Connect(Person p) { if (Session?.Id == null) Platform.SignIn($"/people/{p.Id}?action=connect"); else if (!Session.BasicProfileComplete) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{p.Id}?action=connect")}"); else connecting = p; return Task.CompletedTask; }
     async Task Save(Person p) { if (!ReadyForAction($"/people/{p.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"people/{p.Id}/save"); await Refresh(); Success = p.Saved ? "Profile unsaved." : "Profile saved."; }); }
     async Task Connected() { Success = "Request sent."; await Run(Refresh); }
 }

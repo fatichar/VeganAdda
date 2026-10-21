@@ -27,6 +27,28 @@ does not use the legacy catch-all route. New behavior belongs in feature service
 The legacy connection/conversation list adapters return at most 20 items;
 the current inbox uses the paged, typed `IMessagingApi` contract.
 
+## Profile setup and vegan verification
+
+`Shared.BasicProfile` defines the required fields for both session completion and
+SQL visibility queries. Signed-in community operations and realtime connections
+require a complete basic profile. Profile setup, account/privacy controls and
+separately authorized administration remain accessible. Anonymous visitors retain
+public browsing; incomplete profiles never appear in discovery.
+
+`Profile.VeganVerified` records a moderator's confirmation of declared vegan status,
+independent of referrals. Profile edits preserve it; selecting non-vegan clears it.
+Social links and referral context support manual review and never confirm someone
+automatically. Verification removal does not hide a complete profile or cascade to
+referred members. Active, verified, non-test vegans may refer, suggest events and
+become moderators. Discovery includes unverified vegans unless filtered out.
+
+Feature consent is always enabled and is no longer editable. Administrators choose
+which active public profiles to feature; public visibility remains member-controlled.
+`VeganVerificationAndBasicProfiles` backfills verification only for previously
+approved declared vegans, enables feature consent and removes legacy inherited trust.
+Deploy the application and migration together. Its rollback cannot reconstruct
+legacy trust or earlier consent choices.
+
 ## Feature ownership
 
 | Feature | Responsibility and permitted collaboration |
@@ -38,7 +60,7 @@ the current inbox uses the paged, typed `IMessagingApi` contract.
 | Messaging | Participant-only history, writes/read markers, paged inbox; composes connection requests |
 | Events | Published events, attendance/check-in, submissions and event review |
 | Moderation | Administrative/member review workflows; uses Events and Referrals |
-| Referrals | Invitation eligibility and scoped ancestry/descendant queries |
+| Referrals | Invitation eligibility and scoped ancestry/cycle checks |
 | Notifications | Notices and unread projections |
 | Saved | Paged saved profiles/events; uses their visibility/projection policies |
 | Shared | Request context, common guards/validation, transaction locks, endpoint support |

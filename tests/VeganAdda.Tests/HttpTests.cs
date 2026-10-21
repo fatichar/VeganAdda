@@ -90,35 +90,68 @@ public class HttpTests : IDisposable
         Assert.Contains("https://api-bdc.io", origins);
         Assert.DoesNotContain("*", connect);
     }
-    [Fact] public async Task Approved_profile_warns_before_edits_and_saved_changes_show_pending_review()
+    [Fact] public async Task Profile_edits_keep_verification_and_moderation_actions_change_only_vegan_status()
     {
         var member = await f.Member();
         using var client = Client(member);
-        var approvedHtml = await client.GetStringAsync("/settings/profile");
-        Assert.Contains("Profile changes may need another review.", approvedHtml);
-        Assert.Contains("until a moderator approves it again", approvedHtml);
-
+        var html = await client.GetStringAsync("/settings/profile");
+        Assert.DoesNotContain("Profile changes may need another review.", html);
+        Assert.DoesNotContain("Allow my public profile to be featured", html);
         var profile = (await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!;
+        profile.Bio = "Updated profile without losing verification";
         await Post(client, "/api/profile", profile);
-        Assert.True((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
-
-        profile.Bio = "Updated profile for review";
-        await Post(client, "/api/profile", profile);
-        Assert.False((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
-        var pendingHtml = await client.GetStringAsync("/settings/profile");
-        Assert.Contains("Your profile is awaiting review.", pendingHtml);
-        Assert.DoesNotContain("Profile changes may need another review.", pendingHtml);
-        AssertLifecycle("ProfileResubmitted", member, member);
-
+        Assert.True((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+        AssertLifecycle("ProfileUpdated", member, member);
         var admin = await f.Member(admin: true);
         using var reviewer = Client(admin);
-        await Post(reviewer, "/api/admin/moderate", new ModerateInput(member, "approve"));
-        Assert.True((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
-        AssertLifecycle("ProfileApproved", member, admin);
-        await Post(reviewer, "/api/admin/moderate", new ModerateInput(member, "revoke-approval"));
-        Assert.False((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.Approved);
-        AssertLifecycle("ProfileApprovalRevoked", member, admin);
+        await Post(reviewer, "/api/admin/moderate", new ModerateInput(member, "remove-vegan-verification"));
+        Assert.False((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+        AssertLifecycle("VeganVerificationRemoved", member, admin);
+        await Post(reviewer, "/api/admin/moderate", new ModerateInput(member, "confirm-vegan"));
+        Assert.True((await client.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+        AssertLifecycle("VeganConfirmed", member, admin);
     }
+    [Fact] public async Task Incomplete_profiles_show_a_prominent_gate_and_api_access_resumes_after_basic_setup()
+    {
+        var id = await f.Member();
+        await using (var db = f.Db())
+        {
+            db.Profiles.Remove((await db.Profiles.FindAsync(id))!);
+            await db.SaveChangesAsync();
+        }
+        using var client = Client(id);
+        foreach (var route in new[] { "/", "/events", "/messages", "/saved" })
+        {
+            var html = await client.GetStringAsync(route);
+            Assert.Contains("Complete your basic profile to use VeganAdda", html);
+        }
+        Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync("/api/people")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync("/api/events")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/settings")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/privacy")).StatusCode);
+        var onboarding = await client.GetStringAsync("/onboarding");
+        Assert.Contains("Basic info", onboarding);
+        Assert.Contains("Optional details", onboarding);
+        Assert.Contains("Preferences", onboarding);
+        Assert.DoesNotContain("I confirm I am at least 18 years old", onboarding);
+        Assert.DoesNotContain("Allow my public profile to be featured", onboarding);
+        // Old clients may still send removed fields. Neither consent nor verification is client-controlled.
+        await Post(client, "/api/profile", new
+        {
+            Name = "Basic HTTP member", IsVegan = true, BirthYear = 1990, BirthMonth = 1,
+            Country = "India", State = "Maharashtra", City = "Pune",
+            FeatureConsent = false, VeganVerified = true
+        });
+        var session = (await client.GetFromJsonAsync<Session>("/api/session"))!;
+        Assert.True(session.BasicProfileComplete);
+        Assert.False(session.VeganVerified);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/people")).StatusCode);
+        await using var check = f.Db();
+        var profile = (await check.Profiles.FindAsync(id))!;
+        Assert.True(profile.FeatureConsent);
+        Assert.False(profile.Featured);
+    }
+
     [Fact] public async Task Production_analytics_scripts_and_csp_are_enabled_only_with_configuration()
     {
         SetFirebaseEnvironment("GOOGLE_APPLICATION_CREDENTIALS", "unused-in-this-render-test.json");
@@ -234,9 +267,10 @@ public class HttpTests : IDisposable
         using var other = Client(await f.Member()); Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync(path)).StatusCode);
         var profile = await c.GetFromJsonAsync<ProfileInput>("/api/profile"); profile!.Photo = path;
         Assert.Equal(HttpStatusCode.OK,(await Post(c,"/api/profile",profile)).StatusCode);
-        using var anon = Client(); Assert.Equal(HttpStatusCode.NotFound,(await anon.GetAsync(path)).StatusCode);
+        Assert.True((await c.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+        using var anon = Client(); Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
         using var admin = Client(await f.Member(admin: true));
-        Assert.Equal(HttpStatusCode.OK, (await Post(admin, "/api/admin/profile-review", new ProfileReviewInput(user, true))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(admin, "/api/admin/profile-review", new VeganVerificationInput(user, true))).StatusCode);
         Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
     }
     [Fact] public async Task SignalR_authenticates_origin_and_delivers_invalidation_after_persisted_message()

@@ -13,7 +13,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
 
     public async Task<Page<ConnectionItem>> ConnectionsPage(int page = 1, string state = "", string? key = null, int pageSize = 10)
     {
-        var me = await User(true);
+        var me = await User();
         var relationships = db.Relationships.Where(r => (r.A == me.Id || r.B == me.Id) && (r.State == "pending" || r.State == "accepted"));
         if (state is not ("" or "pending" or "accepted")) throw new ApiException(400, "Choose a supported connection state.");
         if (state != "") relationships = relationships.Where(r => r.State == state);
@@ -31,7 +31,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
     }
     public async Task<Ok> ConnectionAction(string action, JsonElement? body)
     {
-        var me = await User(true); var input = Read<ConnectionInput>(body);
+        var me = await User(); var input = Read<ConnectionInput>(body);
         if (await db.Profiles.AnyAsync(p => p.Id == me.Id && p.IsVegan == null)) throw new ApiException(409, "Choose your vegan status before connecting with members.");
         if (input.PersonId == me.Id) throw new ApiException(400, "You cannot connect with yourself.");
         var meIsTest = await db.Profiles.AnyAsync(p => p.Id == me.Id && p.TestProfile);
@@ -75,7 +75,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
     }
     public async Task<Ok> PersonAction(Guid id, string action, JsonElement? body)
     {
-        var me = await User(true);
+        var me = await User(allowIncomplete: action == "unblock");
         if (id == me.Id) throw new ApiException(400, "Choose another member.");
         var meIsTest = await db.Profiles.AnyAsync(p => p.Id == me.Id && p.TestProfile);
         var targetIsTest = await db.Profiles.AnyAsync(p => p.Id == id && p.TestProfile);
@@ -109,7 +109,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
     }
     public async Task<List<AdminPerson>> GetBlocked()
     {
-        var blocker = await User();
-                    return await db.Blocks.Where(b => b.Owner == blocker.Id).Join(db.Profiles, b => b.Subject, p => p.Id, (b, p) => new AdminPerson(p.Id, p.Name, false, false, false, false)).ToListAsync();
+        var blocker = await User(allowIncomplete: true);
+                    return await db.Blocks.Where(b => b.Owner == blocker.Id).Join(db.Profiles, b => b.Subject, p => p.Id, (b, p) => new AdminPerson(p.Id, p.Name, false, false, false)).ToListAsync();
     }
 }

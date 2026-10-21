@@ -31,7 +31,7 @@ root `VeganAdda.sln`; confirm the loaded Roslyn project paths before using resul
   is a compatibility adapter, not a place for new business rules.
 - UI/contracts must not depend on server or EF Core. Features must not call the
   compatibility dispatcher. Keep foundational features independent of consumers.
-- Preserve owner/anonymous/member/admin/moderator distinctions, approval lifecycle,
+- Preserve owner/anonymous/member/admin/moderator distinctions, vegan verification lifecycle,
   bidirectional blocking and test-profile isolation. Profile and photo policy lives
   in `ProfileVisibility`; public projections live in `PeopleProjection`.
 - Never expose precise coordinates, exact birth details, identity credentials, or

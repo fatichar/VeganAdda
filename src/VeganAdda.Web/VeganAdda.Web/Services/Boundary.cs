@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
+using VeganAdda.Web.Features.Shared;
 
 namespace VeganAdda.Web.Services;
 
@@ -37,7 +38,7 @@ public class CommunityHub(CommunityDb db) : Hub
 {
     public override async Task OnConnectedAsync()
     {
-        if (!Guid.TryParse(Context.UserIdentifier, out var id) || !await db.Accounts.AnyAsync(x => x.Id == id && !x.Suspended))
+        if (!Guid.TryParse(Context.UserIdentifier, out var id) || (!await db.Accounts.AnyAsync(x => x.Id == id && !x.Suspended) || !await db.Profiles.Where(BasicProfile.Complete).AnyAsync(p => p.Id == id)))
         { Context.Abort(); return; }
         await base.OnConnectedAsync();
     }

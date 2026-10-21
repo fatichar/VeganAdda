@@ -30,7 +30,7 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
             return new Person(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
                 p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), p.Instagram, p.LinkedIn, p.Website,
                 p.Featured && p.Public && p.FeatureConsent, saved.Contains(p.Id), p.Id == Viewer ? "self" : state,
-                demos[p.Id], p.Country, p.State, p.IsVegan, p.VeganVerificationPending, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate));
+                demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), p.Profession);
         }).ToList();
     }
 }

@@ -12,7 +12,7 @@ else { <div class="events-grid">@foreach (var ev in items) { <EventCardView Even
     [SupplyParameterFromQuery] public string? City { get; set; }
     string country = "", state = "", city = ""; string? lastCity; ProfileInput? profile;
     List<EventCard> items = []; int page = 1, total;
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.HasProfile == true) await Run(async () => profile = await Api.Get<ProfileInput>("profile")); }
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.BasicProfileComplete == true) await Run(async () => profile = await Api.Get<ProfileInput>("profile")); }
     protected override Task OnParametersSetAsync() { if (City != lastCity) { lastCity = City; country = state = ""; city = City == "All India" ? "" : City ?? ""; page = 1; } return Run(Refresh); }
     protected override async Task Refresh() { var result = await Api.Get<Page<EventCard>>($"events?country={E(country)}&state={E(state)}&city={E(city)}&page={page}"); items = result.Items; total = result.Total; }
     Task PlaceSelected(DiscoveryInput place) { country = place.Country; state = place.State; city = place.City; page = 1; return Run(Refresh); }

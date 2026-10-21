@@ -26,13 +26,14 @@ public abstract class FeatureService(FeatureContext context)
     protected static ApiException Missing() => new(404, "This item is no longer available.");
     protected static ApiException Denied() => new(403, "You don't have access to this action.");
     protected static T Read<T>(JsonElement? body) where T : class => body?.Deserialize<T>(Wire.Json) ?? throw new ApiException(400, "Please check the form and try again.");
-    protected async Task<Account> User(bool profile = false, bool admin = false, bool moderator = false)
+    protected async Task<Account> User(bool admin = false, bool moderator = false, bool allowIncomplete = false)
     {
         var u = await db.Accounts.SingleOrDefaultAsync(x => x.Id == Viewer) ?? throw new ApiException(401, "Sign in to continue.");
         if (u.Suspended) throw new ApiException(403, "Your account is suspended. Contact the community team for help.");
-        if (profile && !await db.Profiles.AnyAsync(x => x.Id == u.Id)) throw new ApiException(409, "Create your profile first.");
+        if (!allowIncomplete && !admin && !(moderator && u.Admin) && !await db.Profiles.Where(BasicProfile.Complete).AnyAsync(x => x.Id == u.Id))
+            throw new ApiException(409, "Complete your basic profile first to use VeganAdda.");
         if (admin && !u.Admin) throw Denied();
-        if (moderator && !u.Admin && (!u.Moderator || !await db.Profiles.AnyAsync(p => p.Id == u.Id && p.IsVegan == true && !p.VeganVerificationPending))) throw Denied();
+        if (moderator && !u.Admin && (!u.Moderator || !await db.Profiles.AnyAsync(p => p.Id == u.Id && p.IsVegan == true && p.VeganVerified && !p.TestProfile))) throw Denied();
         return u;
     }
     protected async Task ActiveViewer() { if (Viewer.HasValue) await User(); }

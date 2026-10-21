@@ -53,12 +53,6 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<bool>("Suspended")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("TrustRevoked")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("Verified")
-                        .HasColumnType("boolean");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Subject")
@@ -289,9 +283,6 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<DateTimeOffset>("AdultConfirmedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("Approved")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("Bio")
                         .IsRequired()
                         .HasMaxLength(4000)
@@ -314,7 +305,9 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<bool>("FeatureConsent")
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<bool>("Featured")
                         .HasColumnType("boolean");
@@ -357,6 +350,13 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
+                    b.Property<string>("Profession")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasDefaultValue("");
+
                     b.Property<bool>("Public")
                         .HasColumnType("boolean");
 
@@ -378,7 +378,7 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<bool>("TestProfile")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("VeganVerificationPending")
+                    b.Property<bool>("VeganVerified")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Website")

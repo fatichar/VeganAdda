@@ -38,7 +38,7 @@ public sealed class CommunityService(FeatureContext context,
         var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
         string Q(string key) => q.TryGetValue(key, out var v) ? v.ToString() : "";
         int page = int.TryParse(Q("page"), out var n) ? Math.Clamp(n, 1, 10000) : 1;
-        await ActiveViewer();
+        if (Viewer.HasValue) await User(allowIncomplete: true);
         if (method == "GET")
         {
             switch (parts[0])
@@ -49,7 +49,7 @@ public sealed class CommunityService(FeatureContext context,
                     {
                         return await profiles.GetPerson(Guid.Parse(parts[1]));
                     }
-                    return await discovery.SearchPeople(new DiscoveryInput { Event = Q("event"), CheckedIn = Q("checkedIn") == "true", Country = Q("country"), State = Q("state"), City = Q("city"), Search = Q("search"), Interest = Q("interest"), Intent = Q("intent"), IncludeNonVegan = Q("includeNonVegan") == "true", MinAge = ParseAge(Q("minAge")), MaxAge = ParseAge(Q("maxAge")), Page = page });
+                    return await discovery.SearchPeople(new DiscoveryInput { Event = Q("event"), CheckedIn = Q("checkedIn") == "true", Country = Q("country"), State = Q("state"), City = Q("city"), Search = Q("search"), Interest = Q("interest"), Intent = Q("intent"), VerifiedVegansOnly = Q("verifiedVegansOnly") == "true", IncludeNonVegan = Q("includeNonVegan") == "true", MinAge = ParseAge(Q("minAge")), MaxAge = ParseAge(Q("maxAge")), Page = page });
                 case "profile": return await profiles.GetProfile();
                 case "connections": return await connections.Connections();
                 case "conversations":
@@ -62,7 +62,7 @@ public sealed class CommunityService(FeatureContext context,
                 case "unread": return await notifications.Unread();
                 case "blocked": return await connections.GetBlocked();
                 case "admin":
-                    if (parts.Length == 1) return await moderation.Admin(Q("approval"), Q("section") is { Length: > 0 } section ? section : "Members", page);
+                    if (parts.Length == 1) return await moderation.Admin(Q("verification"), Q("section") is { Length: > 0 } section ? section : "Members", page);
                     if (parts.Length == 3 && parts[1] == "members" && Guid.TryParse(parts[2], out var memberId)) return await moderation.AdminMemberProfile(memberId);
                     throw Missing();
                 case "moderation": return await moderation.Moderation(Q("section") is { Length: > 0 } moderationSection ? moderationSection : "Profiles", page);
@@ -87,10 +87,10 @@ public sealed class CommunityService(FeatureContext context,
                     return await notifications.NotificationAction(method, parts, body);
                 case "admin":
                     if (parts[1] == "events") return await events.SaveEvent(Read<EventInput>(body));
-                    if (parts[1] == "profile-review") return await moderation.ReviewProfile(Read<ProfileReviewInput>(body));
+                    if (parts[1] == "profile-review") return await moderation.ReviewProfile(Read<VeganVerificationInput>(body));
                     return await moderation.Moderate(Read<ModerateInput>(body));
                 case "moderation":
-                    if (parts.Length > 1 && parts[1] == "profile-review") return await moderation.ReviewProfile(Read<ProfileReviewInput>(body), moderator: true);
+                    if (parts.Length > 1 && parts[1] == "profile-review") return await moderation.ReviewProfile(Read<VeganVerificationInput>(body), moderator: true);
                     if (parts.Length > 1 && parts[1] == "event-review") return await events.ReviewEvent(Read<EventReviewInput>(body), moderator: true);
                     throw Missing();
                 case "referrals": return await referrals.CreateReferralInvite();

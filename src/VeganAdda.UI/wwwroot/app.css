@@ -188,3 +188,7 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .discovery-person-card .person-footer{display:flex;flex-wrap:wrap;gap:8px}
 .discovery-person-card .person-footer>.button,.discovery-person-card .person-footer>button{width:100%;margin-left:0}
 @media(max-width:767px){.discovery-person-card{padding:10px}.discovery-person-card .person-header,.discovery-person-card .bio,.discovery-person-card .tags,.discovery-person-card .person-intentions,.discovery-person-card .person-footer{margin-left:8px;margin-right:8px}.discovery-person-card .person-footer{padding-bottom:8px}}
+
+.person-profession{color:var(--muted);font-size:.9rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:10px}
+.profile-profession{color:var(--muted);overflow-wrap:anywhere}
+@media(max-width:767px){.discovery-person-card .person-profession{margin-left:8px;margin-right:8px}}

@@ -1,14 +1,20 @@
 <fieldset class="birth-details">
     <legend>Birth date</legend>
+    @if (ShowMonthYear) {
     <div class="birth-month-year">
-        <div><label for="birth-month">Month</label><select id="birth-month" required @bind="Model.BirthMonth" @bind:after="CheckDay"><option value="">Choose month</option>@for (var month = 1; month <= 12; month++) { <option value="@month">@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month)</option> }</select></div>
-        <div><label for="birth-year">Year</label><select id="birth-year" required @bind="Model.BirthYear" @bind:after="CheckDay"><option value="">Choose year</option>@for (var year = DateTime.UtcNow.Year - 18; year >= DateTime.UtcNow.Year - 120; year--) { <option value="@year">@year</option> }</select></div>
+        <div><label for="birth-month">Month <RequiredMark /></label><select id="birth-month" required @bind="Model.BirthMonth" @bind:after="CheckDay"><option value="">Choose month</option>@for (var month = 1; month <= 12; month++) { <option value="@month">@System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month)</option> }</select></div>
+        <div><label for="birth-year">Year <RequiredMark /></label><select id="birth-year" required @bind="Model.BirthYear" @bind:after="CheckDay"><option value="">Choose year</option>@for (var year = DateTime.UtcNow.Year - 18; year >= DateTime.UtcNow.Year - 120; year--) { <option value="@year">@year</option> }</select></div>
     </div>
+    }
+    @if (ShowDay) {
     <label for="birth-day">Day <span class="muted">(optional)</span></label><select id="birth-day" @bind="Model.BirthDay" disabled="@(!Model.BirthMonth.HasValue || !Model.BirthYear.HasValue)"><option value="">Not specified</option>@for (var day = 1; day <= Days; day++) { <option value="@day">@day</option> }</select>
+    }
     <small>Your birth details stay private. Your age appears on your profile and helps people filter by age.</small>
-    <small>Add your birth day so we can highlight your profile on your birthday.</small>
+    @if (ShowDay) { <small>Add your birth day so we can highlight your profile on your birthday.</small> }
 </fieldset>
 @code {
+    [Parameter] public bool ShowMonthYear { get; set; } = true;
+    [Parameter] public bool ShowDay { get; set; } = true;
     [Parameter, EditorRequired] public ProfileInput Model { get; set; } = default!;
     int Days => Model.BirthYear is >= 1 and <= 9999 && Model.BirthMonth is >= 1 and <= 12 ? DateTime.DaysInMonth(Model.BirthYear.Value, Model.BirthMonth.Value) : 31;
     void CheckDay() { if (Model.BirthDay > Days) Model.BirthDay = null; }

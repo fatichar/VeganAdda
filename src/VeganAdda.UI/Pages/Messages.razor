@@ -22,8 +22,8 @@ else
                 @foreach (var request in VisibleRequests)
                 {
                     <a class="conversation conversation-request @(request.Incoming ? "incoming-request" : "sent-request") @(request.Key == Key ? "selected" : "")" href="/messages/@request.Key" aria-current="@(request.Key == Key ? "page" : null)" @key="request.Key">
-                        <Avatar Name="@request.Person.Name" Photo="@request.Person.Photo" />
-                        <div><strong>@request.Person.Name</strong><span class="request-label">@(request.Incoming ? "Connection request" : "Request sent")@(request.Person.IsVegan == false ? " · Not vegan" : request.Person.VeganVerificationPending ? " · Vegan status under review" : request.Person.IsVegan is null ? " · Vegan status not set" : "")</span>@if (request.Introduction != "") { <p>@request.Introduction</p> }</div>
+                        <Avatar Name="@request.Person.Name" Photo="@request.Person.Photo" VeganVerified="@request.Person.VeganVerified" />
+                        <div><strong>@request.Person.Name</strong><span class="request-label">@(request.Incoming ? "Connection request" : "Request sent")@(request.Person.IsVegan == false ? " · Not vegan" : request.Person.VeganVerificationPending ? " · Vegan status unverified" : request.Person.IsVegan is null ? " · Vegan status not set" : "")</span>@if (request.Introduction != "") { <p>@request.Introduction</p> }</div>
                         <Icon Name="@(request.Incoming ? "person_add" : "schedule")" />
                     </a>
                 }
@@ -31,7 +31,7 @@ else
                 @foreach (var c in VisibleChats)
                 {
                     <a class="conversation @(c.Key == Key ? "selected" : "") @(c.Unread > 0 ? "has-unread" : "")" href="/messages/@c.Key" @key="c.Key">
-                        <Avatar Name="@c.Name" Photo="@c.Photo" /><div class="conversation-copy"><div class="conversation-top"><strong>@c.Name</strong><small title="@Date(c.Updated)">@InboxTimestamp.Format(c.Updated, DateTimeOffset.UtcNow)</small></div><div class="conversation-preview"><p>@c.Latest</p>@if (c.Unread > 0) { <span class="count" aria-label="@($"{c.Unread} unread messages")">@c.Unread</span> }</div></div>
+                        <Avatar Name="@c.Name" Photo="@c.Photo" VeganVerified="@c.VeganVerified" /><div class="conversation-copy"><div class="conversation-top"><strong>@c.Name</strong><small title="@Date(c.Updated)">@InboxTimestamp.Format(c.Updated, DateTimeOffset.UtcNow)</small></div><div class="conversation-preview"><p>@c.Latest</p>@if (c.Unread > 0) { <span class="count" aria-label="@($"{c.Unread} unread messages")">@c.Unread</span> }</div></div>
                     </a>
                 }
                 <Pagination PageNumber="@chatPage" PageSize="10" Total="@chatTotal" Busy="@Busy" PageChanged="SetChatPage" />
@@ -43,7 +43,7 @@ else
                 {
                     <div class="chat-header">
                         <a class="icon-button mobile-back" href="/messages" aria-label="Back to chats"><Icon Name="arrow_back" /></a>
-                        <Avatar Name="@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")" Photo="@(SelectedRequest?.Person.Photo ?? Selected?.Photo ?? "")" />
+                        <Avatar Name="@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")" Photo="@(SelectedRequest?.Person.Photo ?? Selected?.Photo ?? "")" VeganVerified="@(SelectedRequest?.Person.VeganVerified ?? Selected?.VeganVerified ?? false)" />
                         <div class="chat-heading"><h2>@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")</h2><small>@(Selected?.BlockedByMe == true ? "Member blocked" : SelectedRequest is { } currentRequest ? (currentRequest.Incoming ? "Connection request" : "Request sent") : messagePage.CanMessage ? "Connected" : "Messaging unavailable · history remains available")</small></div>
                         @if (SelectedPersonId is { } personId)
                         {

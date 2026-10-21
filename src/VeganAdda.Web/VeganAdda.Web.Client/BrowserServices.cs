@@ -84,7 +84,7 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
             var idToken = await firebaseModule.InvokeAsync<string>("signInWithGoogle");
             await api.Send<Ok>("auth/firebase", new FirebaseLoginInput(idToken));
             var session = await api.Get<Session>("session");
-            var target = session.HasProfile ? returnTo : "/onboarding?returnUrl=" + Uri.EscapeDataString(returnTo);
+            var target = ProfileSetup.SignInDestination(session.BasicProfileComplete, returnTo);
             navigation.NavigateTo(target, forceLoad: true);
         }
         catch (ApiException ex) when (ex.Status != 429)

@@ -81,7 +81,7 @@ public class BirthDetailsTests(DatabaseFixture f)
         input.BirthYear = today.Year - 28 - (today.Month == 1 ? 1 : 0); input.BirthMonth = today.Month == 1 ? 12 : today.Month - 1; input.BirthDay = null;
         input.Bio = "birth-month-filter-" + Guid.NewGuid().ToString("N");
         await f.Call(id, "profile", input, "POST");
-        await using (var db = f.Db()) { (await db.Profiles.FindAsync(id))!.Approved = true; await db.SaveChangesAsync(); }
+        await using (var db = f.Db()) { (await db.Profiles.FindAsync(id))!.VeganVerified = true; await db.SaveChangesAsync(); }
         var page = Assert.IsType<Page<Person>>(await f.Call(viewer, "people?minAge=28&maxAge=28&search=" + input.Bio));
         Assert.Contains(page.Items, p => p.Id == id && p.Age == 28);
     }

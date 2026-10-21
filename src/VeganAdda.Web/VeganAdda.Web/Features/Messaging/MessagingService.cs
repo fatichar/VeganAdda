@@ -10,7 +10,7 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
 {
     private async Task<Relationship> ConversationAccess(string key)
     {
-        var me = await User(true);
+        var me = await User();
         return await db.Relationships.SingleOrDefaultAsync(r => r.Key == key && (r.A == me.Id || r.B == me.Id)) ?? throw Missing();
     }
     private async Task<bool> CanMessage(Relationship relationship)
@@ -35,7 +35,7 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
 
     public async Task<Page<Conversation>> ConversationsPage(int page = 1, string? key = null, int pageSize = 10, bool includePending = false)
     {
-        var me = await User(true);
+        var me = await User();
         var myProfile = await db.Profiles.SingleAsync(p => p.Id == me.Id);
         var query = db.Relationships.Where(r => r.A == me.Id || r.B == me.Id);
         if (!includePending) query = query.Where(r => r.State != "pending");
@@ -78,7 +78,7 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
                 new(account != null && !account.Suspended, profile?.TestProfile ?? false, account?.Admin ?? false));
             result.Add(new(rel.Key, card?.Name ?? "Unavailable member", card?.Photo ?? "", message?.Text ?? "Say hello",
                 unread.GetValueOrDefault(rel.Key), message?.SentAt ?? rel.Updated, canMessage,
-                unavailable && !blockedByMe ? null : other, blockedByMe, rel.State == "removed" && !unavailable && visible.Contains(other)));
+                unavailable && !blockedByMe ? null : other, blockedByMe, rel.State == "removed" && !unavailable && visible.Contains(other), card?.IsVegan == true && card.VeganVerified));
         }
         return new(result, total, page, pageSize);
     }
@@ -96,7 +96,7 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
     }
     public async Task<Message> SendMessage(string key, MessageInput input)
     {
-        var me = await User(true); var text = Text(input.Text, 2000, true);
+        var me = await User(); var text = Text(input.Text, 2000, true);
         if (input.ClientId == Guid.Empty) throw new ApiException(400, "A client message ID is required.");
         await using var tx = await db.Database.BeginTransactionAsync(); await PairLock(key);
         // Lock sender too: a reused UUID across different conversations is consistently rejected.
@@ -117,7 +117,7 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
     }
     public async Task<Ok> MarkRead(string key, ReadInput input)
     {
-        var me = await User(true);
+        var me = await User();
         await using var tx = await db.Database.BeginTransactionAsync(); await PairLock(key);
         var r = await ConversationAccess(key);
         var max = await db.Messages.Where(m => m.Conversation == key).MaxAsync(m => (long?)m.Id) ?? 0;

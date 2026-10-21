@@ -4,6 +4,7 @@ using SkiaSharp;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Profiles;
+using VeganAdda.Web.Features.Shared;
 
 namespace VeganAdda.Web.Services;
 
@@ -67,7 +68,7 @@ public static class Media
             var url = "/media/" + name; var id = actor.Id;
             if (id.HasValue && !await db.Accounts.AnyAsync(a => a.Id == id && !a.Suspended)) return Results.NotFound();
             var isAdmin = id.HasValue && await db.Accounts.AnyAsync(a => a.Id == id && a.Admin && !a.Suspended);
-            var isModerator = id.HasValue && await db.Accounts.AnyAsync(a => a.Id == id && (a.Admin || a.Moderator) && !a.Suspended);
+            var isModerator = id.HasValue && await db.Accounts.AnyAsync(a => a.Id == id && (a.Admin || (a.Moderator && db.Profiles.Where(BasicProfile.Complete).Any(p => p.Id == a.Id && p.IsVegan == true && p.VeganVerified && !p.TestProfile))) && !a.Suspended);
             var visible = await visibility.CanReadPhoto(url, id, isAdmin, isModerator)                || await db.Events.AnyAsync(e => e.Cover == url && (e.Published || (e.PendingReview && ((isAdmin && !e.Demo) || (isModerator && !e.Demo)))))
                 || (id.HasValue && (File.Exists(Path.Combine(root, name + ".owner-" + id.Value.ToString("N"))) || await db.Accounts.AnyAsync(a => a.Id == id && a.Admin)));
             var file = Path.Combine(root, name);

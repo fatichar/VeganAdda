@@ -3,8 +3,8 @@ namespace VeganAdda.Web.Observability;
 public enum LifecycleEvent
 {
     AccountRegistered, AccountSignedIn, AccountDeleted,
-    ProfileCreated, ProfileUpdated, ProfileResubmitted,
-    ProfileApproved, ProfileChangesRequested, ProfileApprovalRevoked
+    ProfileCreated, ProfileUpdated,
+    VeganConfirmed, VeganVerificationFeedback, VeganVerificationRemoved
 }
 
 // Record committed transitions only. Never pass profile content or identity credentials.

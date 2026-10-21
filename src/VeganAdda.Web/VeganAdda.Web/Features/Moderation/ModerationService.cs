@@ -10,7 +10,10 @@ namespace VeganAdda.Web.Features.Moderation;
 
 public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle) : FeatureService(context)
 {
-    public async Task<AdminData> Admin(string approval = "", string section = "Members", int page = 1)
+    private IQueryable<Profile> ReviewableProfiles() => db.Profiles.Where(BasicProfile.Complete)
+        .Where(p => p.IsVegan == true && !p.VeganVerified && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
+
+    public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1)
     {
         await User(admin: true);
         const int pageSize = 20;
@@ -24,13 +27,13 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         var reportsPage = section == "Reports" ? Math.Min(page, Math.Max(1, (reportsTotal + pageSize - 1) / pageSize)) : 1;
         var reports = section == "Reports" ? await reportsQuery.OrderByDescending(r => r.Created).ThenByDescending(r => r.Id).Skip((reportsPage - 1) * pageSize).Take(pageSize).Select(r => new ReportView(r.Id, r.ReporterId == null ? "Deleted account" : "Member", r.SubjectId ?? Guid.Empty, r.SubjectId == null ? "Deleted account" : db.Accounts.Where(a => a.Id == r.SubjectId).Select(a => a.Name).FirstOrDefault() ?? "Unavailable", r.Reason, r.Resolved, r.Created)).ToListAsync() : [];
         var members = db.Accounts.AsQueryable();
-        members = approval switch
+        members = verification switch
         {
             "" or "all" => members,
-            "approved" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && p.Approved)),
-            "awaiting-approval" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && !p.Approved)),
+            "verified" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && p.VeganVerified)),
+            "unverified" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && !p.VeganVerified)),
             "no-profile" => members.Where(a => !db.Profiles.Any(p => p.Id == a.Id)),
-            _ => throw new ApiException(400, "Choose a supported approval filter.")
+            _ => throw new ApiException(400, "Choose a supported vegan verification filter.")
         };
         var membersTotal = await members.CountAsync();
         var membersPage = section == "Members" ? Math.Min(page, Math.Max(1, (membersTotal + pageSize - 1) / pageSize)) : 1;
@@ -39,10 +42,10 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         foreach (var a in accounts)
         {
             var profile = await db.Profiles.FindAsync(a.Id);
-            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.FeatureConsent ?? false, profile?.Featured ?? false, profile?.Approved ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null, a.Admin));
+            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.Featured ?? false, profile?.VeganVerified ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null, a.Admin));
         }
-        var profilesTotal = await db.Profiles.CountAsync(p => !p.Approved);
-        var profiles = await db.Profiles.Where(p => !p.Approved).OrderBy(p => p.Name).ThenBy(p => p.Id).Take(pageSize).ToListAsync();
+        var profilesTotal = await ReviewableProfiles().CountAsync();
+        var profiles = await ReviewableProfiles().OrderBy(p => p.Name).ThenBy(p => p.Id).Take(pageSize).ToListAsync();
         var pendingProfiles = new List<ProfileReview>();
         foreach (var profile in profiles) pendingProfiles.Add(await ProfileReviewDto(profile));
         var activePage = section == "Events" ? eventsPage : section == "Reports" ? reportsPage : membersPage;
@@ -56,9 +59,10 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
     }
     public async Task<ModerationData> Moderation(string section, int page)
     {
+        await User(moderator: true);
         const int pageSize = 20;
         if (section is not ("Profiles" or "Events")) throw new ApiException(400, "Choose a supported review section.");
-        var profilesQuery = db.Profiles.Where(p => !p.Approved && !p.TestProfile);
+        var profilesQuery = ReviewableProfiles().Where(p => !p.TestProfile);
         var eventsQuery = db.Events.Where(e => e.PendingReview && !e.Demo);
         var profilesTotal = await profilesQuery.CountAsync();
         var eventsTotal = await eventsQuery.CountAsync();
@@ -72,15 +76,14 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
     {
         var referral = await db.Referrals.FindAsync(p.Id);
         var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
-        var referrerCanRefer = referral != null && await trust.IsVerified(referral.ReferrerId)
-            && await db.Profiles.AnyAsync(p => p.Id == referral.ReferrerId && p.Approved && !p.TestProfile);
+        var referrerCanRefer = referral != null && await trust.CanCreateReferral(referral.ReferrerId);
         return new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
-            referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerificationPending);
+            referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerified, p.Profession);
     }
     private async Task<List<ProfileReview>> ProfileQueue(bool includeTestProfiles, int page = 1, int pageSize = 20)
     {
         if (includeTestProfiles) await User(admin: true); else await User(moderator: true);
-        var reviewRows = await db.Profiles.Where(p => !p.Approved && (includeTestProfiles || !p.TestProfile)).OrderBy(p => p.Name).ThenBy(p => p.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        var reviewRows = await ReviewableProfiles().Where(p => includeTestProfiles || !p.TestProfile).OrderBy(p => p.Name).ThenBy(p => p.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var profileReviews = new List<ProfileReview>();
         foreach (var p in reviewRows) profileReviews.Add(await ProfileReviewDto(p));
         return profileReviews;
@@ -88,8 +91,8 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
     public async Task<Ok> Moderate(ModerateInput input)
     {
         var me = await User(admin: true);
-        if (input.Action == "approve") return await ReviewProfile(new(input.Id, true));
-        if (input.Action == "revoke-approval") return await ReviewProfile(new(input.Id, false, "Approval revoked by an administrator."));
+        if (input.Action == "confirm-vegan") return await ReviewProfile(new(input.Id, true));
+        if (input.Action == "remove-vegan-verification") return await ReviewProfile(new(input.Id, false, "Vegan verification removed by an administrator."));
         var affected = new HashSet<Guid> { input.Id };
         if (input.Action == "resolve")
         {
@@ -113,59 +116,45 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
             else if (input.Action is "grant-moderator" or "revoke-moderator")
             {
                 if (u.Admin) throw new ApiException(409, "Administrators already have profile review access.");
-                if (input.Action == "grant-moderator" && !await db.Profiles.AnyAsync(p => p.Id == u.Id && p.IsVegan == true && !p.VeganVerificationPending && p.Approved && !p.TestProfile)) throw new ApiException(409, "Only an approved vegan member can become a moderator.");
+                if (input.Action == "grant-moderator" && !await db.Profiles.Where(BasicProfile.Complete).AnyAsync(p => p.Id == u.Id && p.IsVegan == true && p.VeganVerified && !p.TestProfile && !u.Suspended)) throw new ApiException(409, "Only a verified vegan member can become a moderator.");
                 u.Moderator = input.Action == "grant-moderator";
-            }
-            else if (input.Action is "verify" or "unverify")
-            {
-                if (input.Action == "verify" && (u.Suspended || !await db.Profiles.AnyAsync(p => p.Id == u.Id && p.Approved && !p.TestProfile))) throw new ApiException(409, "Only an active, approved, non-test profile can be verified.");
-                u.Verified = input.Action == "verify";
-                u.TrustRevoked = input.Action == "unverify";
-                if (input.Action == "unverify")
-                {
-                    foreach (var descendant in await trust.Descendants(input.Id)) affected.Add(descendant);
-                    var referredAccounts = await db.Accounts.Where(a => affected.Contains(a.Id) && a.Id != input.Id).ToListAsync();
-                    foreach (var child in referredAccounts) { child.Verified = false; child.TrustRevoked = true; }
-                }
             }
             else if (input.Action is "feature" or "unfeature")
             {
                 var p = await db.Profiles.FindAsync(u.Id) ?? throw Missing();
-                if (input.Action == "feature" && (!p.Public || !p.FeatureConsent || u.Suspended)) throw new ApiException(400, "Only consenting, active public profiles can be featured.");
+                if (input.Action == "feature" && (!p.Public || p.TestProfile || u.Suspended)) throw new ApiException(400, "Only active public non-test profiles can be featured.");
                 p.Featured = input.Action == "feature";
             }
             else if (input.Action is "test-profile" or "normal-profile")
             {
                 var p = await db.Profiles.FindAsync(u.Id) ?? throw Missing();
                 p.TestProfile = input.Action == "test-profile";
-                if (p.TestProfile) { p.Featured = false; u.Verified = false; u.TrustRevoked = true; }
+                if (p.TestProfile) { p.Featured = false; p.VeganVerified = false; u.Moderator = false; }
             }
             else throw Missing();
         }
         await db.SaveChangesAsync(); await changes.Changed(affected.ToArray()); return new Ok();
     }
-    public async Task<Ok> ReviewProfile(ProfileReviewInput input, bool moderator = false)
+    public async Task<Ok> ReviewProfile(VeganVerificationInput input, bool moderator = false)
     {
         var reviewer = await User(admin: !moderator, moderator: moderator);
         await using var tx = await db.Database.BeginTransactionAsync();
         await UserLock(input.Id);
         var profile = await db.Profiles.FindAsync(input.Id) ?? throw Missing();
         if (!reviewer.Admin && profile.TestProfile) throw Denied();
-        var wasApproved = profile.Approved;
-        profile.Approved = input.Approve;
-        profile.ReviewNote = input.Approve ? null : Text(input.Note, 500, true);
+        var account = await db.Accounts.FindAsync(profile.Id) ?? throw Missing();
+        if (input.Confirm && (profile.IsVegan != true || account.Suspended || !BasicProfile.IsComplete(profile)))
+            throw new ApiException(409, "Only an active member with a complete profile and vegan status can be confirmed.");
+        var wasVerified = profile.VeganVerified;
+        profile.VeganVerified = input.Confirm;
+        profile.ReviewNote = input.Confirm ? null : Text(input.Note, 500, true);
         profile.ReviewedBy = reviewer.Id; profile.ReviewedAt = DateTimeOffset.UtcNow;
-        if (input.Approve) profile.VeganVerificationPending = false;
-        if (!input.Approve)
-        {
-            profile.Featured = false;
-            var account = await db.Accounts.FindAsync(profile.Id) ?? throw Missing();
-            account.Moderator = false;
-        }
-        Notice(profile.Id, input.Approve ? "profile-approved" : "profile-review", input.Approve ? "Your profile was approved and is ready to be discovered." : "Your profile needs an update before it can be approved: " + profile.ReviewNote, "/settings/profile");
+        if (!input.Confirm) account.Moderator = false;
+        Notice(profile.Id, input.Confirm ? "vegan-confirmed" : "vegan-verification-removed",
+            input.Confirm ? "Your vegan status has been verified." : "Your vegan status is unverified: " + profile.ReviewNote, "/settings/profile");
         await db.SaveChangesAsync();
         await tx.CommitAsync();
-        lifecycle.Record(input.Approve ? LifecycleEvent.ProfileApproved : wasApproved ? LifecycleEvent.ProfileApprovalRevoked : LifecycleEvent.ProfileChangesRequested, profile.Id, reviewer.Id);
+        lifecycle.Record(input.Confirm ? LifecycleEvent.VeganConfirmed : wasVerified ? LifecycleEvent.VeganVerificationRemoved : LifecycleEvent.VeganVerificationFeedback, profile.Id, reviewer.Id);
         await changes.Changed(input.Id);
         return new Ok();
     }

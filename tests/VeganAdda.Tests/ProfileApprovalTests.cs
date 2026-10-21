@@ -8,32 +8,31 @@ namespace VeganAdda.Tests;
 public class ProfileApprovalTests(DatabaseFixture f)
 {
     [Theory]
-    [InlineData(false, true, false)]
-    [InlineData(false, true, true)]
-    [InlineData(true, false, false)]
-    public async Task Member_approval_matches_review_queue_instead_of_referral_trust(bool approved, bool trusted, bool referred)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task Vegan_verification_matches_review_queue_independently_of_referrals(bool approved, bool referred)
     {
         var admin = await f.Member(admin: true);
         var member = await f.Member();
         await using (var db = f.Db())
         {
-            (await db.Accounts.FindAsync(member))!.Verified = trusted && !referred;
             if (referred) db.Referrals.Add(new() { ReferrerId = admin, ReferredId = member });
-            (await db.Profiles.FindAsync(member))!.Approved = approved;
+            (await db.Profiles.FindAsync(member))!.VeganVerified = approved;
             await db.SaveChangesAsync();
         }
 
         var data = Assert.IsType<AdminData>(await f.Call(admin, "admin"));
         var row = Assert.Single((await AllMembers(admin)).People, p => p.Id == member);
         Assert.True(row.HasProfile);
-        Assert.Equal(approved, row.Approved);
+        Assert.Equal(approved, row.VeganVerified);
         Assert.Equal(!approved, await IsInReviewQueue(admin, member));
     }
 
     [Theory]
     [InlineData("admin/profile-review")]
     [InlineData("admin/moderate")]
-    public async Task Approving_from_either_tab_and_revoking_updates_queue_discovery_and_member_status(string path)
+    public async Task Confirming_and_removing_verification_updates_queue_but_keeps_discovery(string path)
     {
         var admin = await f.Member(admin: true);
         var member = await f.Member();
@@ -41,17 +40,16 @@ public class ProfileApprovalTests(DatabaseFixture f)
         await using (var db = f.Db())
         {
             var profile = (await db.Profiles.FindAsync(member))!;
-            profile.Approved = false;
+            profile.VeganVerified = false;
             profile.City = city;
             profile.IsVegan = true;
-            profile.VeganVerificationPending = true;
             await db.SaveChangesAsync();
         }
 
-        object approval = path == "admin/profile-review" ? new ProfileReviewInput(member, true) : new ModerateInput(member, "approve");
+        object approval = path == "admin/profile-review" ? new VeganVerificationInput(member, true) : new ModerateInput(member, "confirm-vegan");
         await f.Call(admin, path, approval, "POST");
         var data = await AllMembers(admin);
-        Assert.True(Assert.Single(data.People, p => p.Id == member).Approved);
+        Assert.True(Assert.Single(data.People, p => p.Id == member).VeganVerified);
         Assert.False(await IsInReviewQueue(admin, member));
         Assert.False(Assert.IsType<ProfileInput>(await f.Call(member, "profile")).VeganVerificationPending);
         Assert.Contains(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=" + city)).Items, p => p.Id == member);
@@ -62,25 +60,25 @@ public class ProfileApprovalTests(DatabaseFixture f)
             (await db.Profiles.FindAsync(member))!.Featured = true;
             await db.SaveChangesAsync();
         }
-        await f.Call(admin, "admin/moderate", new ModerateInput(member, "revoke-approval"), "POST");
+        await f.Call(admin, "admin/moderate", new ModerateInput(member, "remove-vegan-verification"), "POST");
         data = await AllMembers(admin);
         var revoked = Assert.Single(data.People, p => p.Id == member);
-        Assert.False(revoked.Approved);
-        Assert.False(revoked.Featured);
+        Assert.False(revoked.VeganVerified);
+        Assert.True(revoked.Featured);
         Assert.False(revoked.Moderator);
         Assert.True(await IsInReviewQueue(admin, member));
-        Assert.DoesNotContain(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=" + city)).Items, p => p.Id == member);
+        Assert.Contains(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=" + city)).Items, p => p.Id == member);
 
-        await f.Call(admin, "admin/moderate", new ModerateInput(member, "approve"), "POST");
+        await f.Call(admin, "admin/moderate", new ModerateInput(member, "confirm-vegan"), "POST");
         data = await AllMembers(admin);
-        Assert.True(Assert.Single(data.People, p => p.Id == member).Approved);
+        Assert.True(Assert.Single(data.People, p => p.Id == member).VeganVerified);
         Assert.False(await IsInReviewQueue(admin, member));
     }
 
     [Theory]
-    [InlineData("approve")]
-    [InlineData("revoke-approval")]
-    public async Task Approval_actions_require_an_administrator(string action)
+    [InlineData("confirm-vegan")]
+    [InlineData("remove-vegan-verification")]
+    public async Task Verification_actions_require_an_administrator(string action)
     {
         var member = await f.Member();
         var target = await f.Member();

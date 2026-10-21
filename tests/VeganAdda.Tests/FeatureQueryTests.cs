@@ -37,7 +37,8 @@ public class FeatureQueryTests(DatabaseFixture f)
                     Id = account.Id,
                     Name = "Query peer",
                     Bio = marker,
-                    Approved = true,
+                    VeganVerified = true,
+                    City = "Pune", State = "Maharashtra", BirthDate = new DateOnly(1990, 1, 1), AdultConfirmedAt = DateTimeOffset.UtcNow,
                     Public = true,
                     IsVegan = true,
                     LookingFor = ["Friendship", "Dating"]
@@ -68,7 +69,8 @@ public class FeatureQueryTests(DatabaseFixture f)
             {
                 var peer = new Account { Subject = Guid.NewGuid().ToString(), Name = "Inbox peer" };
                 db.Accounts.Add(peer);
-                db.Profiles.Add(new Profile { Id = peer.Id, Name = peer.Name, Approved = true, IsVegan = true });
+                db.Profiles.Add(new Profile { Id = peer.Id, Name = peer.Name, VeganVerified = true,
+                    City = "Pune", State = "Maharashtra", BirthDate = new DateOnly(1990, 1, 1), AdultConfirmedAt = DateTimeOffset.UtcNow, IsVegan = true });
                 var key = CommunityService.Pair(viewer, peer.Id);
                 var first = string.CompareOrdinal(viewer.ToString(), peer.Id.ToString()) < 0;
                 db.Relationships.Add(new Relationship
@@ -110,7 +112,7 @@ public class FeatureQueryTests(DatabaseFixture f)
             {
                 var peer = new Account { Subject = Guid.NewGuid().ToString(), Name = "Saved peer" };
                 db.Accounts.Add(peer);
-                db.Profiles.Add(new Profile { Id = peer.Id, Name = peer.Name, Approved = i != 14, IsVegan = true });
+                db.Profiles.Add(new Profile { Id = peer.Id, Name = peer.Name, VeganVerified = i != 14, IsVegan = true, City = "Pune", State = "Maharashtra", BirthDate = new DateOnly(1990, 1, 1), AdultConfirmedAt = DateTimeOffset.UtcNow });
                 db.Saved.Add(new Saved { UserId = viewer, TargetId = peer.Id, Kind = "person" });
                 if (i == 13) db.Blocks.Add(new Block { Owner = peer.Id, Subject = viewer });
             }
@@ -118,24 +120,23 @@ public class FeatureQueryTests(DatabaseFixture f)
         }
         var first = Assert.IsType<SavedItems>(await f.Call(viewer, "saved"));
         var second = Assert.IsType<SavedItems>(await f.Call(viewer, "saved?peoplePage=2"));
-        Assert.Equal(13, first.PeopleTotal); Assert.Equal(12, first.People.Count);
-        Assert.Single(second.People);
+        Assert.Equal(14, first.PeopleTotal); Assert.Equal(12, first.People.Count);
+        Assert.Equal(2, second.People.Count);
         Assert.Empty(first.People.Select(p => p.Id).Intersect(second.People.Select(p => p.Id)));
     }
 
     [Fact]
-    public async Task An_unanchored_referral_cycle_is_untrusted_and_a_revoked_ancestor_stops_trust()
+    public async Task Removing_a_referrers_verification_does_not_revoke_an_independent_confirmation()
     {
+        var admin = await f.Member(admin: true);
         var a = await f.Member(); var b = await f.Member();
         await using (var db = f.Db())
         {
-            db.Referrals.AddRange(new Referral { ReferredId = a, ReferrerId = b }, new Referral { ReferredId = b, ReferrerId = a });
+            db.Referrals.Add(new Referral { ReferredId = a, ReferrerId = b });
             await db.SaveChangesAsync();
         }
-        Assert.False(Assert.IsType<ProfileInput>(await f.Call(a, "profile")).CanRefer);
-        await using (var db = f.Db()) { (await db.Accounts.FindAsync(b))!.Verified = true; await db.SaveChangesAsync(); }
+        await f.Call(admin, "admin/moderate", new ModerateInput(b, "remove-vegan-verification"), "POST");
         Assert.True(Assert.IsType<ProfileInput>(await f.Call(a, "profile")).CanRefer);
-        await using (var db = f.Db()) { (await db.Accounts.FindAsync(b))!.TrustRevoked = true; await db.SaveChangesAsync(); }
-        Assert.False(Assert.IsType<ProfileInput>(await f.Call(a, "profile")).CanRefer);
+        Assert.False(Assert.IsType<ProfileInput>(await f.Call(b, "profile")).CanRefer);
     }
 }

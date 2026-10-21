@@ -10,8 +10,6 @@ public class Account
     public bool Suspended { get; set; }
     public bool Admin { get; set; }
     public bool Moderator { get; set; }
-    public bool Verified { get; set; }
-    public bool TrustRevoked { get; set; }
     public bool Demo { get; set; }
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -30,6 +28,7 @@ public class Profile
     public string Country { get; set; } = "India";
     public string State { get; set; } = "";
     public string Bio { get; set; } = "";
+    public string Profession { get; set; } = "";
     public string Photo { get; set; } = "";
     public string[] Interests { get; set; } = [];
     public string[] LookingFor { get; set; } = [];
@@ -37,16 +36,16 @@ public class Profile
     public string? LinkedIn { get; set; }
     public string? Website { get; set; }
     public bool Public { get; set; }
-    public bool Approved { get; set; }
+    public bool VeganVerified { get; set; }
     public bool? IsVegan { get; set; }
-    public bool VeganVerificationPending { get; set; }
     public bool TestProfile { get; set; }
     public string? ReviewNote { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }
     public Guid? ReviewedBy { get; set; }
     public bool Featured { get; set; }
-    public bool FeatureConsent { get; set; }
+    public bool FeatureConsent { get; set; } = true;
     public bool DefaultAttendeeVisible { get; set; } = true;
+    // Legacy column retained for the time adult eligibility was recorded on profile save.
     public DateTimeOffset AdultConfirmedAt { get; set; }
 }
 public class Relationship
@@ -168,6 +167,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<Profile>().Property(x => x.FeatureConsent).HasDefaultValue(true);
         b.Entity<Account>().HasIndex(x => x.Subject).IsUnique();
         b.Entity<Profile>().HasOne<Account>().WithOne().HasForeignKey<Profile>(x => x.Id).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Relationship>().HasKey(x => x.Key);
@@ -203,6 +203,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ReferralInvite>().HasIndex(x => x.ReferredId).IsUnique();
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
+        b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
         b.Entity<PushDevice>().HasIndex(x => x.Token).IsUnique();
         b.Entity<PushDevice>().Property(x => x.Token).HasMaxLength(4096);
         b.Entity<PushDevice>().HasOne<Account>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);

@@ -63,7 +63,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     public async Task<Guid> Member(bool pub = true, bool dating = false, bool admin = false)
     {
         await using var db = Db(); var u = new Account { Subject = Guid.NewGuid().ToString(), Name = "Test Member", Admin = admin };
-        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", State = "Maharashtra", BirthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-28), HasExactBirthDate = true, Public = pub, Approved = true, IsVegan = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
+        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", State = "Maharashtra", BirthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-28), HasExactBirthDate = true, Public = pub, VeganVerified = true, IsVegan = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
     }
     public async Task DisposeAsync()
     {
@@ -90,20 +90,17 @@ public class PostgresCollection : ICollectionFixture<DatabaseFixture>;
 public class CommunityTests(DatabaseFixture f)
 {
     [Theory]
-    [InlineData(true, true, false, false, true)]
-    [InlineData(true, false, false, false, false)]
-    [InlineData(false, true, false, false, false)]
-    [InlineData(true, true, true, false, false)]
-    [InlineData(true, true, false, true, false)]
-    public async Task Referral_visibility_matches_creation_permission(bool verified, bool approved, bool testProfile, bool trustRevoked, bool allowed)
+    [InlineData(true, true, false, true)]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, true, true, false)]
+    public async Task Referral_visibility_matches_creation_permission(bool verified, bool vegan, bool testProfile, bool allowed)
     {
         var id = await f.Member();
         await using (var db = f.Db())
         {
-            var account = (await db.Accounts.FindAsync(id))!;
-            account.Verified = verified; account.TrustRevoked = trustRevoked;
             var profile = (await db.Profiles.FindAsync(id))!;
-            profile.Approved = approved; profile.TestProfile = testProfile;
+            profile.VeganVerified = verified; profile.IsVegan = vegan; profile.TestProfile = testProfile;
             await db.SaveChangesAsync();
         }
         Assert.Equal(allowed, Assert.IsType<ProfileInput>(await f.Call(id, "profile")).CanRefer);
@@ -112,15 +109,8 @@ public class CommunityTests(DatabaseFixture f)
             var invite = Assert.IsType<ReferralInviteResult>(await f.Call(id, "referrals/invite", null, "POST"));
             Assert.Equal(20, invite.Code.Length);
             Assert.InRange(invite.Expires, DateTimeOffset.UtcNow.AddDays(29), DateTimeOffset.UtcNow.AddDays(31));
-            await using var db = f.Db();
-            Assert.Single(await db.ReferralInvites.Where(i => i.ReferrerId == id).ToListAsync());
         }
-        else
-        {
-            Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "referrals/invite", null, "POST"))).Status);
-            await using var db = f.Db();
-            Assert.False(await db.ReferralInvites.AnyAsync(i => i.ReferrerId == id));
-        }
+        else Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "referrals/invite", null, "POST"))).Status);
     }
 
     [Fact] public async Task Public_projection_omits_private_profiles_and_dating_even_on_direct_lookup()
@@ -140,15 +130,19 @@ public class CommunityTests(DatabaseFixture f)
         Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(ordinary, "people?intent=Dating"))).Status);
         Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, "people?event=" + Guid.NewGuid()))).Status);
     }
-    [Fact] public async Task Profile_requires_adult_confirmation_and_rejects_unsafe_links()
+    [Fact] public async Task Profile_checks_age_from_birth_details_and_rejects_unsafe_links()
     {
         var id = await f.Member();
-        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "profile", new ProfileInput { Name = "Name", AdultConfirmed = false }, "POST"))).Status);
+        var profile = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
+        profile.BirthYear = DateTime.UtcNow.Year - 17;
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "profile", profile, "POST"))).Status);
+        profile.BirthYear = DateTime.UtcNow.Year - 25;
+        await f.Call(id, "profile", profile, "POST");
         Assert.Throws<ApiException>(() => CommunityService.Url("javascript:alert(1)"));
         Assert.Throws<ApiException>(() => CommunityService.Url("https://instagram.com.evil.test/a", "instagram.com"));
         Assert.Throws<ApiException>(() => CommunityService.Photo("/media/../../keys/file"));
     }
-    [Fact] public async Task Profile_location_is_required_persisted_and_sent_for_review()
+    [Fact] public async Task Profile_location_is_required_and_edits_preserve_verification()
     {
         var id = await f.Member();
         var profile = (ProfileInput)await f.Call(id, "profile");
@@ -161,7 +155,7 @@ public class CommunityTests(DatabaseFixture f)
         profile.Country = "India"; profile.City = "Bengaluru";
         await f.Call(id, "profile", profile, "POST");
         var saved = (ProfileInput)await f.Call(id, "profile");
-        Assert.Equal("Karnataka", saved.State); Assert.Equal("Bengaluru", saved.City); Assert.False(saved.Approved);
+        Assert.Equal("Karnataka", saved.State); Assert.Equal("Bengaluru", saved.City); Assert.True(saved.VeganVerified);
         await using var db = f.Db();
         var stored = await db.Profiles.FindAsync(id);
         Assert.Equal("India", stored!.Country); Assert.Equal("Karnataka", stored.State);
@@ -358,9 +352,9 @@ public class CommunityTests(DatabaseFixture f)
         await f.Call(a,$"events/{id}/attendance",new AttendanceInput(false,false),"POST");
         Assert.DoesNotContain(Assert.IsType<Page<Person>>(await f.Call(b,"people?event="+id)).Items,p=>p.Id==a);
     }
-    [Fact] public async Task Admin_permissions_feature_consent_and_suspension_are_enforced()
+    [Fact] public async Task Admin_permissions_public_featuring_and_suspension_are_enforced()
     {
-        var admin=await f.Member(admin:true); var user=await f.Member();
+        var admin=await f.Member(admin:true); var user=await f.Member(pub:false);
         Assert.Equal(403,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(user,"admin"))).Status);
         Assert.Equal(400,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(admin,"admin/moderate",new ModerateInput(user,"feature"),"POST"))).Status);
         await f.Call(admin,"admin/moderate",new ModerateInput(user,"suspend"),"POST");

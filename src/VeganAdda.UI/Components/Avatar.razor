@@ -1,6 +1,10 @@
+<span class="avatar-frame @Size">
 @if (!string.IsNullOrEmpty(Photo)) { <img class="avatar @Size" src="@Photo" alt="" loading="lazy" /> }
 else { <span class="avatar initials @Size" aria-hidden="true">@Initials</span> }
+@if (VeganVerified) { <span class="vegan-tick" role="img" aria-label="Verified vegan" title="Verified vegan"><Icon Name="check" /></span> }
+</span>
 @code {
+    [Parameter] public bool VeganVerified { get; set; }
     [Parameter] public string Name { get; set; } = "Member";
     [Parameter] public string Photo { get; set; } = "";
     [Parameter] public string Size { get; set; } = "";

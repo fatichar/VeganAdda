@@ -95,14 +95,14 @@ public class EventCheckInTests(DatabaseFixture f)
         await using (var db = f.Db())
         {
             db.Blocks.Add(new() { Owner = members[0], Subject = viewer });
-            (await db.Profiles.FindAsync(members[1]))!.Approved = false;
+            (await db.Profiles.FindAsync(members[1]))!.VeganVerified = false;
             await db.SaveChangesAsync();
         }
         var result = await People(viewer, ev);
-        Assert.Equal(12, result.Total); Assert.Equal(12, result.Items.Count);
-        Assert.DoesNotContain(result.Items, p => p.Id == elsewhere || p.Id == members[0] || p.Id == members[1]);
+        Assert.Equal(13, result.Total); Assert.Equal(12, result.Items.Count);
+        Assert.DoesNotContain(result.Items, p => p.Id == elsewhere || p.Id == members[0]);
         Assert.DoesNotContain(result.Items.SelectMany(p => p.LookingFor), i => i == "Dating");
-        Assert.Empty(Assert.IsType<Page<Person>>(await f.Call(viewer, $"people?event={ev}&checkedIn=true&page=2")).Items);
+        Assert.Single(Assert.IsType<Page<Person>>(await f.Call(viewer, $"people?event={ev}&checkedIn=true&page=2")).Items);
         var post = Assert.IsType<Page<Person>>(await f.Call(viewer, "people/search", new DiscoveryInput { Event = ev.ToString(), CheckedIn = true }, "POST"));
         Assert.Equal(result.Items.Select(p => p.Id), post.Items.Select(p => p.Id));
         Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(viewer, "people?event=invalid&checkedIn=true"))).Status);

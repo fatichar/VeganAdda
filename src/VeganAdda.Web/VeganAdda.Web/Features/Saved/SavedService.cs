@@ -11,7 +11,7 @@ public sealed class SavedService(FeatureContext context, ProfileVisibility visib
 {
     public async Task<SavedItems> GetSaved(int peoplePage = 1, int eventsPage = 1)
     {
-        var me = await User(true);
+        var me = await User();
         const int pageSize = 12;
         var personIds = db.Saved.Where(s => s.UserId == me.Id && s.Kind == "person").Select(s => s.TargetId);
         var eventIds = db.Saved.Where(s => s.UserId == me.Id && s.Kind == "event").Select(s => s.TargetId);

@@ -13,5 +13,5 @@ else { <div class="notice"><strong>Sign-in is coming soon.</strong><p>You can ex
     [SupplyParameterFromQuery(Name = "error")] public string? AuthError { get; set; }
     string Target => ReturnUrl is { Length: > 0 } && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") && !ReturnUrl.Contains('\\') ? ReturnUrl : "/";
     Task Google() => Run(() => Platform.SignInWithGoogle(Target));
-    Task DevLogin(string name) => Run(async () => { await Api.Send<Ok>("auth/dev/" + name); var session = await Api.Get<Session>("session"); Nav.NavigateTo(session.HasProfile ? Target : "/onboarding?returnUrl=" + E(Target), true); });
+    Task DevLogin(string name) => Run(async () => { await Api.Send<Ok>("auth/dev/" + name); var session = await Api.Get<Session>("session"); Nav.NavigateTo(ProfileSetup.SignInDestination(session.BasicProfileComplete, Target), true); });
 }

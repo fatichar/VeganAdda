@@ -14,7 +14,7 @@ public class DiscoveryTests(DatabaseFixture f)
         var id = await f.Member();
         await using var db = f.Db(); var p = (await db.Profiles.FindAsync(id))!;
         p.Country = country; p.State = state; p.City = city; p.Latitude = latitude; p.Longitude = longitude; p.Bio = marker;
-        p.BirthDate = age.HasValue ? DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-age.Value) : null;
+        if (age.HasValue) p.BirthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-age.Value);
         await db.SaveChangesAsync(); return id;
     }
 
@@ -77,13 +77,17 @@ public class DiscoveryTests(DatabaseFixture f)
         {
             db.Blocks.Add(new() { Owner = blocked, Subject = viewer });
             (await db.Profiles.FindAsync(nonvegan))!.IsVegan = false;
-            (await db.Profiles.FindAsync(unapproved))!.Approved = false;
+            (await db.Profiles.FindAsync(unapproved))!.VeganVerified = false;
             (await db.Profiles.FindAsync(dater))!.LookingFor = ["Dating"];
             await db.SaveChangesAsync();
         }
         var input = new DiscoveryInput { Latitude = 0, Longitude = 0, RadiusKm = 1 };
         var page = Assert.IsType<Page<Person>>(await Search(viewer, input));
-        Assert.DoesNotContain(page.Items, p => p.Id == blocked || p.Id == nonvegan || p.Id == unapproved);
+        Assert.DoesNotContain(page.Items, p => p.Id == blocked || p.Id == nonvegan);
+        Assert.Contains(page.Items, p => p.Id == unapproved && !p.VeganVerified);
+        input.VerifiedVegansOnly = true;
+        Assert.DoesNotContain(Assert.IsType<Page<Person>>(await Search(viewer, input)).Items, p => p.Id == unapproved);
+        input.VerifiedVegansOnly = false;
         input.IncludeNonVegan = true;
         Assert.Contains(Assert.IsType<Page<Person>>(await Search(viewer, input)).Items, p => p.Id == nonvegan);
         input.Intent = "Dating";
@@ -113,6 +117,7 @@ public class DiscoveryTests(DatabaseFixture f)
         var lower = await Located("Test", "Test", city, age: 25);
         var upper = await Located("Test", "Test", city, age: 30);
         var unknown = await Located("Test", "Test", city);
+        await using (var db = f.Db()) { (await db.Profiles.FindAsync(unknown))!.BirthDate = null; await db.SaveChangesAsync(); }
         var older = await Located("Test", "Test", city, age: 31);
         var birthdayTomorrow = await Located("Test", "Test", city, age: 25);
         await using (var db = f.Db()) { (await db.Profiles.FindAsync(birthdayTomorrow))!.BirthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-25).AddDays(1); await db.SaveChangesAsync(); }

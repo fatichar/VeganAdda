@@ -37,13 +37,13 @@ public class Screen : ComponentBase, IDisposable
     {
         if (Busy) return;
         if (Session?.Id == null) { Platform.SignIn(Current); return; }
-        if (!Session.HasProfile) { Nav.NavigateTo("/onboarding?returnUrl=" + Uri.EscapeDataString(Current)); return; }
+        if (!Session.BasicProfileComplete) { Nav.NavigateTo("/onboarding?returnUrl=" + Uri.EscapeDataString(Current)); return; }
         await Run(action);
     }
     protected bool ReadyForAction(string target)
     {
         if (Session?.Id == null) { Platform.SignIn(target); return false; }
-        if (!Session.HasProfile) { Nav.NavigateTo("/onboarding?returnUrl=" + E(target)); return false; }
+        if (!Session.BasicProfileComplete) { Nav.NavigateTo("/onboarding?returnUrl=" + E(target)); return false; }
         return true;
     }
     protected virtual ChangeArea ChangeInterests => ChangeArea.All;
@@ -53,7 +53,7 @@ public class Screen : ComponentBase, IDisposable
         if ((Platform.LastChange & ChangeInterests) == 0) return;
         _ = InvokeAsync(async () => { await Run(Refresh); StateHasChanged(); });
     }
-    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender && Session?.Id != null) await Platform.StartRealtime(); }
+    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender && Session?.BasicProfileComplete == true) await Platform.StartRealtime(); }
     public virtual void Dispose() => Platform.Changed -= Changed;
     protected static string E(string? value) => Uri.EscapeDataString(value ?? "");
     protected static string Date(DateTimeOffset? value, string zone = "Asia/Kolkata")

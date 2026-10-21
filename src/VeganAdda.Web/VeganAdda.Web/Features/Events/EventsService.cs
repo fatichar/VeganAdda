@@ -32,7 +32,7 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     }
     public async Task<Ok> EventAction(Guid id, string action, JsonElement? body)
     {
-        var me = await User(true);
+        var me = await User();
         var gathering = await db.Events.SingleOrDefaultAsync(e => e.Id == id && e.Published) ?? throw Missing();
         await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
         if (action == "save")
@@ -97,8 +97,8 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     }
     public async Task<Ok> SaveEventSubmission(EventInput input)
     {
-        var me = await User(profile: true);
-        if (!await db.Profiles.AnyAsync(p => p.Id == me.Id && p.IsVegan == true && !p.VeganVerificationPending && p.Approved && !p.TestProfile)) throw new ApiException(403, "Only an approved vegan member can submit an event.");
+        var me = await User();
+        if (!await db.Profiles.AnyAsync(p => p.Id == me.Id && p.IsVegan == true && p.VeganVerified && !p.TestProfile)) throw new ApiException(403, "Only a verified vegan member can submit an event.");
         var title = Text(input.Title, 150, true); var description = Text(input.Description, 4000); var city = Text(input.City, 80, true);
         var venue = Text(input.Venue, 200, true); var organizer = Text(input.Organizer, 150, true); var registration = Url(input.Registration); var cover = Photo(input.Cover);
         try { _ = TimeZoneInfo.FindSystemTimeZoneById(input.TimeZone); } catch { throw new ApiException(400, "Choose a valid IANA time zone, such as Asia/Kolkata."); }
