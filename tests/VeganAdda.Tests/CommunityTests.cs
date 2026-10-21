@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Npgsql;
+using Testcontainers.PostgreSql;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
@@ -19,15 +20,28 @@ namespace VeganAdda.Tests;
 // Real PostgreSQL tests: transaction/advisory locks and unique constraints are part of the behavior.
 public sealed class DatabaseFixture : IAsyncLifetime
 {
+    private static readonly Lazy<Task<PostgreSqlContainer>> localPostgres = new(StartLocalPostgresAsync);
     public string Connection { get; private set; } = "";
     private string name = "veganadda_test_" + Guid.NewGuid().ToString("N");
     public async Task InitializeAsync()
     {
-        var baseConnection = Environment.GetEnvironmentVariable("TEST_DATABASE") ?? "Host=127.0.0.1;Port=55432;Database=postgres;Username=veganadda";
+        var baseConnection = Environment.GetEnvironmentVariable("TEST_DATABASE");
+        if (string.IsNullOrWhiteSpace(baseConnection))
+            baseConnection = (await localPostgres.Value).GetConnectionString();
         await using var c = new NpgsqlConnection(baseConnection); await c.OpenAsync();
         await new NpgsqlCommand($"CREATE DATABASE {name}", c).ExecuteNonQueryAsync();
         var b = new NpgsqlConnectionStringBuilder(baseConnection) { Database = name }; Connection = b.ConnectionString;
         await using var db = Db(); await db.Database.MigrateAsync();
+    }
+    private static async Task<PostgreSqlContainer> StartLocalPostgresAsync()
+    {
+        var container = new PostgreSqlBuilder("postgres:18-bookworm")
+            .WithDatabase("postgres")
+            .WithUsername("veganadda")
+            .WithPassword("veganadda-test-only")
+            .Build();
+        await container.StartAsync();
+        return container;
     }
     public CommunityDb Db(DbCommandInterceptor? interceptor = null)
     {

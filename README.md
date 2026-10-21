@@ -83,10 +83,9 @@ Ekatva is an **unpublished development draft** until the owner provides verified
 
 ## Tests and validation
 
-Tests create a uniquely named PostgreSQL database, apply migrations, and drop only that test database afterward. The test role needs CREATEDB. `TEST_DATABASE` is a connection to the PostgreSQL maintenance database, not an existing application database.
+Tests create a uniquely named PostgreSQL database, apply migrations, and drop only that test database afterward. By default, the test fixture starts one PostgreSQL 18 Testcontainer shared by the suite, so running tests from Rider or `dotnet test` is one step when Docker Desktop is running. Set `TEST_DATABASE` only when you want to use an already-running dedicated test PostgreSQL server; it must connect to the maintenance database, and the role needs `CREATEDB`. Never point it at production.
 
 ```powershell
-$env:TEST_DATABASE='Host=127.0.0.1;Port=55432;Database=postgres;Username=veganadda'
 dotnet restore VeganAdda.sln
 dotnet test tests/VeganAdda.Tests -m:1 /nr:false
 dotnet publish src/VeganAdda.Web/VeganAdda.Web -c Release -m:1 /nr:false -o artifacts/publish
