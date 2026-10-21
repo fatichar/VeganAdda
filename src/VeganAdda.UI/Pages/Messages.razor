@@ -23,7 +23,7 @@ else
                 {
                     <a class="conversation conversation-request @(request.Incoming ? "incoming-request" : "sent-request") @(request.Key == Key ? "selected" : "")" href="/messages/@request.Key" aria-current="@(request.Key == Key ? "page" : null)" @key="request.Key">
                         <Avatar Name="@request.Person.Name" Photo="@request.Person.Photo" VeganVerified="@request.Person.VeganVerified" />
-                        <div><strong>@request.Person.Name</strong><span class="request-label">@(request.Incoming ? "Connection request" : "Request sent")@(request.Person.IsVegan == false ? " · Not vegan" : request.Person.VeganVerificationPending ? " · Vegan status unverified" : request.Person.IsVegan is null ? " · Vegan status not set" : "")</span>@if (request.Introduction != "") { <p>@request.Introduction</p> }</div>
+                        <div><strong>@request.Person.Name</strong><span class="request-label">@(request.Incoming ? "Connection request" : "Request sent")@(request.Person.IsVegan == false ? " · Not vegan" : request.Person.VeganStatusUnverified ? " · Vegan status unverified" : request.Person.IsVegan is null ? " · Vegan status not set" : "")</span>@if (request.Introduction != "") { <p>@request.Introduction</p> }</div>
                         <Icon Name="@(request.Incoming ? "person_add" : "schedule")" />
                     </a>
                 }
@@ -77,13 +77,14 @@ else
                         </div>
                     }
                     <div class="message-history" aria-live="polite" @ref="historyElement">
+                        @if (SelectedPersonId is { } referralPersonId) { <ReferralRequestCard @key="referralPersonId" PersonId="@referralPersonId" /> }
                         @if (SelectedRequest is { } introduction)
                         {
                             <div class="request-introduction">
                                 @if (introduction.Introduction != "") { <p>@introduction.Introduction</p> }
                                 else { <p>@(introduction.Incoming ? $"{introduction.Person.Name} would like to connect." : $"Your connection request to {introduction.Person.Name} is pending.")</p> }
                                 @if (introduction.Incoming && introduction.Person.IsVegan == false) { <p class="notice" role="status"><strong>Not vegan.</strong> Review this member's status before accepting their request.</p> }
-                                else if (introduction.Incoming && introduction.Person.VeganVerificationPending) { <p class="notice" role="status"><strong>Vegan status is awaiting moderator verification.</strong> Consider this before accepting the request.</p> }
+                                else if (introduction.Incoming && introduction.Person.VeganStatusUnverified) { <p class="notice" role="status"><strong>Vegan status is unverified.</strong> Consider this before accepting the request.</p> }
                                 else if (introduction.Incoming && introduction.Person.IsVegan is null) { <p class="notice" role="status"><strong>Vegan status not provided.</strong> Review this member's profile before accepting their request.</p> }
                             </div>
                         }

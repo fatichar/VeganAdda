@@ -1,0 +1,42 @@
+.location-fields {
+    display: grid;
+    gap: 8px;
+    margin: 1.5rem 0;
+}
+
+.location-fields h3 {
+    color: var(--green);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -.02em;
+    margin-bottom: .2rem;
+}
+
+.location-detect,
+.location-fields .text-button {
+    justify-self: start;
+}
+
+.location-detect {
+    margin-bottom: .6rem;
+}
+
+.location-fields label:not(.check-row) {
+    margin-top: .55rem;
+}
+
+.location-fields .location-status {
+    margin: 0;
+}
+
+.location-fields .location-precision {
+    display: flex;
+    align-items: flex-start;
+    gap: .65rem;
+    margin: 1rem 0 0;
+}
+
+.location-fields .location-credit {
+    margin-top: .5rem;
+}

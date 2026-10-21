@@ -45,7 +45,7 @@ public class ProfileSetupTests(DatabaseFixture f)
         Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
         await f.Call(id, "profile", new ProfileInput
         {
-            Name = "Basic member", IsVegan = true, BirthYear = 1990, BirthMonth = 1,
+            Name = "Basic member", Gender = "Man", IsVegan = true, BirthYear = 1990, BirthMonth = 1,
             Country = "India", State = "Maharashtra", City = "Pune"
         }, "POST");
         Assert.True(Assert.IsType<Session>(await f.Call(id, "session")).BasicProfileComplete);
@@ -64,7 +64,7 @@ public class ProfileSetupTests(DatabaseFixture f)
         p.IsVegan = true; p.VeganVerified = true;
         await f.Call(id, "profile", p, "POST");
         Assert.False(Assert.IsType<ProfileInput>(await f.Call(id, "profile")).VeganVerified);
-        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "referrals/invite", null, "POST"))).Status);
+        Assert.Equal(410, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "referrals/invite", null, "POST"))).Status);
         await f.Call(admin, "admin/profile-review", new VeganVerificationInput(id, true), "POST");
         Assert.True(Assert.IsType<ProfileInput>(await f.Call(id, "profile")).CanRefer);
     }

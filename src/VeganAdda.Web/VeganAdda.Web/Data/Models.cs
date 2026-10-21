@@ -150,8 +150,25 @@ public class ReferralInvite
     public Guid? ReferredId { get; set; }
     public bool Revoked { get; set; }
 }
+public class VerificationRequest
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ApplicantId { get; set; }
+    public Guid ClientId { get; set; }
+    public string Status { get; set; } = "Under review";
+    public string Explanation { get; set; } = "";
+    public string[] EvidenceUrls { get; set; } = [];
+    public Guid? ReferrerId { get; set; }
+    public string ReferralStatus { get; set; } = "Not requested";
+    public DateTimeOffset Submitted { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? Responded { get; set; }
+    public DateTimeOffset? Resolved { get; set; }
+    public Guid? ReviewedBy { get; set; }
+    public string? Feedback { get; set; }
+}
 public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(options)
 {
+    public DbSet<VerificationRequest> VerificationRequests => Set<VerificationRequest>();
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<PushDevice> PushDevices => Set<PushDevice>();
     public DbSet<Account> Accounts => Set<Account>();
@@ -168,6 +185,11 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<VerificationRequest>().HasOne<Account>().WithMany().HasForeignKey(r => r.ApplicantId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<VerificationRequest>().HasOne<Account>().WithMany().HasForeignKey(r => r.ReferrerId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<VerificationRequest>().HasIndex(r => new { r.ApplicantId, r.ClientId }).IsUnique();
+        b.Entity<VerificationRequest>().HasIndex(r => r.ApplicantId).IsUnique().HasFilter("\"Status\" = 'Under review'");
+        b.Entity<VerificationRequest>().HasIndex(r => new { r.Status, r.Submitted });
         b.Entity<Profile>().Property(x => x.FeatureConsent).HasDefaultValue(true);
         b.Entity<Account>().HasIndex(x => x.Subject).IsUnique();
         b.Entity<Profile>().HasOne<Account>().WithOne().HasForeignKey<Profile>(x => x.Id).OnDelete(DeleteBehavior.Cascade);
@@ -204,6 +226,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ReferralInvite>().HasIndex(x => x.ReferredId).IsUnique();
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
+        b.Entity<VerificationRequest>().Property(r => r.Explanation).HasMaxLength(4000);
         b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
         b.Entity<PushDevice>().HasIndex(x => x.Token).IsUnique();

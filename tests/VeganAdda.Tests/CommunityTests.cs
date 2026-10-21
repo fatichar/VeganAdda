@@ -60,10 +60,20 @@ public sealed class DatabaseFixture : IAsyncLifetime
         return await scope.ServiceProvider.GetRequiredService<CommunityService>()
             .Execute(method, path, body == null ? null : JsonSerializer.SerializeToElement(body, Wire.Json));
     }
+    public async Task<T> Feature<TService, T>(Guid? id, Func<TService, Task<T>> operation) where TService : notnull
+    {
+        using var services = new ServiceCollection()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
+            .AddSingleton<IWebHostEnvironment>(new TestEnvironment())
+            .AddScoped<IActor>(_ => new Actor(id)).AddScoped<IChangeBus, Bus>()
+            .AddScoped(_ => Db()).AddCommunityFeatures().BuildServiceProvider();
+        await using var scope = services.CreateAsyncScope();
+        return await operation(scope.ServiceProvider.GetRequiredService<TService>());
+    }
     public async Task<Guid> Member(bool pub = true, bool dating = false, bool admin = false)
     {
         await using var db = Db(); var u = new Account { Subject = Guid.NewGuid().ToString(), Name = "Test Member", Admin = admin };
-        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", State = "Maharashtra", BirthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-28), HasExactBirthDate = true, Public = pub, VeganVerified = true, IsVegan = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
+        db.Accounts.Add(u); db.Profiles.Add(new() { Id = u.Id, Name = u.Name, City = "Pune", State = "Maharashtra", Gender = "Man", BirthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-28), HasExactBirthDate = true, Public = pub, VeganVerified = true, IsVegan = true, AdultConfirmedAt = DateTimeOffset.UtcNow, LookingFor = dating ? ["Friendship", "Dating"] : ["Friendship"], Interests = ["Running"] }); await db.SaveChangesAsync(); return u.Id;
     }
     public async Task DisposeAsync()
     {
@@ -94,7 +104,7 @@ public class CommunityTests(DatabaseFixture f)
     [InlineData(false, true, false, false)]
     [InlineData(true, false, false, false)]
     [InlineData(true, true, true, false)]
-    public async Task Referral_visibility_matches_creation_permission(bool verified, bool vegan, bool testProfile, bool allowed)
+    public async Task Confirmation_eligibility_is_separate_from_retired_referral_links(bool verified, bool vegan, bool testProfile, bool allowed)
     {
         var id = await f.Member();
         await using (var db = f.Db())
@@ -104,13 +114,7 @@ public class CommunityTests(DatabaseFixture f)
             await db.SaveChangesAsync();
         }
         Assert.Equal(allowed, Assert.IsType<ProfileInput>(await f.Call(id, "profile")).CanRefer);
-        if (allowed)
-        {
-            var invite = Assert.IsType<ReferralInviteResult>(await f.Call(id, "referrals/invite", null, "POST"));
-            Assert.Equal(20, invite.Code.Length);
-            Assert.InRange(invite.Expires, DateTimeOffset.UtcNow.AddDays(29), DateTimeOffset.UtcNow.AddDays(31));
-        }
-        else Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "referrals/invite", null, "POST"))).Status);
+        Assert.Equal(410, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "referrals/invite", null, "POST"))).Status);
     }
 
     [Fact] public async Task Public_projection_omits_private_profiles_and_dating_even_on_direct_lookup()

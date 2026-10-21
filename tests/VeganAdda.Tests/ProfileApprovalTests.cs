@@ -26,7 +26,7 @@ public class ProfileApprovalTests(DatabaseFixture f)
         var row = Assert.Single((await AllMembers(admin)).People, p => p.Id == member);
         Assert.True(row.HasProfile);
         Assert.Equal(approved, row.VeganVerified);
-        Assert.Equal(!approved, await IsInReviewQueue(admin, member));
+        Assert.False(await IsInReviewQueue(admin, member));
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public class ProfileApprovalTests(DatabaseFixture f)
         var data = await AllMembers(admin);
         Assert.True(Assert.Single(data.People, p => p.Id == member).VeganVerified);
         Assert.False(await IsInReviewQueue(admin, member));
-        Assert.False(Assert.IsType<ProfileInput>(await f.Call(member, "profile")).VeganVerificationPending);
+        Assert.False(Assert.IsType<ProfileInput>(await f.Call(member, "profile")).VeganStatusUnverified);
         Assert.Contains(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=" + city)).Items, p => p.Id == member);
 
         await using (var db = f.Db())
@@ -66,7 +66,7 @@ public class ProfileApprovalTests(DatabaseFixture f)
         Assert.False(revoked.VeganVerified);
         Assert.True(revoked.Featured);
         Assert.False(revoked.Moderator);
-        Assert.True(await IsInReviewQueue(admin, member));
+        Assert.False(await IsInReviewQueue(admin, member));
         Assert.Contains(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=" + city)).Items, p => p.Id == member);
 
         await f.Call(admin, "admin/moderate", new ModerateInput(member, "confirm-vegan"), "POST");

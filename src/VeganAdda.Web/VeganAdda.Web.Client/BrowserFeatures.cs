@@ -2,8 +2,15 @@ using VeganAdda.Contracts;
 
 namespace VeganAdda.Web.Client;
 
-public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi
+public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi
 {
+    public Task<VerificationStatus> GetVerification() => transport.Get<VerificationStatus>("verification");
+    public Task<Ok> SubmitVerification(VerificationSubmission input) => transport.Send<Ok>("verification", input);
+    public Task<Ok> WithdrawVerification(Guid id) => transport.Send<Ok>("verification/withdraw", new VerificationRequestAction(id));
+    public Task<List<VerificationCandidate>> SearchReferrers(string search) => transport.Get<List<VerificationCandidate>>("verification/referrers?search=" + Uri.EscapeDataString(search));
+    public Task<List<ReferralCard>> GetReferralCards(Guid personId) => transport.Get<List<ReferralCard>>($"verification/referrals/{personId}");
+    public Task<Ok> RespondToReferral(Guid id, bool confirm) => transport.Send<Ok>($"verification/referrals/{id}/respond", new VerificationResponse(confirm));
+
     public Task<Inbox> GetInbox(int chatPage = 1, int requestPage = 1, string? key = null)
         => transport.Get<Inbox>($"inbox?chatPage={chatPage}&requestPage={requestPage}&key={Uri.EscapeDataString(key ?? "")}");
     public Task<SavedItems> GetSaved(int peoplePage = 1, int eventsPage = 1)

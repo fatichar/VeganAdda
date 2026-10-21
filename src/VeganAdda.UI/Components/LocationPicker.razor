@@ -2,17 +2,9 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<details class="optional-fields"><summary>Precise location — optional</summary>
-<div class="location-action">
-    <label class="check-row"><input type="checkbox" checked="@Model.SavePreciseLocation" @onchange="PreciseLocationChanged" disabled="@(loading || locating)" aria-describedby="precise-location-help" /><span>Save precise location <span class="muted">(optional)</span></span></label>
-    <small id="precise-location-help">Helps nearby members find you by distance. Your coordinates are private and aren't shown to other members. Uncheck and save your profile to remove them.</small>
-    <button type="button" class="secondary" disabled="@(loading || locating)" @onclick="Locate"><Icon Name="my_location" />@(locating ? "Finding location…" : "Use my location")</button>
-    <small>Location lookup shares coordinates with BigDataCloud. VeganAdda saves country, state and city, plus coordinates only if you opt in and save your profile.</small>
-    @if (Model.SavePreciseLocation)
-    {
-        <small role="status">@(Model.Latitude.HasValue && Model.Longitude.HasValue ? "Precise location ready. Save your profile to keep it." : "Select Use my location before saving your profile.")</small>
-    }
-</div></details>
+<section class="location-fields" aria-labelledby="location-heading">
+<h3 id="location-heading">Location</h3>
+<button type="button" class="secondary location-detect" disabled="@(loading || locating)" @onclick="Locate"><Icon Name="my_location" />@(locating ? "Detecting location…" : "Detect my location")</button>
 @if (status != "") { <p class="small location-status" role="status">@status</p> }
 @if (loadFailed) { <button type="button" class="text-button" @onclick="Initialize">Retry location lists</button> }
 <label for="country">Country <RequiredMark /></label>
@@ -37,7 +29,14 @@
     <option value="__other__">Other city</option>
 </select>
 @if (customCity) { <label for="other-city" class="sr-only">City name</label><input id="other-city" required maxlength="80" placeholder="City name" @bind="Model.City" @bind:event="oninput" @bind:after="ClearCoordinates" /> }
+<label class="check-row location-precision"><input type="checkbox" checked="@Model.SavePreciseLocation" @onchange="PreciseLocationChanged" disabled="@(loading || locating)" aria-describedby="precise-location-help" /><span>Save precise location <span class="muted">(optional)</span></span></label>
+<small id="precise-location-help">Helps nearby members find you by distance. Your coordinates are private and aren't shown to other members. Uncheck and save your profile to remove them. Detecting your location sends coordinates to BigDataCloud; VeganAdda saves them only if you opt in and save your profile.</small>
+@if (Model.SavePreciseLocation)
+{
+    <small role="status">@(Model.Latitude.HasValue && Model.Longitude.HasValue ? "Precise location ready. Save your profile to keep it." : "Select Detect my location before saving your profile.")</small>
+}
 <small class="location-credit">Location lists: <a href="/_content/VeganAdda.UI/data/locations/README.md" target="_blank" rel="noopener">CSC · ODbL</a></small>
+</section>
 
 @code {
     [Parameter, EditorRequired] public ProfileInput Model { get; set; } = default!;

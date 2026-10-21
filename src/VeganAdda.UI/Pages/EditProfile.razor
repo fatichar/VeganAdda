@@ -8,48 +8,66 @@
 @if (Session?.Id == null) { <a class="button" href="@SignInUrl">Sign in to create a profile</a> }
 else if (model != null) {
 @if (!Session.BasicProfileComplete) { <div class="notice profile-completion-notice" role="status"><strong>Complete your basic profile to use VeganAdda.</strong><p>Fill in the required basic details. Photos, social links and other optional details can be added later. Vegan verification is separate and won't delay access.</p></div> }
-@if (!string.IsNullOrWhiteSpace(ReferralCode)) { <p class="notice">You've been referred by a community member. A moderator will check your referral when verifying your vegan status.</p> }
+@if (!string.IsNullOrWhiteSpace(ReferralCode)) { <p class="notice">Referral links have been replaced. Complete your profile, then request vegan verification from your profile.</p> }
+@if (string.IsNullOrWhiteSpace(model.Gender)) { <p class="notice" role="status">Please update your profile: gender is now required.</p> }
 @if (model.ReviewNote != null) { <p class="notice" role="status">Moderator feedback: @model.ReviewNote</p> }
 <form @ref="profileForm" @onsubmit="Save" @onsubmit:preventDefault novalidate class="form-card"><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
 <div class="profile-tabs" role="tablist" aria-label="Profile sections">
 @for (var i = 0; i < tabs.Length; i++) { var index = i; <button type="button" id="profile-tab-@index" role="tab" aria-selected="@(activeTab == index ? "true" : "false")" aria-controls="profile-panel-@index" tabindex="@(activeTab == index ? 0 : -1)" @onclick="() => activeTab = index">@tabs[index]</button> }
 </div>
-<p class="small muted">Fields marked <RequiredMark /> are required.</p>
 <section id="profile-panel-0" class="profile-basic-fields profile-panel" role="tabpanel" aria-labelledby="profile-tab-0" hidden="@(activeTab != 0)">
 <h2 class="sr-only">Basic info</h2>
+<p class="small muted">Fields marked <RequiredMark /> are required.</p>
+<fieldset class="profile-section"><legend>Personal details</legend>
 <div class="profile-photo-field"><Avatar Name="@model.Name" Photo="@model.Photo" VeganVerified="@(model.IsVegan == true && model.VeganVerified)" Size="large" /><div><label for="photo">Profile photo <span class="muted">(optional)</span></label><InputFile id="photo" OnChange="Upload" accept="image/jpeg,image/png,image/webp" /><small>JPG, PNG or WebP · up to 2 MB</small>@if (model.Photo != "") { <button type="button" class="text-button" @onclick="() => model.Photo = string.Empty">Remove photo</button> }</div></div>
 <label for="name">Your name <RequiredMark /></label><input id="name" required maxlength="80" autocomplete="name" @bind="model.Name" @bind:event="oninput" placeholder="Name" />
-<fieldset class="vegan-status"><legend>Vegan status <RequiredMark /></legend>
+<label for="gender">Gender <RequiredMark /></label><select id="gender" required @bind="model.Gender"><option value="" disabled>Select gender</option>@foreach (var gender in Wire.Genders) { <option>@gender</option> }</select><small>Used to match gender filters in Discover.</small>
+</fieldset>
+<fieldset class="vegan-status profile-section"><legend>Vegan status <RequiredMark /></legend>
 <label class="check-row"><input type="radio" name="vegan-status" required checked="@(model.IsVegan == true)" @onchange="() => model.IsVegan = true" /><span>I am a vegan</span></label>
 <label class="check-row"><input type="radio" name="vegan-status" required checked="@(model.IsVegan == false)" @onchange="() => model.IsVegan = false" /><span>I am not a vegan but interested in meeting vegans</span></label>
-@if (model.IsVegan == true) { <p class="small">@(model.VeganVerified ? "Your vegan status is verified." : "You can use the community while your vegan status is unverified.")</p> }
+@if (model.IsVegan == true)
+{
+    <div class="vegan-verification-status @(model.VeganVerified ? "verified" : "unverified")" role="status">
+        @if (model.VeganVerified)
+        {
+            <span class="vegan-verification-mark" aria-hidden="true"><Icon Name="check" /></span>
+            <div><strong>Verified vegan</strong><small>Verified vegan profiles display a green tick.</small></div>
+        }
+        else
+        {
+            <div><strong>Vegan status unverified</strong><small>You can use the community while you wait. Request verification below after saving your profile.</small></div>
+        }
+    </div>
+}
 @if (model.IsVegan == false) { <p class="small muted">Non-vegan members can connect and appear when someone includes non-vegan profiles in Discover. Event suggestions, referrals and moderation require verified vegan status.</p> }
 </fieldset>
-<div class="profile-verification-links">
-<p class="small muted">Social links help a moderator verify your vegan status. Add a profile that shows your vegan lifestyle, or use a referral from a verified vegan. These details are optional and won't delay access.</p>
-<label for="instagram">Instagram</label><input id="instagram" type="url" @bind="model.Instagram" @bind:event="oninput" placeholder="https://instagram.com/yourname" />
-<label for="linkedin">LinkedIn</label><input id="linkedin" type="url" @bind="model.LinkedIn" @bind:event="oninput" placeholder="https://linkedin.com/in/yourname" />
-<label for="website">Website</label><input id="website" type="url" @bind="model.Website" @bind:event="oninput" placeholder="https://" /><small>Links are shared on your profile. A moderator reviews the evidence before confirming vegan status.</small>
-@if (!model.HasReferrer) { <label for="referral-code">Referral code</label><input id="referral-code" maxlength="20" @bind="model.ReferralCode" @bind:event="oninput" /><small>Use a code from a verified vegan. A moderator will review the referral.</small> }
 
-</div>
 <BirthDetails Model="@model" />
-<label for="gender">Gender <span class="muted">(optional)</span></label><select id="gender" @bind="model.Gender"><option value="">Prefer not to say</option>@foreach (var gender in Wire.Genders) { <option>@gender</option> }</select><small>Used to match gender filters in Discover.</small>
+
 <LocationPicker Model="@model" BusyChanged="value => locationBusy = value" />
 <p class="small muted">VeganAdda is for adults aged 18 and over. Your birth details are checked when you save.</p>
 </section>
 <section id="profile-panel-1" class="profile-panel" role="tabpanel" aria-labelledby="profile-tab-1" hidden="@(activeTab != 1)">
 <h2 class="sr-only">Optional details</h2>
-
-<label for="profession">Profession <span class="muted">(optional)</span></label><input id="profession" maxlength="80" @bind="model.Profession" @bind:event="oninput" placeholder="Teacher, software engineer…" />
+<section class="profile-social-links profile-section" aria-labelledby="social-links-heading">
+<h3 id="social-links-heading">Social Links</h3>
+<p class="small muted">Add links you want other signed-in members to see. These details are optional. Vegan verification is requested separately.</p>
+<label for="instagram">Instagram</label><input id="instagram" type="url" @bind="model.Instagram" @bind:event="oninput" placeholder="https://instagram.com/yourname" />
+<label for="linkedin">LinkedIn</label><input id="linkedin" type="url" @bind="model.LinkedIn" @bind:event="oninput" placeholder="https://linkedin.com/in/yourname" />
+<label for="website">Website</label><input id="website" type="url" @bind="model.Website" @bind:event="oninput" placeholder="https://" /><small>Links are visible to signed-in members who can view your profile, and to authorized admins and moderators.</small>
+</section>
+<fieldset class="profile-section"><legend>Profile details</legend>
+<label for="profession">Profession</label><input id="profession" maxlength="80" @bind="model.Profession" @bind:event="oninput" placeholder="Teacher, software engineer…" />
 <label for="bio">About you</label><textarea id="bio" rows="4" maxlength="1000" @bind="model.Bio" @bind:event="oninput" placeholder="Your passions, favourite plant-based spots, or what brings you here…"></textarea>
 <label for="interests">Interests</label><input id="interests" @bind="interests" @bind:event="oninput" maxlength="400" placeholder="Running, baking, volunteering…" /><small>Comma-separated · up to 10 interests</small>
+</fieldset>
 </section>
 <section id="profile-panel-2" class="profile-panel" role="tabpanel" aria-labelledby="profile-tab-2" hidden="@(activeTab != 2)">
 <h2 class="sr-only">Preferences</h2>
-<fieldset><legend>What are you looking for?</legend>@foreach (var intention in Wire.Intents) { <label class="check-row"><input type="checkbox" checked="@model.LookingFor.Contains(intention)" @onchange="e => Intent(intention, e)" /><Icon Name="@(intention == "Dating" ? "favorite_border" : intention == "Activism" ? "volunteer_activism" : intention == "Friendship" ? "diversity_1" : "handshake")" /><span>@intention @if (intention == "Dating") { <small>Private opt-in · visible only to other members who opt in</small> }</span></label> }</fieldset>
-<fieldset><legend>Visibility</legend><label class="check-row"><input type="checkbox" @bind="model.Public" /><span>Show my profile to public visitors<small>Your name, photo, city, state, country, profession, bio, interests, non-dating intentions and links will be public. Public profiles may be featured. Dating is always excluded from public responses.</small></span></label></fieldset>
-<label class="check-row"><input type="checkbox" @bind="model.DefaultAttendeeVisible" /><span>Show me in attendee lists by default<small>Applies to future attendance choices. You can change visibility for each event.</small></span></label>
+<fieldset class="profile-section"><legend>What are you looking for?</legend>@foreach (var intention in Wire.Intents) { <label class="check-row"><input type="checkbox" checked="@model.LookingFor.Contains(intention)" @onchange="e => Intent(intention, e)" /><Icon Name="@(intention == "Dating" ? "favorite_border" : intention == "Activism" ? "volunteer_activism" : intention == "Friendship" ? "diversity_1" : "handshake")" /><span>@intention @if (intention == "Dating") { <small>Private opt-in · visible only to other members who opt in</small> }</span></label> }</fieldset>
+<fieldset class="profile-section"><legend>Visibility</legend><label class="check-row"><input type="checkbox" @bind="model.Public" /><span>Show my profile to public visitors<small>Your name, photo, city, state, country, profession, bio, interests and non-dating intentions will be public. Social links are visible only to signed-in members. Public profiles may be featured. Dating is always excluded from public responses.</small></span></label></fieldset>
+<fieldset class="profile-section"><legend>Event visibility</legend><label class="check-row"><input type="checkbox" @bind="model.DefaultAttendeeVisible" /><span>Show me in attendee lists by default<small>Applies to future attendance choices. You can change visibility for each event.</small></span></label></fieldset>
 </section>
 <p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p><button class="full" disabled="@(Busy || locationBusy)">@(Busy ? "Saving…" : onboarding ? "Complete basic profile" : "Save changes")<Icon Name="arrow_forward" /></button>
 </fieldset></form> }</div>
@@ -73,7 +91,7 @@ else if (model != null) {
         }
     }
     string SignInUrl => "/signin?returnUrl=" + E(onboarding && !string.IsNullOrWhiteSpace(ReferralCode) ? "/onboarding?ref=" + E(ReferralCode) : "/onboarding");
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(async () => { model = await Profiles.GetProfile(); if (!string.IsNullOrWhiteSpace(ReferralCode)) model.ReferralCode = ReferralCode; interests = string.Join(", ", model.Interests); }); }
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(async () => { model = await Profiles.GetProfile();  interests = string.Join(", ", model.Interests); }); }
     void Intent(string intention, ChangeEventArgs e) { model!.LookingFor = (bool)e.Value! ? model.LookingFor.Append(intention).Distinct().ToArray() : model.LookingFor.Where(x => x != intention).ToArray(); }
     async Task Save()
     {
@@ -88,3 +106,5 @@ else if (model != null) {
 }
 
 
+
+@if (Session?.BasicProfileComplete == true && Session.VeganStatusUnverified) { <div class="narrow"><VerificationPanel /></div> }

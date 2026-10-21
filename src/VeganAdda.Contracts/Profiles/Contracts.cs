@@ -5,7 +5,7 @@ public record Person(Guid Id, string Name, string City, string Bio, string Photo
     string[] LookingFor, string? Instagram, string? LinkedIn, string? Website, bool Featured,
     bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerified = false, int? Age = null, bool IsBirthday = false, string Profession = "")
 {
-    public bool VeganVerificationPending => IsVegan == true && !VeganVerified;
+    public bool VeganStatusUnverified => IsVegan == true && !VeganVerified;
 }
 public class ProfileInput
 {
@@ -31,7 +31,7 @@ public class ProfileInput
     public bool Public { get; set; }
     public bool DefaultAttendeeVisible { get; set; } = true;
     public bool? IsVegan { get; set; }
-    public bool VeganVerificationPending => IsVegan == true && !VeganVerified;
+    public bool VeganStatusUnverified => IsVegan == true && !VeganVerified;
     public bool HasReferrer { get; set; }
     public bool VeganVerified { get; set; }
     public string? ReviewNote { get; set; }

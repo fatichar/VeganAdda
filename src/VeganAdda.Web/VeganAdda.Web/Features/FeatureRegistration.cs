@@ -1,4 +1,5 @@
 using VeganAdda.Contracts;
+using VeganAdda.Web.Features.Verification;
 using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Profiles;
@@ -20,6 +21,7 @@ public static class FeatureRegistration
     public static void MapCommunityFeatures(this WebApplication app)
     {
         var api = app.MapGroup("/api").AddEndpointFilter<FeatureRequestFilter>();
+        VerificationEndpoints.Map(api);
         AccountsEndpoints.Map(api);
         ProfilesEndpoints.Map(api);
         DiscoveryEndpoints.Map(api);
@@ -36,6 +38,7 @@ public static class FeatureRegistration
     {
         services.AddLogging();
         services.AddSingleton<LifecycleEvents>();
+        services.AddScoped<VerificationService>();
         services.AddScoped<FeatureContext>();
         services.AddScoped<CommunityService>();
         services.AddScoped<InboxService>();

@@ -1,0 +1,12 @@
+@if (Details is { } request)
+{
+    <section class="verification-evidence" aria-label="Private verification evidence">
+        <h3>Verification request</h3>
+        <p class="small">@request.Status · @request.Submitted.ToString("d MMM yyyy")</p>
+        @if (request.Explanation != "") { <p class="profile-bio">@request.Explanation</p> }
+        @foreach (var url in request.EvidenceUrls) { <a class="external-link" href="@url" target="_blank" rel="noopener noreferrer nofollow">@url<Icon Name="open_in_new" /></a> }
+        @if (request.ReferrerName is { } name) { <p class="small">Connection confirmation: @name · @request.ReferralStatus</p> }
+        else if (request.ReferralStatus != "Not requested") { <p class="small">Connection confirmation: @request.ReferralStatus</p> }
+    </section>
+}
+@code { [Parameter] public VerificationDetails? Details { get; set; } }

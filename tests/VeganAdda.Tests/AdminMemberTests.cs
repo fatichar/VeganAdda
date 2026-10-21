@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
+using VeganAdda.Web.Features.Verification;
 
 namespace VeganAdda.Tests;
 
@@ -9,26 +10,37 @@ namespace VeganAdda.Tests;
 public class AdminMemberTests(DatabaseFixture f)
 {
     [Fact]
-    public async Task Waiting_approval_filter_matches_reviewable_profiles()
+    public async Task Waiting_verification_filter_requires_a_submitted_reviewable_request()
     {
         var admin = await f.Member(admin: true);
         var pending = await f.Member();
         var verified = await f.Member();
+        var notRequested = await f.Member();
         var nonVegan = await f.Member();
         var suspended = await f.Member();
         var incomplete = await f.Member();
         await using (var db = f.Db())
         {
-            foreach (var id in new[] { pending, nonVegan, suspended, incomplete })
+            foreach (var id in new[] { pending, notRequested, nonVegan, suspended, incomplete })
                 (await db.Profiles.FindAsync(id))!.VeganVerified = false;
             (await db.Profiles.FindAsync(nonVegan))!.IsVegan = false;
             (await db.Accounts.FindAsync(suspended))!.Suspended = true;
             (await db.Profiles.FindAsync(incomplete))!.City = "";
             await db.SaveChangesAsync();
         }
+        // Only a submitted request enters the review queue. Status alone is insufficient.
+        await f.Feature<VerificationService, Ok>(pending, service => service.SubmitVerification(
+            new VerificationSubmission("I have been vegan for several years.", [], null, Guid.NewGuid())));
+        await using (var db = f.Db())
+        {
+            // Historical requests must still be excluded once a member becomes ineligible.
+            foreach (var id in new[] { verified, nonVegan, suspended, incomplete })
+                db.VerificationRequests.Add(new() { ApplicantId = id, ClientId = Guid.NewGuid(), Explanation = "Earlier request" });
+            await db.SaveChangesAsync();
+        }
         var rows = (await AllMembers(admin, "pending")).People;
         Assert.Contains(rows, p => p.Id == pending);
-        foreach (var id in new[] { verified, nonVegan, suspended, incomplete })
+        foreach (var id in new[] { verified, notRequested, nonVegan, suspended, incomplete })
             Assert.DoesNotContain(rows, p => p.Id == id);
         Assert.All(rows, p => Assert.True(p.HasProfile && p.IsVegan == true && !p.VeganVerified && !p.Suspended));
     }
@@ -132,8 +144,11 @@ public class AdminMemberTests(DatabaseFixture f)
         }
         try
         {
-            var data = Assert.IsType<AdminData>(await f.Call(admin, "admin?verification=unverified"));
+            await f.Feature<VerificationService, Ok>(pending, service => service.SubmitVerification(
+                new VerificationSubmission("Please review my vegan status.", [], null, Guid.NewGuid())));
+            var data = await AllMembers(admin, "pending");
             Assert.Contains(data.People, p => p.Id == pending);
+            Assert.DoesNotContain(data.People, p => fixtureIds.Contains(p.Id));
         }
         finally
         {

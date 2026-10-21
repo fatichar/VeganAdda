@@ -70,6 +70,67 @@ public class HttpTests : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
         request.Headers.Add("X-CSRF-TOKEN", token!.Token); var response = await c.SendAsync(request); if (!response.IsSuccessStatusCode) throw new Exception($"HTTP {response.StatusCode}: {await response.Content.ReadAsStringAsync()}"); return response;
     }
+    [Fact]
+    public async Task Verification_routes_enforce_csrf_and_keep_evidence_out_of_public_and_chat_projections()
+    {
+        var applicant = await f.Member(); var referrer = await f.Member(); var admin = await f.Member(admin: true);
+        await using (var db = f.Db())
+        {
+            (await db.Profiles.FindAsync(applicant))!.VeganVerified = false;
+            db.Relationships.Add(new() { Key = VeganAdda.Web.Features.Shared.FeatureService.Pair(applicant, referrer), A = applicant, B = referrer, State = "accepted", RequestedBy = applicant });
+            await db.SaveChangesAsync();
+        }
+        using var member = Client(applicant); using var connection = Client(referrer); using var reviewer = Client(admin); using var anon = Client();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anon.GetAsync("/api/verification")).StatusCode);
+        var input = new VerificationSubmission("Private verification explanation", ["https://example.org/private-evidence"], referrer, Guid.NewGuid());
+        Assert.Equal(HttpStatusCode.BadRequest, (await member.PostAsJsonAsync("/api/verification", input)).StatusCode);
+        var initial = await member.GetFromJsonAsync<VerificationStatus>("/api/verification");
+        Assert.Equal(VerificationStates.NotRequested, initial!.Status);
+        await Post(member, "/api/verification", input);
+        var owner = (await member.GetFromJsonAsync<VerificationStatus>("/api/verification"))!;
+        var html = await member.GetStringAsync($"/people/{applicant}");
+        Assert.Contains("Under review", html);
+        Assert.DoesNotContain("This screen couldn&#x27;t be loaded", html);
+        var cards = await connection.GetStringAsync($"/api/verification/referrals/{applicant}");
+        Assert.DoesNotContain(input.Explanation, cards); Assert.DoesNotContain(input.EvidenceUrls[0], cards);
+        var chat = await connection.GetStringAsync("/messages/" + VeganAdda.Web.Features.Shared.FeatureService.Pair(applicant, referrer));
+        Assert.Contains("I confirm this person is vegan", chat);
+        Assert.DoesNotContain(input.Explanation, chat);
+        var publicPerson = await anon.GetStringAsync($"/api/people/{applicant}");
+        Assert.DoesNotContain(input.Explanation, publicPerson); Assert.DoesNotContain(input.EvidenceUrls[0], publicPerson);
+        var review = await reviewer.GetFromJsonAsync<ProfileReview>($"/api/admin/members/{applicant}");
+        Assert.Equal(input.Explanation, review!.Verification!.Explanation);
+        await Post(connection, $"/api/verification/referrals/{owner.Request!.Id}/respond", new VerificationResponse(true));
+        Assert.False((await member.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+        await Post(reviewer, "/api/admin/profile-review", new VeganVerificationInput(applicant, true, RequestId: owner.Request.Id));
+        Assert.Equal(VerificationStates.Verified, (await member.GetFromJsonAsync<VerificationStatus>("/api/verification"))!.Status);
+    }
+
+    [Fact]
+    public async Task Edit_profile_keeps_social_links_optional_and_gender_required_below_name()
+    {
+        var member = await f.Member();
+        await using (var db = f.Db()) { (await db.Profiles.FindAsync(member))!.Gender = ""; await db.SaveChangesAsync(); }
+        using var client = Client(member);
+        var html = await client.GetStringAsync("/settings/profile");
+        Assert.Contains("gender is now required", html);
+        var basicStart = html.IndexOf("id=\"profile-panel-0\"", StringComparison.Ordinal);
+        var optionalStart = html.IndexOf("id=\"profile-panel-1\"", StringComparison.Ordinal);
+        var preferencesStart = html.IndexOf("id=\"profile-panel-2\"", StringComparison.Ordinal);
+        var basic = html[basicStart..optionalStart];
+        var optional = html[optionalStart..preferencesStart];
+        Assert.True(basic.IndexOf("id=\"name\"", StringComparison.Ordinal) < basic.IndexOf("id=\"gender\"", StringComparison.Ordinal));
+        Assert.Contains("id=\"gender\" required", basic);
+        Assert.Contains("Fields marked", basic);
+        Assert.DoesNotContain("id=\"instagram\"", basic);
+        Assert.Contains("Social Links", optional);
+        Assert.Contains("id=\"instagram\"", optional);
+        Assert.Contains("id=\"linkedin\"", optional);
+        Assert.Contains("id=\"website\"", optional);
+        Assert.DoesNotContain("Fields marked", optional);
+        Assert.DoesNotContain("(optional)", optional);
+    }
+
     [Fact] public async Task Http_requires_csrf_and_member_identity_and_public_html_prerenders()
     {
         using var anon = Client(); using var c = Client(await f.Member());
@@ -138,7 +199,7 @@ public class HttpTests : IDisposable
         // Old clients may still send removed fields. Neither consent nor verification is client-controlled.
         await Post(client, "/api/profile", new
         {
-            Name = "Basic HTTP member", IsVegan = true, BirthYear = 1990, BirthMonth = 1,
+            Name = "Basic HTTP member", Gender = "Man", IsVegan = true, BirthYear = 1990, BirthMonth = 1,
             Country = "India", State = "Maharashtra", City = "Pune",
             FeatureConsent = false, VeganVerified = true
         });
@@ -287,7 +348,7 @@ public class HttpTests : IDisposable
         var history = await cb.GetFromJsonAsync<MessagePage>($"/api/conversations/{key}/messages"); Assert.Single(history!.Items);
         await hub.StopAsync();
     }
-    static string CommunityServicePair(Guid a, Guid b) => VeganAdda.Web.Services.CommunityService.Pair(a,b);
+    static string CommunityServicePair(Guid a, Guid b) => VeganAdda.Web.Features.Shared.FeatureService.Pair(a,b);
     public void Dispose() { factory.Dispose(); foreach (var item in oldFirebaseEnvironment) Environment.SetEnvironmentVariable(item.Key, item.Value); if (Directory.Exists(storage)) Directory.Delete(storage, true); }
     record Csrf(string Token);
     record UploadResult(string Path);

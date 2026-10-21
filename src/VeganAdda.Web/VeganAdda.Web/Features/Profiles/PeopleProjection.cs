@@ -28,7 +28,7 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
             relationships.TryGetValue(p.Id, out var relation);
             var state = relation?.State == "accepted" ? "connected" : relation?.State == "pending" ? (relation.RequestedBy == Viewer ? "sent" : "received") : "none";
             return new Person(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
-                p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), p.Instagram, p.LinkedIn, p.Website,
+                p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), Viewer.HasValue ? p.Instagram : null, Viewer.HasValue ? p.LinkedIn : null, Viewer.HasValue ? p.Website : null,
                 p.Featured && p.Public && p.FeatureConsent, saved.Contains(p.Id), p.Id == Viewer ? "self" : state,
                 demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), p.Profession);
         }).ToList();

@@ -59,6 +59,7 @@ builder.Services.AddScoped<ICommunityApi, ServerApi>();
 builder.Services.AddScoped<ServerFeatures>();
 builder.Services.AddScoped<IMessagingApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<ISavedApi>(s => s.GetRequiredService<ServerFeatures>());
+builder.Services.AddScoped<IVerificationApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IProfilesApi>(s => s.GetRequiredService<ServerFeatures>()); builder.Services.AddScoped<IPlatform, ServerPlatform>();
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
 builder.Services.AddSingleton<IFirebaseIdentityVerifier, FirebaseIdentityVerifier>();

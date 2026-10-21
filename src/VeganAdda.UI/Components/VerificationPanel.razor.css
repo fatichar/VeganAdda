@@ -1,0 +1,7 @@
+.verification-panel { margin-top: 1rem; }
+.verification-form fieldset { border: 0; padding: 0; min-width: 0; display: grid; gap: .75rem; }
+.verification-form textarea, .verification-form input { width: 100%; min-width: 0; box-sizing: border-box; }
+[role="listbox"] { display: grid; gap: .35rem; }
+[role="option"] { text-align: left; }
+[role="option"][aria-selected="true"] { outline: 2px solid currentColor; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }

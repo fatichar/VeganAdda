@@ -1,0 +1,28 @@
+@inherits Screen
+@inject IVerificationApi VerificationApi
+@foreach (var card in cards)
+{
+    <section class="notice referral-request" aria-label="Vegan confirmation request">
+        <strong>Vegan confirmation request</strong>
+        <p>@(card.ApplicantId == Session?.Id ? "You asked this connection to confirm you are vegan." : $"{card.ApplicantName} asked you to confirm they are vegan.")</p>
+        <p class="small" role="status">@card.Status · @card.ReferralStatus</p>
+        @if (card.CanRespond)
+        {
+            <p class="small">Confirm only if you know this person is vegan. A moderator makes the final verification decision.</p>
+            <div class="actions"><button type="button" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="() => Respond(card.Id, true)">I confirm this person is vegan</button><button type="button" class="secondary" disabled="@Busy" @onclick="() => Respond(card.Id, false)">Decline</button></div>
+        }
+        <Feedback Error="@Error" Success="@Success" />
+    </section>
+}
+@code {
+    [Parameter] public Guid PersonId { get; set; }
+    List<ReferralCard> cards = [];
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); }
+    protected override Task OnParametersSetAsync() => Run(Refresh);
+    protected override async Task Refresh() { if (Session?.Id != null) cards = await VerificationApi.GetReferralCards(PersonId); }
+    Task Respond(Guid id, bool confirm) => Act(async () =>
+    {
+        try { await VerificationApi.RespondToReferral(id, confirm); Success = confirm ? "Confirmation sent for moderator review." : "Request declined."; }
+        finally { await Refresh(); }
+    });
+}

@@ -9,12 +9,12 @@ namespace VeganAdda.Tests;
 public class ProfileGenderTests(DatabaseFixture f)
 {
     [Fact]
-    public async Task Optional_gender_round_trips_can_be_removed_and_rejects_unknown_values()
+    public async Task Required_gender_round_trips_and_rejects_missing_or_unknown_values()
     {
         var id = await f.Member();
         var input = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
-        Assert.Equal("", input.Gender);
-        foreach (var gender in Wire.Genders.Append(""))
+        Assert.Equal("Man", input.Gender);
+        foreach (var gender in Wire.Genders)
         {
             input.Gender = gender;
             await f.Call(id, "profile", input, "POST");
@@ -23,8 +23,44 @@ public class ProfileGenderTests(DatabaseFixture f)
             Assert.True(saved.VeganVerified);
             Assert.True(Assert.IsType<Session>(await f.Call(id, "session")).BasicProfileComplete);
         }
-        input.Gender = "unsupported";
-        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "profile", input, "POST"))).Status);
+        foreach (var invalid in new[] { "", " ", "unsupported" })
+        {
+            input.Gender = invalid;
+            Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "profile", input, "POST"))).Status);
+        }
+    }
+
+    [Fact]
+    public async Task Legacy_profiles_receive_one_gender_reminder_and_saving_marks_it_read()
+    {
+        var isolated = new DatabaseFixture();
+        await isolated.InitializeAsync();
+        try
+        {
+            var missing = await isolated.Member(); var assigned = await isolated.Member();
+            await using (var db = isolated.Db())
+            {
+                var migrator = db.GetService<IMigrator>();
+                await migrator.MigrateAsync("20261021180000_VerificationRequests");
+                (await db.Profiles.FindAsync(missing))!.Gender = "";
+                await db.SaveChangesAsync();
+                await migrator.MigrateAsync();
+                await migrator.MigrateAsync();
+                var notice = Assert.Single(await db.Notifications.Where(n => n.UserId == missing && n.Kind == "profile-gender-required").ToListAsync());
+                Assert.False(notice.Read);
+                Assert.Equal("/settings/profile", notice.Url);
+                Assert.False(await db.Notifications.AnyAsync(n => n.UserId == assigned && n.Kind == "profile-gender-required"));
+            }
+            // Legacy members retain access while they update their profile.
+            Assert.True(((Session)await isolated.Call(missing, "session")).BasicProfileComplete);
+            var input = (ProfileInput)await isolated.Call(missing, "profile");
+            Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => isolated.Call(missing, "profile", input, "POST"))).Status);
+            input.Gender = "Woman";
+            await isolated.Call(missing, "profile", input, "POST");
+            await using var saved = isolated.Db();
+            Assert.True((await saved.Notifications.SingleAsync(n => n.UserId == missing && n.Kind == "profile-gender-required")).Read);
+        }
+        finally { await isolated.DisposeAsync(); }
     }
 
     [Fact]
@@ -38,8 +74,15 @@ public class ProfileGenderTests(DatabaseFixture f)
             var id = await f.Member();
             var input = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
             input.City = city;
-            input.Gender = i < 14 ? "Woman" : i == 14 ? "Man" : "";
+            input.Gender = i < 14 ? "Woman" : i == 14 ? "Man" : "Other";
             await f.Call(id, "profile", input, "POST");
+            if (i == 15)
+            {
+                // Legacy blank genders remain searchable while members are prompted to update.
+                await using var legacyDb = f.Db();
+                (await legacyDb.Profiles.FindAsync(id))!.Gender = "";
+                await legacyDb.SaveChangesAsync();
+            }
             if (i < 13) expected.Add(id);
             if (i == 13) await f.Call(id, "people/" + viewer + "/block", null, "POST");
         }

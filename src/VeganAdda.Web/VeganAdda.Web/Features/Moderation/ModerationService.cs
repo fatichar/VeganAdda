@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using VeganAdda.Web.Features.Verification;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
@@ -8,10 +9,10 @@ using VeganAdda.Web.Observability;
 
 namespace VeganAdda.Web.Features.Moderation;
 
-public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle) : FeatureService(context)
+public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle, VerificationService verification) : FeatureService(context)
 {
     private IQueryable<Profile> ReviewableProfiles() => db.Profiles.Where(BasicProfile.Complete)
-        .Where(p => p.IsVegan == true && !p.VeganVerified && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
+        .Where(p => p.IsVegan == true && !p.VeganVerified && db.VerificationRequests.Any(r => r.ApplicantId == p.Id && r.Status == VerificationStates.UnderReview) && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
 
     public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1)
     {
@@ -80,7 +81,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         var referrer = referral == null ? null : await db.Accounts.FindAsync(referral.ReferrerId);
         var referrerCanRefer = referral != null && await trust.CanCreateReferral(referral.ReferrerId);
         return new(p.Id, p.Name, p.City, p.Bio, p.Interests, p.LookingFor, p.Photo, p.Instagram, p.LinkedIn, p.Website, p.Public, p.TestProfile,
-            referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerified, p.Profession);
+            referral == null ? null : referrer?.Name ?? "Deleted member", referrerCanRefer, p.ReviewNote, p.Country, p.State, p.IsVegan, p.VeganVerified, p.Profession, await verification.Details(p.Id));
     }
     private async Task<List<ProfileReview>> ProfileQueue(bool includeTestProfiles, int page = 1, int pageSize = 20)
     {
@@ -147,6 +148,17 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         var account = await db.Accounts.FindAsync(profile.Id) ?? throw Missing();
         if (input.Confirm && (profile.IsVegan != true || account.Suspended || !BasicProfile.IsComplete(profile)))
             throw new ApiException(409, "Only an active member with a complete profile and vegan status can be confirmed.");
+        var request = await db.VerificationRequests.SingleOrDefaultAsync(r => r.ApplicantId == profile.Id && r.Status == VerificationStates.UnderReview);
+        if ((!reviewer.Admin || input.RequestId.HasValue) && (request == null || request.Id != input.RequestId))
+            throw new ApiException(409, "This request has changed. Refresh the review queue.");
+        if (!input.Confirm && !profile.VeganVerified && request == null)
+            throw new ApiException(409, "There is no active verification request to review.");
+        if (request != null)
+        {
+            request.Status = input.Confirm ? VerificationStates.Verified : VerificationStates.ChangesRequested;
+            request.Feedback = input.Confirm ? null : Text(input.Note, 500, true);
+            request.Resolved = DateTimeOffset.UtcNow; request.ReviewedBy = reviewer.Id;
+        }
         var wasVerified = profile.VeganVerified;
         profile.VeganVerified = input.Confirm;
         profile.ReviewNote = input.Confirm ? null : Text(input.Note, 500, true);
@@ -157,7 +169,9 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         await db.SaveChangesAsync();
         await tx.CommitAsync();
         lifecycle.Record(input.Confirm ? LifecycleEvent.VeganConfirmed : wasVerified ? LifecycleEvent.VeganVerificationRemoved : LifecycleEvent.VeganVerificationFeedback, profile.Id, reviewer.Id);
-        await changes.Changed(input.Id);
+        var recipients = await verification.Reviewers(profile.TestProfile);
+        if (request?.ReferrerId is { } referrer) recipients.Add(referrer);
+        await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(input.Id).Distinct().ToArray());
         return new Ok();
     }
 }

@@ -1,0 +1,120 @@
+@inherits Screen
+@inject IVerificationApi VerificationApi
+<section class="card verification-panel" id="verification" aria-label="Vegan verification">
+    <h3>Vegan verification</h3>
+    <Feedback Error="@Error" Success="@Success" />
+    @if (status != null)
+    {
+        <p role="status">@status.Status</p>
+        @if (status.Request?.Feedback is { } feedback) { <p class="notice">@feedback</p> }
+        @if (status.Status == VerificationStates.UnderReview)
+        {
+            <p class="small">A moderator will review your request.</p>
+            @if (status.Request?.ReferrerName is { } name) { <p class="small">@name · @status.Request.ReferralStatus</p> }
+            <button type="button" class="secondary" disabled="@Busy" @onclick="Withdraw">Withdraw request</button>
+        }
+        else if (Session?.IsVegan == true && status.Status != VerificationStates.Verified)
+        {
+            @if (!editing)
+            {
+                <button type="button" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="Open">Request vegan verification</button>
+            }
+            else
+            {
+                <div class="verification-form">
+                    <fieldset disabled="@(Busy || !RendererInfo.IsInteractive)">
+                        <p class="small">Add an explanation, evidence link, or a connection who can confirm you are vegan. Only admins and moderators can see your explanation and evidence links.</p>
+                        <label for="verification-explanation">Tell us about being vegan</label>
+                        <textarea id="verification-explanation" rows="4" maxlength="4000" @bind="explanation" @bind:event="oninput"></textarea>
+                        <label for="verification-evidence">Evidence links (optional)</label>
+                        <textarea id="verification-evidence" rows="3" maxlength="2504" @bind="evidence" @bind:event="oninput" placeholder="One HTTPS link per line, up to five"></textarea>
+                        <small>You don't need a public Instagram account. Links submitted here stay private.</small>
+                        <label for="verification-referrer">Ask a connection to confirm you're vegan (optional)</label>
+                        <small>Only your accepted connections who are verified vegans appear here. They won't see your private evidence.</small>
+                        @if (selected != null)
+                        {
+                            <p>@selected.Name <button type="button" class="text-button" @onclick="ClearReferrer">Remove</button></p>
+                        }
+                        else
+                        {
+                            <input id="verification-referrer" role="combobox" aria-autocomplete="list" aria-expanded="@(results.Count > 0 ? "true" : "false")" aria-controls="verification-candidates" aria-activedescendant="@(active >= 0 && active < results.Count ? $"verification-candidate-{active}" : null)" autocomplete="off" value="@query" @oninput="Search" @onkeydown="SearchKey" placeholder="Type a connection's name" />
+                            <div id="verification-candidates" role="listbox" aria-label="Verified vegan connections">
+                                @for (var i = 0; i < results.Count; i++)
+                                {
+                                    var index = i; var candidate = results[i];
+                                    <button type="button" role="option" id="verification-candidate-@index" aria-selected="@(active == index ? "true" : "false")" class="secondary" @onclick="() => Select(candidate)">@candidate.Name</button>
+                                }
+                            </div>
+                            @if (searching) { <small role="status">Searching…</small> }
+                            else if (query.Trim().Length >= 2 && results.Count == 0) { <small role="status">No eligible connections found.</small> }
+                        }
+                        <div class="actions"><button type="button" @onclick="Submit">Submit verification request</button><button type="button" class="secondary" @onclick="() => editing = false">Cancel</button></div>
+                    </fieldset>
+                </div>
+            }
+        }
+        else if (Session?.IsVegan != true) { <p class="small">Choose “I am a vegan” in your profile before requesting verification.</p> }
+    }
+</section>
+@code {
+    VerificationStatus? status;
+    bool editing, searching;
+    string explanation = "", evidence = "", query = "";
+    Guid clientId = Guid.NewGuid();
+    VerificationCandidate? selected;
+    List<VerificationCandidate> results = [];
+    int active = -1, searchVersion;
+    CancellationTokenSource? searchCancellation;
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(Refresh); }
+    protected override async Task Refresh()
+    {
+        Session = await Api.Get<Session>("session");
+        status = await VerificationApi.GetVerification();
+        if (status.Status is VerificationStates.UnderReview or VerificationStates.Verified) editing = false;
+    }
+    void Open()
+    {
+        editing = true; clientId = Guid.NewGuid();
+        explanation = status?.Request?.Explanation ?? "";
+        evidence = string.Join("\n", status?.Request?.EvidenceUrls ?? []);
+        ClearReferrer();
+    }
+    void ClearReferrer() { selected = null; query = ""; results = []; active = -1; searchVersion++; searchCancellation?.Cancel(); searching = false; }
+    void Select(VerificationCandidate candidate) { ClearReferrer(); selected = candidate; }
+    async Task Search(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? ""; results = []; active = -1;
+        var version = ++searchVersion; searchCancellation?.Cancel(); searchCancellation?.Dispose();
+        searchCancellation = new(); var token = searchCancellation.Token;
+        if (query.Trim().Length < 2) { searching = false; return; }
+        searching = true;
+        try
+        {
+            await Task.Delay(300, token);
+            var found = await VerificationApi.SearchReferrers(query);
+            if (version == searchVersion) results = found;
+        }
+        catch (OperationCanceledException) { }
+        catch (ApiException ex) { if (version == searchVersion) Error = ex.Message; }
+        catch (HttpRequestException) { if (version == searchVersion) Error = "Couldn't load connections. Please try again."; }
+        finally { if (version == searchVersion) searching = false; }
+    }
+    void SearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "ArrowDown" && results.Count > 0) active = (active + 1) % results.Count;
+        else if (e.Key == "ArrowUp" && results.Count > 0) active = (active + results.Count - 1) % results.Count;
+        else if (e.Key == "Enter" && active >= 0 && active < results.Count) Select(results[active]);
+        else if (e.Key == "Escape") { results = []; active = -1; }
+    }
+    Task Submit() => Act(async () =>
+    {
+        try
+        {
+            await VerificationApi.SubmitVerification(new(explanation, evidence.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), selected?.Id, clientId));
+            editing = false; await Refresh(); Success = "Verification request submitted.";
+        }
+        catch (ApiException ex) when (ex.Status == 409) { await Refresh(); throw; }
+    });
+    Task Withdraw() => Act(async () => { await VerificationApi.WithdrawVerification(status!.Request!.Id); await Refresh(); Success = "Request withdrawn."; });
+    public override void Dispose() { searchVersion++; searchCancellation?.Cancel(); searchCancellation?.Dispose(); base.Dispose(); }
+}

@@ -15,8 +15,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         var me = await User(allowIncomplete: true);
         if (input.IsVegan is null) throw new ApiException(400, "Choose whether you are vegan or interested in meeting vegans.");
         var birthDate = ReadBirthDetails(input);
-        var gender = Text(input.Gender, 40);
-        if (gender != "" && !Wire.Genders.Contains(gender)) throw new ApiException(400, "Choose a supported gender or prefer not to say.");
+        var gender = Text(input.Gender, 40, true);
+        if (!Wire.Genders.Contains(gender)) throw new ApiException(400, "Choose a supported gender.");
         var name = Text(input.Name, 80, true); var city = Text(input.City, 80, true); var bio = Text(input.Bio, 1000); var profession = Text(input.Profession, 80);
         var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
         if (input.SavePreciseLocation && (input.Latitude is not double latitude || !double.IsFinite(latitude) || latitude < -90 || latitude > 90
@@ -30,19 +30,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         var p = await db.Profiles.FindAsync(me.Id);
         var isNewProfile = p == null;
         if (p == null) { p = new Profile { Id = me.Id, AdultConfirmedAt = DateTimeOffset.UtcNow }; db.Profiles.Add(p); }
-        if (!string.IsNullOrWhiteSpace(input.ReferralCode) && !await db.Referrals.AnyAsync(r => r.ReferredId == me.Id))
-        {
-            if (!ReferralTrust.ValidReferralCode(input.ReferralCode)) throw new ApiException(400, "This referral link is invalid or expired.");
-            var inviteHash = ReferralTrust.ReferralHash(input.ReferralCode!);
-            await PairLock("referral-invite:" + inviteHash);
-            var invite = await db.ReferralInvites.SingleOrDefaultAsync(i => i.TokenHash == inviteHash);
-            if (invite == null || invite.Revoked || invite.ReferredId.HasValue || invite.Expires <= DateTimeOffset.UtcNow || invite.ReferrerId == me.Id || !await trust.CanCreateReferral(invite.ReferrerId))
-                throw new ApiException(400, "This referral link is invalid or expired.");
-            if ((await trust.Ancestors(invite.ReferrerId)).Contains(me.Id))
-                throw new ApiException(400, "This referral link is invalid or expired.");
-            invite.ReferredId = me.Id;
-            db.Referrals.Add(new() { ReferredId = me.Id, ReferrerId = invite.ReferrerId });
-        }
+        if (!string.IsNullOrWhiteSpace(input.ReferralCode))
+            throw new ApiException(410, "Referral codes have been replaced. Request vegan verification from your profile.");
         p.Name = name; p.City = city; p.Country = country; p.State = state; p.Bio = bio; p.Profession = profession; p.LookingFor = input.LookingFor.Distinct().ToArray(); p.Interests = interests;
         p.BirthDate = birthDate;
         p.Gender = gender;
@@ -53,13 +42,20 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         // A photo must belong to this account (or be its existing development fixture).
         if (photo != "" && photo != p.Photo && !System.IO.File.Exists(System.IO.Path.Combine(config["Storage:MediaPath"] ?? "uploads", photo[7..] + ".owner-" + me.Id.ToString("N")))) throw Denied();
         p.Photo = photo; p.Public = input.Public; p.FeatureConsent = true; p.DefaultAttendeeVisible = input.DefaultAttendeeVisible; p.IsVegan = input.IsVegan;
-        if (input.IsVegan == false) { p.VeganVerified = false; me.Moderator = false; }
+        if (input.IsVegan == false)
+        {
+            p.VeganVerified = false; me.Moderator = false;
+            await db.VerificationRequests.Where(r => r.ApplicantId == me.Id && r.Status == VerificationStates.UnderReview)
+                .ExecuteUpdateAsync(set => set.SetProperty(r => r.Status, VerificationStates.Withdrawn).SetProperty(r => r.Resolved, DateTimeOffset.UtcNow));
+        }
         if (!p.Public || !p.FeatureConsent) p.Featured = false;
         if (p.AdultConfirmedAt == default) p.AdultConfirmedAt = DateTimeOffset.UtcNow;
         me.Name = name;
+        await db.Notifications.Where(n => n.UserId == me.Id && n.Kind == "profile-gender-required" && !n.Read)
+            .ExecuteUpdateAsync(set => set.SetProperty(n => n.Read, true));
         await db.SaveChangesAsync(); await tx.CommitAsync();
         lifecycle.Record(isNewProfile ? LifecycleEvent.ProfileCreated : LifecycleEvent.ProfileUpdated, me.Id);
-        await changes.Changed(ChangeArea.Profiles, me.Id);
+        await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications, me.Id);
         return new Ok();
     }
     public async Task<Ok> DeleteAccount()
