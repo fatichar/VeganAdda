@@ -54,6 +54,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
         using var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddSingleton<IWebHostEnvironment>(new TestEnvironment())
+            .AddSingleton<IFirebaseUserEmailLookup>(new NoVerifiedEmailLookup())
+            .AddSingleton<IProfileReminderEmailSender>(new DisabledProfileReminderEmailSender())
             .AddScoped<IActor>(_ => new Actor(id)).AddScoped<IChangeBus, Bus>()
             .AddScoped(_ => Db(interceptor)).AddCommunityFeatures().BuildServiceProvider();
         await using var scope = services.CreateAsyncScope();
@@ -65,6 +67,8 @@ public sealed class DatabaseFixture : IAsyncLifetime
         using var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddSingleton<IWebHostEnvironment>(new TestEnvironment())
+            .AddSingleton<IFirebaseUserEmailLookup>(new NoVerifiedEmailLookup())
+            .AddSingleton<IProfileReminderEmailSender>(new DisabledProfileReminderEmailSender())
             .AddScoped<IActor>(_ => new Actor(id)).AddScoped<IChangeBus, Bus>()
             .AddScoped(_ => Db()).AddCommunityFeatures().BuildServiceProvider();
         await using var scope = services.CreateAsyncScope();
@@ -83,6 +87,16 @@ public sealed class DatabaseFixture : IAsyncLifetime
     }
     private sealed class Actor(Guid? id) : IActor { public Guid? Id => id; }
     private sealed class Bus : IChangeBus { public Task Changed(params Guid[] users) => Task.CompletedTask; }
+    private sealed class NoVerifiedEmailLookup : IFirebaseUserEmailLookup
+    {
+        public Task<string?> GetVerifiedEmail(string uid) => Task.FromResult<string?>(null);
+    }
+    private sealed class DisabledProfileReminderEmailSender : IProfileReminderEmailSender
+    {
+        public bool IsConfigured => false;
+        public Task Send(string recipient, string name, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Profile reminder email delivery is disabled in tests.");
+    }
     private sealed class TestEnvironment : IWebHostEnvironment
     {
         public string EnvironmentName { get; set; } = "Test";
