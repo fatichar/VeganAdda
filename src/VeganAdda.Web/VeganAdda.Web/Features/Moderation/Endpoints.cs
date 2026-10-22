@@ -15,5 +15,6 @@ public static class ModerationEndpoints
         api.MapPost("/admin/profile-review", (HttpContext ctx, ModerationService service) => Json(service.ReviewProfile(Body<VeganVerificationInput>(ctx)))).WithName("Moderation_Post_3").RequireAuthorization();
         api.MapPost("/moderation/profile-review", (HttpContext ctx, ModerationService service) => Json(service.ReviewProfile(Body<VeganVerificationInput>(ctx), moderator: true))).WithName("Moderation_Post_4").RequireAuthorization();
         api.MapPost("/admin/moderate", (HttpContext ctx, ModerationService service) => Json(service.Moderate(Body<ModerateInput>(ctx)))).WithName("Moderation_Post_5").RequireAuthorization();
+        api.MapPost("/admin/members/bulk-action", (HttpContext ctx, ModerationService service) => Json(service.BulkMemberAction(Body<BulkMemberActionInput>(ctx), ctx.RequestAborted))).WithName("Moderation_Post_6").RequireAuthorization();
     }
 }

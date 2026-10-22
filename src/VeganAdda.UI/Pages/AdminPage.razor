@@ -1,4 +1,7 @@
 @page "/admin"
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 @inherits Screen
 <PageTitle>Community administration · VeganAdda</PageTitle>
 <span class="eyebrow">Care for the community</span><h1>Community administration</h1><Feedback Error="@Error" Success="@Success" />
@@ -46,15 +49,61 @@ else if (data != null) {
             <select id="member-verification" aria-label="Filter members by vegan verification" @bind="memberVerification" @bind:after="FilterMembers" disabled="@Busy"><option value="pending">Profiles waiting approval</option><option value="all">All members</option><option value="verified">Verified vegan</option><option value="unverified">Unverified</option><option value="no-profile">No profile</option></select>
             <p class="small muted">Select a name to view their profile.</p>
         </div>
+        <div class="admin-bulk-toolbar">
+            <label class="admin-select-page"><input type="checkbox" aria-label="Select all members on this page" checked="@(data.People.Count > 0 && data.People.All(p => selectedMembers.ContainsKey(p.Id)))" @onchange="SelectPage" disabled="@(Busy || data.People.Count == 0)" />Select all on this page</label>
+            @if (selectedMembers.Count > 0) {
+                <span class="small muted">@selectedMembers.Count selected (maximum 100)</span>
+                <button class="text-button small-button" disabled="@Busy" @onclick="ClearSelection">Clear selection</button>
+                @if (CanBulkVerify || CanBulkSendReminder) {
+                    <div class="admin-bulk-action-wrap">
+                        <button class="secondary small-button" disabled="@Busy" aria-haspopup="true" aria-expanded="@bulkActionsOpen" @onclick="ToggleBulkActions">Bulk actions<Icon Name="expand_more" /></button>
+                        @if (bulkActionsOpen) {
+                            <div class="admin-bulk-action-menu" role="group" aria-label="Bulk actions for selected members">
+                                @if (CanBulkVerify) { <button class="secondary small-button" disabled="@Busy" @onclick='() => ChooseBulkAction("verify-vegan")'>Verify vegan status · @BulkVerifyCount applicable</button> }
+                                @if (CanBulkSendReminder) { <button class="secondary small-button" disabled="@Busy" @onclick='() => ChooseBulkAction("profile-reminder")'>Send profile reminder · @BulkReminderCount applicable</button> }
+                            </div>
+                        }
+                    </div>
+                } else {
+                    @if (BulkVerifyIncompleteCount > 0) { <span class="small muted">Vegan verification requires a complete basic profile.</span> }
+                    @if (BulkReminderCount > 0 && !data.CanSendProfileReminders) { <span class="small muted">Email delivery is not configured.</span> }
+                    @if (BulkVerifyIncompleteCount == 0 && (BulkReminderCount == 0 || data.CanSendProfileReminders)) { <span class="small muted">No bulk action applies to this selection.</span> }
+                }
+            }
+        </div>
+        @if (pendingBulkAction != null && selectedMembers.Count > 0) {
+            <div class="admin-bulk-confirm" role="group" aria-label="Confirm bulk member action">
+                <p>@(pendingBulkAction == "verify-vegan" ? "Verify vegan status" : "Send profile reminder") will apply to @PendingBulkActionCount of @selectedMembers.Count selected member@(selectedMembers.Count == 1 ? "" : "s"). Other selected members will be skipped. @if (pendingBulkAction == "profile-reminder") { <span>Only accounts still incomplete with a verified Firebase email will receive the email.</span> }</p>
+                <div class="actions"><button class="small-button" disabled="@Busy" @onclick="RunBulkAction">Confirm action</button><button class="secondary small-button" disabled="@Busy" @onclick="() => pendingBulkAction = null">Cancel</button></div>
+            </div>
+        }
         @if (data.People.Count == 0) { <Empty Icon="group" Title="No members found" Text="Choose another verification filter." /> }
         <div class="admin-rows">
         @foreach (var p in data.People) {
             <article class="card admin-member" @key="p.Id">
-                <div class="admin-row"><div>
-                    @if (p.HasProfile) { <button class="admin-member-name" disabled="@Busy" aria-expanded="@(expandedMember == p.Id ? "true" : "false")" aria-controls="member-profile-@p.Id" @onclick="() => ToggleMember(p.Id)">@p.Name<Icon Name="@(expandedMember == p.Id ? "expand_less" : "expand_more")" /></button> }
-                    else { <strong>@p.Name</strong> }
-                    <small>@(p.Suspended ? "Suspended" : "Active") · @(p.IsVegan == true ? "Vegan" : p.IsVegan == false ? "Not vegan" : "Status missing") · @(p.Public ? "Public" : "Members only") · @(!p.HasProfile ? "No profile" : p.VeganVerified ? "Verified vegan" : "Unverified")@(p.TestProfile ? " · Test profile" : "")@(p.Admin ? " · Admin" : p.Moderator ? " · Moderator" : "")</small>
-                </div><div class="actions"><button class="secondary small-button" disabled="@(Busy || p.Id == Session?.Id)" @onclick='() => Moderate(p.Id, p.Admin ? "revoke-admin" : "grant-admin")'>@(p.Admin ? "Revoke admin" : "Appoint admin")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Moderator ? "revoke-moderator" : "grant-moderator")'>@(p.Moderator ? "Remove moderator" : "Make moderator")</button><button class="secondary small-button" disabled="@(Busy || !p.HasProfile || (p.Suspended || p.IsVegan != true) && !p.VeganVerified)" @onclick='() => Moderate(p.Id, p.VeganVerified ? "remove-vegan-verification" : "confirm-vegan")'>@(p.VeganVerified ? "Remove vegan verification" : "Verify vegan status")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.TestProfile ? "normal-profile" : "test-profile")'>@(p.TestProfile ? "Mark real" : "Mark test")</button><button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button><button class="secondary small-button danger" disabled="@Busy" @onclick='() => Moderate(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button></div></div>
+                <div class="admin-row"><div class="admin-member-identity">
+                    <input type="checkbox" aria-label="Select @p.Name" checked="@selectedMembers.ContainsKey(p.Id)" disabled="@Busy" @onchange="e => SelectMember(p, e.Value is bool selected && selected)" />
+                    <div>
+                        @if (p.HasProfile) { <button class="admin-member-name" disabled="@Busy" aria-expanded="@(expandedMember == p.Id ? "true" : "false")" aria-controls="member-profile-@p.Id" @onclick="() => ToggleMember(p.Id)">@p.Name<Icon Name="@(expandedMember == p.Id ? "expand_less" : "expand_more")" /></button> }
+                        else { <strong>@p.Name</strong> }
+                        <small>@(p.Suspended ? "Suspended" : "Active") · @(p.IsVegan == true ? "Vegan" : p.IsVegan == false ? "Not vegan" : "Status missing") · @(p.Public ? "Public" : "Members only") · @(!p.HasProfile ? "No profile" : p.VeganVerified ? "Verified vegan" : "Unverified")@(p.HasProfile && !p.BasicProfileComplete ? " · Basic profile incomplete" : "")@(p.TestProfile ? " · Test profile" : "")@(p.Admin ? " · Admin" : p.Moderator ? " · Moderator" : "")</small>
+                    </div>
+                </div><div class="actions admin-member-actions">
+                    @if (p.BasicProfileComplete && !p.VeganVerified && !p.Suspended && p.IsVegan == true) { <button class="secondary small-button" disabled="@Busy" @onclick='() => Moderate(p.Id, "confirm-vegan")'>Verify vegan status</button> }
+                    <div class="admin-action-wrap">
+                        <button class="secondary small-button" disabled="@Busy" aria-haspopup="true" aria-expanded="@(openMemberActions == p.Id)" @onclick="() => ToggleMemberActions(p.Id)">More<Icon Name="expand_more" /></button>
+                        @if (openMemberActions == p.Id) {
+                            <div class="admin-action-menu" role="group" aria-label="More actions for @p.Name">
+                                <button class="secondary small-button" disabled="@(Busy || p.Id == Session?.Id)" @onclick='() => ModerateFromMenu(p.Id, p.Admin ? "revoke-admin" : "grant-admin")'>@(p.Admin ? "Revoke admin" : "Appoint admin")</button>
+                                <button class="secondary small-button" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, p.Moderator ? "revoke-moderator" : "grant-moderator")'>@(p.Moderator ? "Remove moderator" : "Make moderator")</button>
+                                @if (p.VeganVerified) { <button class="secondary small-button" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, "remove-vegan-verification")'>Remove vegan verification</button> }
+                                <button class="secondary small-button" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, p.TestProfile ? "normal-profile" : "test-profile")'>@(p.TestProfile ? "Mark real" : "Mark test")</button>
+                                <button class="secondary small-button" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button>
+                                <button class="secondary small-button danger" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button>
+                            </div>
+                        }
+                    </div>
+                </div></div>
                 @if (expandedMember == p.Id && memberProfile != null) {
                     var profile = memberProfile;
                     <div id="member-profile-@p.Id" class="admin-member-details">
@@ -86,10 +135,24 @@ else if (data != null) {
     }
 }
 @code {
-    string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    IJSObjectReference? memberActionsModule; DotNetObjectReference<AdminPage>? memberActionsReference;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(async () => { adminProfile = await Api.Get<ProfileInput>("profile"); await Refresh(); }); }
+    protected override async Task OnAfterRenderAsync(bool firstRender) {
+        if (firstRender) {
+            memberActionsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/admin-actions.js");
+            memberActionsReference = DotNetObjectReference.Create(this);
+            await memberActionsModule.InvokeVoidAsync("attachOutsideClick", memberActionsReference);
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+    [JSInvokable]
+    public Task CloseMemberActionsFromOutside() => openMemberActions.HasValue || bulkActionsOpen
+        ? InvokeAsync(() => { openMemberActions = null; bulkActionsOpen = false; StateHasChanged(); })
+        : Task.CompletedTask;
     protected override async Task Refresh() {
         data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}&country={E(country)}&state={E(state)}&city={E(city)}");
+        foreach (var person in data.People) if (selectedMembers.ContainsKey(person.Id)) selectedMembers[person.Id] = person;
         if (tab == "Events") eventsPage = data.PageNumber; else if (tab == "Reports") reportsPage = data.PageNumber; else membersPage = data.PageNumber;
         if (expandedMember is { } id && data.People.Any(p => p.Id == id && p.HasProfile)) memberProfile = await Api.Get<ProfileReview>($"admin/members/{id}");
         else { expandedMember = null; memberProfile = null; }
@@ -97,7 +160,42 @@ else if (data != null) {
     int CurrentPage => tab == "Events" ? eventsPage : tab == "Reports" ? reportsPage : membersPage;
     Task SwitchTab(string value) { tab = value; return Run(Refresh); }
     Task SetPage(int value) { if (tab == "Events") eventsPage = value; else if (tab == "Reports") reportsPage = value; else membersPage = value; return Run(Refresh); }
-    Task FilterMembers() { membersPage = 1; return Run(Refresh); }
+    int BulkVerifyCount => selectedMembers.Values.Count(p => !p.Suspended && p.BasicProfileComplete && p.IsVegan == true && !p.VeganVerified);
+    int BulkVerifyIncompleteCount => selectedMembers.Values.Count(p => !p.Suspended && !p.BasicProfileComplete && p.IsVegan == true && !p.VeganVerified);
+    int BulkReminderCount => selectedMembers.Values.Count(p => !p.Suspended && !p.BasicProfileComplete);
+    bool CanBulkVerify => BulkVerifyCount > 0;
+    bool CanBulkSendReminder => data?.CanSendProfileReminders == true && BulkReminderCount > 0;
+    int PendingBulkActionCount => pendingBulkAction == "verify-vegan" ? BulkVerifyCount : BulkReminderCount;
+    Task FilterMembers() { membersPage = 1; selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; return Run(Refresh); }
+    void SelectMember(AdminPerson person, bool selected) {
+        if (selected && selectedMembers.Count >= 100) { Error = "Select no more than 100 members at a time."; return; }
+        if (selected) selectedMembers[person.Id] = person; else selectedMembers.Remove(person.Id);
+        pendingBulkAction = null; Error = "";
+    }
+    void SelectPage(ChangeEventArgs args) {
+        var select = args.Value is bool value && value;
+        var limitReached = false;
+        foreach (var person in data!.People) {
+            if (select && selectedMembers.Count < 100) selectedMembers[person.Id] = person;
+            else if (select && !selectedMembers.ContainsKey(person.Id)) limitReached = true;
+            else if (!select) selectedMembers.Remove(person.Id);
+        }
+        pendingBulkAction = null;
+        Error = limitReached ? "Selection is limited to 100 members. Some members on this page were not added." : "";
+    }
+    void ClearSelection() { selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; }
+    void ToggleMemberActions(Guid id) { bulkActionsOpen = false; openMemberActions = openMemberActions == id ? null : id; }
+    void ToggleBulkActions() { openMemberActions = null; bulkActionsOpen = !bulkActionsOpen; }
+    void ChooseBulkAction(string action) { pendingBulkAction = action; bulkActionsOpen = false; }
+    Task ModerateFromMenu(Guid id, string action) { openMemberActions = null; return Moderate(id, action); }
+    Task RunBulkAction() => Run(async () => {
+        var action = pendingBulkAction ?? throw new ApiException(400, "Choose a bulk action first.");
+        var result = await Api.Send<BulkMemberActionResult>("admin/members/bulk-action", new BulkMemberActionInput(selectedMembers.Keys.ToList(), action));
+        selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; await Refresh();
+        Success = result.Action == "verify-vegan"
+            ? $"Verified {result.Affected} member{(result.Affected == 1 ? "" : "s")}; skipped {result.Skipped}."
+            : $"Sent {result.Affected} profile reminder{(result.Affected == 1 ? "" : "s")}; skipped {result.Skipped}; failed {result.Failed}.";
+    });
     Task ToggleMember(Guid id) => Run(async () => {
         if (expandedMember == id) { expandedMember = null; memberProfile = null; }
         else { var profile = await Api.Get<ProfileReview>($"admin/members/{id}"); memberProfile = profile; expandedMember = id; }
@@ -109,6 +207,14 @@ else if (data != null) {
     Task Moderate(Guid id, string action) => Run(async () => { await Api.Send<Ok>("admin/moderate", new ModerateInput(id, action)); await Refresh(); Success = action == "confirm-vegan" ? "Vegan status verified." : action == "remove-vegan-verification" ? "Vegan verification removed." : "Community record updated."; });
     Task ReviewProfile(Guid id, bool approve) => Run(async () => { var note = reviewNotes.GetValueOrDefault(id); await Api.Send<Ok>("admin/profile-review", new VeganVerificationInput(id, approve, note, memberProfile?.Verification?.Id)); reviewNotes.Remove(id); await Refresh(); Success = approve ? "Vegan status verified." : "Changes requested."; });
     Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 2 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 2 MB."); await using var stream = e.File.OpenReadStream(2 * 1024 * 1024); edit!.Cover = await Platform.Upload(stream, e.File.Name, e.File.ContentType); });
+    public async ValueTask DisposeAsync() {
+        if (memberActionsModule != null) {
+            try { await memberActionsModule.InvokeVoidAsync("detachOutsideClick"); await memberActionsModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+        memberActionsReference?.Dispose();
+        base.Dispose();
+    }
 }
 
 

@@ -13,8 +13,13 @@ public interface IFirebaseIdentityVerifier
     Task<VerifiedFirebaseIdentity?> Verify(string idToken);
 }
 
+public interface IFirebaseUserEmailLookup
+{
+    Task<string?> GetVerifiedEmail(string uid);
+}
+
 /// <summary>Verifies Firebase client tokens against the configured project using the Admin SDK.</summary>
-public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebHostEnvironment environment, ILogger<FirebaseIdentityVerifier> logger) : IFirebaseIdentityVerifier
+public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebHostEnvironment environment, ILogger<FirebaseIdentityVerifier> logger) : IFirebaseIdentityVerifier, IFirebaseUserEmailLookup
 {
     private readonly object appLock = new();
     private FirebaseApp? firebaseApp;
@@ -31,21 +36,7 @@ public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebH
         FirebaseToken token;
         try
         {
-            FirebaseApp app;
-            lock (appLock)
-            {
-                firebaseApp ??= FirebaseApp.DefaultInstance ?? FirebaseApp.Create(new AppOptions
-                {
-                    Credential = GoogleCredential.GetApplicationDefault(),
-                    ProjectId = projectId
-                });
-                app = firebaseApp;
-            }
-            if (!string.Equals(app.Options.ProjectId, projectId, StringComparison.Ordinal))
-            {
-                logger.LogError("Firebase Admin project {AdminProjectId} does not match configured project {ConfiguredProjectId}.", app.Options.ProjectId, projectId);
-                throw Rejected($"Firebase Admin project '{app.Options.ProjectId}' does not match '{projectId}'.");
-            }
+            var app = GetFirebaseApp(projectId);
             token = await FirebaseAuth.GetAuth(app).VerifyIdTokenAsync(idToken);
         }
         catch (FirebaseAuthException ex)
@@ -71,6 +62,32 @@ public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebH
         }
         var name = token.Claims.TryGetValue("name", out var rawName) ? StringValue(rawName) : "";
         return new(uid, name, provider);
+    }
+
+    public async Task<string?> GetVerifiedEmail(string uid)
+    {
+        var projectId = configuration["Authentication:Firebase:ProjectId"];
+        if (string.IsNullOrWhiteSpace(projectId)) throw new ApiException(503, "Firebase project ID is not configured.");
+        var user = await FirebaseAuth.GetAuth(GetFirebaseApp(projectId)).GetUserAsync(uid);
+        return user.EmailVerified && !string.IsNullOrWhiteSpace(user.Email) ? user.Email : null;
+    }
+
+    private FirebaseApp GetFirebaseApp(string projectId)
+    {
+        lock (appLock)
+        {
+            firebaseApp ??= FirebaseApp.DefaultInstance ?? FirebaseApp.Create(new AppOptions
+            {
+                Credential = GoogleCredential.GetApplicationDefault(),
+                ProjectId = projectId
+            });
+            if (!string.Equals(firebaseApp.Options.ProjectId, projectId, StringComparison.Ordinal))
+            {
+                logger.LogError("Firebase Admin project {AdminProjectId} does not match configured project {ConfiguredProjectId}.", firebaseApp.Options.ProjectId, projectId);
+                throw Rejected($"Firebase Admin project '{firebaseApp.Options.ProjectId}' does not match '{projectId}'.");
+            }
+            return firebaseApp;
+        }
     }
 
     private ApiException Rejected(string developmentMessage)

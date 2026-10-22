@@ -52,6 +52,13 @@ services:
       Analytics__Umami__WebsiteId: ${UMAMI_WEBSITE_ID:-}
       Monitoring__BetterStack__SourceToken: ${BETTERSTACK_SOURCE_TOKEN:-}
       Monitoring__BetterStack__Endpoint: ${BETTERSTACK_ENDPOINT:-}
+      Email__Smtp__Host: ${EMAIL_SMTP_HOST:-}
+      Email__Smtp__Port: ${EMAIL_SMTP_PORT:-587}
+      Email__Smtp__Username: ${EMAIL_SMTP_USERNAME:-}
+      Email__Smtp__Password: ${EMAIL_SMTP_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-}
+      Email__FromName: ${EMAIL_FROM_NAME:-VeganAdda}
+      Email__AppUrl: ${EMAIL_APP_URL:-https://veganadda.com}
     ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
     volumes: [media:/data/media, keys:/data/keys]
     depends_on:
@@ -74,6 +81,13 @@ services:
       Analytics__Umami__WebsiteId: ${UMAMI_WEBSITE_ID:-}
       Monitoring__BetterStack__SourceToken: ${BETTERSTACK_SOURCE_TOKEN:-}
       Monitoring__BetterStack__Endpoint: ${BETTERSTACK_ENDPOINT:-}
+      Email__Smtp__Host: ${EMAIL_SMTP_HOST:-}
+      Email__Smtp__Port: ${EMAIL_SMTP_PORT:-587}
+      Email__Smtp__Username: ${EMAIL_SMTP_USERNAME:-}
+      Email__Smtp__Password: ${EMAIL_SMTP_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-}
+      Email__FromName: ${EMAIL_FROM_NAME:-VeganAdda}
+      Email__AppUrl: ${EMAIL_APP_URL:-https://veganadda.com}
     ports: ["127.0.0.1:${APP_STANDBY_PORT:-5081}:8080"]
     volumes: [media:/data/media, keys:/data/keys]
     depends_on:

@@ -62,7 +62,10 @@ builder.Services.AddScoped<ISavedApi>(s => s.GetRequiredService<ServerFeatures>(
 builder.Services.AddScoped<IVerificationApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IProfilesApi>(s => s.GetRequiredService<ServerFeatures>()); builder.Services.AddScoped<IPlatform, ServerPlatform>();
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
-builder.Services.AddSingleton<IFirebaseIdentityVerifier, FirebaseIdentityVerifier>();
+builder.Services.AddSingleton<FirebaseIdentityVerifier>();
+builder.Services.AddSingleton<IFirebaseIdentityVerifier>(s => s.GetRequiredService<FirebaseIdentityVerifier>());
+builder.Services.AddSingleton<IFirebaseUserEmailLookup>(s => s.GetRequiredService<FirebaseIdentityVerifier>());
+builder.Services.AddSingleton<IProfileReminderEmailSender, ProfileReminderEmailSender>();
 builder.Services.AddHostedService<ChatPushWorker>();
 builder.Services.AddHostedService<DataRetentionWorker>();
 builder.Services.AddSingleton<IChatPushSender, FirebaseChatPushSender>();
