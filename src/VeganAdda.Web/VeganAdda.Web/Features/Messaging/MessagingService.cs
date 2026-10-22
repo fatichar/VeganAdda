@@ -43,12 +43,12 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
         if (!me.Admin)
             query = query.Where(r => !db.Profiles.Any(p => (p.Id == r.A || p.Id == r.B) && p.TestProfile)
                 || db.Accounts.Any(a => a.Id == (r.A == me.Id ? r.B : r.A) && a.Admin));
-        query = query.Where(r => r.State == "accepted" || db.Messages.Any(m => m.Conversation == r.Key)
+        query = query.Where(r => r.State == "accepted" || r.State == "referral" || db.Messages.Any(m => m.Conversation == r.Key)
             || db.Blocks.Any(b => b.Owner == me.Id && b.Subject == (r.A == me.Id ? r.B : r.A)));
         var total = await query.CountAsync();
         pageSize = Math.Clamp(pageSize, 1, 20);
         page = Math.Clamp(page, 1, Math.Max(1, (total + pageSize - 1) / pageSize));
-        var rows = await query.OrderByDescending(r => db.Messages.Where(m => m.Conversation == r.Key).OrderByDescending(m => m.Id).Select(m => (DateTimeOffset?)m.SentAt).FirstOrDefault() ?? r.Updated)
+        var rows = await query.OrderByDescending(r => r.Updated > (db.Messages.Where(m => m.Conversation == r.Key).OrderByDescending(m => m.Id).Select(m => (DateTimeOffset?)m.SentAt).FirstOrDefault() ?? r.Updated) ? r.Updated : (db.Messages.Where(m => m.Conversation == r.Key).OrderByDescending(m => m.Id).Select(m => (DateTimeOffset?)m.SentAt).FirstOrDefault() ?? r.Updated))
             .ThenBy(r => r.Key).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var keys = rows.Select(r => r.Key).ToArray();
         if (keys.Length == 0) return new([], total, page, pageSize);
@@ -76,9 +76,9 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
             var canMessage = MessagingPolicy.CanMessage(rel.State, blocked,
                 new(!me.Suspended, myProfile.TestProfile, me.Admin),
                 new(account != null && !account.Suspended, profile?.TestProfile ?? false, account?.Admin ?? false));
-            result.Add(new(rel.Key, card?.Name ?? "Unavailable member", card?.Photo ?? "", message?.Text ?? "Say hello",
-                unread.GetValueOrDefault(rel.Key), message?.SentAt ?? rel.Updated, canMessage,
-                unavailable && !blockedByMe ? null : other, blockedByMe, rel.State == "removed" && !unavailable && visible.Contains(other), card?.IsVegan == true && card.VeganVerified));
+            result.Add(new(rel.Key, card?.Name ?? "Unavailable member", card?.Photo ?? "", message?.Text ?? (rel.State == "referral" ? "Vegan confirmation request" : "Say hello"),
+                unread.GetValueOrDefault(rel.Key), message == null || rel.Updated > message.SentAt ? rel.Updated : message.SentAt, canMessage,
+                unavailable && !blockedByMe ? null : other, blockedByMe, rel.State == "removed" && !unavailable && visible.Contains(other), card?.IsVegan == true && card.VeganVerified, rel.State == "referral"));
         }
         return new(result, total, page, pageSize);
     }

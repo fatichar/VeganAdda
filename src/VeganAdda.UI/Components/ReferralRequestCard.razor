@@ -9,7 +9,7 @@
         @if (card.CanRespond)
         {
             <p class="small">Confirm only if you know this person is vegan. A moderator makes the final verification decision.</p>
-            <div class="actions"><button type="button" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="() => Respond(card.Id, true)">I confirm this person is vegan</button><button type="button" class="secondary" disabled="@Busy" @onclick="() => Respond(card.Id, false)">Decline</button></div>
+            <div class="actions"><button type="button" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="() => Respond(card.Id, true)">I confirm this person is vegan</button><button type="button" class="secondary" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="() => Respond(card.Id, false)">Decline</button></div>
         }
         <Feedback Error="@Error" Success="@Success" />
     </section>

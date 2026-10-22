@@ -4,17 +4,19 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 <PageTitle>Your profile · VeganAdda</PageTitle>
-<div class="narrow"><a class="back-link" href="/settings"><Icon Name="arrow_back" />Back</a><h1>@(onboarding ? "Complete your basic profile" : "Edit profile")</h1><Feedback Error="@Error" Success="@Success" />
+<div class="narrow profile-editor"><header class="profile-editor-heading"><a class="back-link" href="/settings"><Icon Name="arrow_back" />Back</a><h1>@(onboarding ? "Complete your basic profile" : "Edit profile")</h1></header>
+@if (model == null) { <Feedback Error="@Error" Success="@Success" /> }
 @if (Session?.Id == null) { <a class="button" href="@SignInUrl">Sign in to create a profile</a> }
 else if (model != null) {
+<form @ref="profileForm" @onsubmit="Save" @onsubmit:preventDefault novalidate class="form-card" @oninput="ProfileEdited" @onchange="ProfileEdited"><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
+<div class="profile-tabs" role="tablist" aria-label="Profile sections">
+@for (var i = 0; i < tabs.Length; i++) { var index = i; <button type="button" id="profile-tab-@index" role="tab" aria-selected="@(activeTab == index ? "true" : "false")" aria-controls="profile-panel-@index" tabindex="@(activeTab == index ? 0 : -1)" @onclick="() => activeTab = index">@tabs[index]</button> }
+</div>
+<div class="profile-scroll" role="region" aria-label="Profile fields" tabindex="0">
 @if (!Session.BasicProfileComplete) { <div class="notice profile-completion-notice" role="status"><strong>Complete your basic profile to use VeganAdda.</strong><p>Fill in the required basic details. Photos, social links and other optional details can be added later. Vegan verification is separate and won't delay access.</p></div> }
 @if (!string.IsNullOrWhiteSpace(ReferralCode)) { <p class="notice">Referral links have been replaced. Complete your profile, then request vegan verification from your profile.</p> }
 @if (string.IsNullOrWhiteSpace(model.Gender)) { <p class="notice" role="status">Please update your profile: gender is now required.</p> }
 @if (model.ReviewNote != null) { <p class="notice" role="status">Moderator feedback: @model.ReviewNote</p> }
-<form @ref="profileForm" @onsubmit="Save" @onsubmit:preventDefault novalidate class="form-card"><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
-<div class="profile-tabs" role="tablist" aria-label="Profile sections">
-@for (var i = 0; i < tabs.Length; i++) { var index = i; <button type="button" id="profile-tab-@index" role="tab" aria-selected="@(activeTab == index ? "true" : "false")" aria-controls="profile-panel-@index" tabindex="@(activeTab == index ? 0 : -1)" @onclick="() => activeTab = index">@tabs[index]</button> }
-</div>
 <section id="profile-panel-0" class="profile-basic-fields profile-panel" role="tabpanel" aria-labelledby="profile-tab-0" hidden="@(activeTab != 0)">
 <h2 class="sr-only">Basic info</h2>
 <p class="small muted">Fields marked <RequiredMark /> are required.</p>
@@ -28,17 +30,13 @@ else if (model != null) {
 <label class="check-row"><input type="radio" name="vegan-status" required checked="@(model.IsVegan == false)" @onchange="() => model.IsVegan = false" /><span>I am not a vegan but interested in meeting vegans</span></label>
 @if (model.IsVegan == true)
 {
-    <div class="vegan-verification-status @(model.VeganVerified ? "verified" : "unverified")" role="status">
-        @if (model.VeganVerified)
-        {
+    @if (model.VeganVerified)
+    {
+        <div class="vegan-verification-status verified" role="status">
             <span class="vegan-verification-mark" aria-hidden="true"><Icon Name="check" /></span>
-            <div><strong>Verified vegan</strong><small>Verified vegan profiles display a green tick.</small></div>
-        }
-        else
-        {
-            <div><strong>Vegan status unverified</strong><small>You can use the community while you wait for verification.</small></div>
-        }
-    </div>
+            <strong>Verified vegan</strong>
+        </div>
+    }
     @if (!model.VeganVerified) { <VerificationPanel CanRequest="@(Session.BasicProfileComplete && Session.IsVegan == true)" /> }
 }
 @if (model.IsVegan == false) { <p class="small muted">Non-vegan members can connect and appear when someone includes non-vegan profiles in Discover. Event suggestions, referrals and moderation require verified vegan status.</p> }
@@ -70,13 +68,17 @@ else if (model != null) {
 <fieldset class="profile-section"><legend>Visibility</legend><label class="check-row"><input type="checkbox" @bind="model.Public" /><span>Show my profile to public visitors<small>Your name, photo, city, state, country, profession, bio, interests and non-dating intentions will be public. Social links are visible only to signed-in members. Public profiles may be featured. Dating is always excluded from public responses.</small></span></label></fieldset>
 <fieldset class="profile-section"><legend>Event visibility</legend><label class="check-row"><input type="checkbox" @bind="model.DefaultAttendeeVisible" /><span>Show me in attendee lists by default<small>Applies to future attendance choices. You can change visibility for each event.</small></span></label></fieldset>
 </section>
-<p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p><button class="full" disabled="@(Busy || locationBusy)">@(Busy ? "Saving…" : "Save changes")<Icon Name="arrow_forward" /></button>
+<p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p></div><footer class="profile-save"><div class="save-feedback"><Feedback Error="@Error" Success="@Success" /></div><button disabled="@(Busy || locationBusy || !HasChanges)">@(Busy ? "Saving…" : "Save changes")<Icon Name="arrow_forward" /></button></footer>
 </fieldset></form> }</div>
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery(Name = "ref")] public string? ReferralCode { get; set; }
     ProfileInput? model; string interests = ""; bool onboarding => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("onboarding");
     bool locationBusy, reportValidation, tabsInitialized;
+    string savedProfile = "", savedInterests = "";
+    bool HasChanges => model != null && (Session?.BasicProfileComplete != true || savedProfile != System.Text.Json.JsonSerializer.Serialize(model, Wire.Json) || savedInterests != interests);
+    void RememberSaved() { savedProfile = System.Text.Json.JsonSerializer.Serialize(model, Wire.Json); savedInterests = interests; }
+    void ProfileEdited() { if (HasChanges) Success = ""; }
     int activeTab;
     ElementReference profileForm;
     readonly string[] tabs = ["Basic info", "Optional details", "Preferences"];
@@ -92,16 +94,16 @@ else if (model != null) {
         }
     }
     string SignInUrl => "/signin?returnUrl=" + E(onboarding && !string.IsNullOrWhiteSpace(ReferralCode) ? "/onboarding?ref=" + E(ReferralCode) : "/onboarding");
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(async () => { model = await Profiles.GetProfile();  interests = string.Join(", ", model.Interests); }); }
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(async () => { model = await Profiles.GetProfile();  interests = string.Join(", ", model.Interests); RememberSaved(); }); }
     void Intent(string intention, ChangeEventArgs e) { model!.LookingFor = (bool)e.Value! ? model.LookingFor.Append(intention).Distinct().ToArray() : model.LookingFor.Where(x => x != intention).ToArray(); }
     async Task Save()
     {
-        if (Busy || locationBusy) return;
+        if (Busy || locationBusy || !HasChanges) return;
         await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/profile-form.js");
         var invalidPanel = await module.InvokeAsync<int?>("invalidPanel", profileForm);
         if (invalidPanel.HasValue) { activeTab = invalidPanel.Value; reportValidation = true; return; }
         await SaveProfile();
     }
-    Task SaveProfile() => Run(async () => { model!.Interests = interests.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries); await Profiles.SaveProfile(model!); if (onboarding) Nav.NavigateTo(ProfileSetup.SafeReturnUrl(ReturnUrl), true); else { model = await Profiles.GetProfile(); Session = await Api.Get<Session>("session"); interests = string.Join(", ", model.Interests); Success = "Your profile has been updated."; } });
+    Task SaveProfile() => Run(async () => { model!.Interests = interests.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries); await Profiles.SaveProfile(model!); if (onboarding) Nav.NavigateTo(ProfileSetup.SafeReturnUrl(ReturnUrl), true); else { model = await Profiles.GetProfile(); Session = await Api.Get<Session>("session"); interests = string.Join(", ", model.Interests); RememberSaved(); Success = "Changes have been saved."; } });
     Task Upload(InputFileChangeEventArgs e) => Run(async () => { var file = e.File; if (file.Size > 2 * 1024 * 1024) { Error = "Please choose an image smaller than 2 MB."; return; } await using var stream = file.OpenReadStream(2 * 1024 * 1024); model!.Photo = await Platform.Upload(stream, file.Name, file.ContentType); Success = "Photo ready. Save your profile to keep it."; });
 }

@@ -199,3 +199,12 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .person-profession{color:var(--muted);font-size:.9rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:10px}
 .profile-profession{color:var(--muted);overflow-wrap:anywhere}
 @media(max-width:767px){.discovery-person-card .person-profession{margin-left:8px;margin-right:8px}}
+
+/* The profile editor owns its scrolling region; keep its title and save controls in view. */
+html:has(.profile-editor){overflow:clip}
+body:has(.profile-editor) .page{min-height:0;padding-bottom:0}
+body:has(.profile-editor) .site-footer{display:none}
+
+.admin-link{position:relative}
+.desktop-nav .admin-link .count{margin-left:5px}
+.bottom-nav .admin-link .count{position:absolute;top:0;left:calc(50% + 6px);font-size:.65rem;line-height:1;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center}

@@ -44,7 +44,7 @@ independent of referrals. Profile edits preserve it; selecting non-vegan clears 
 Social links are optional contact details for signed-in members and authorized reviewers;
 anonymous projections omit them. Verification is requested explicitly through the
 Verification feature. A request contains private verification details (social links or other proof)
-and/or one eligible verified vegan referrer. No connection is required. A referrer can confirm the member
+and/or up to ten eligible verified vegan referrers. No connection is required. A referrer can confirm the member
 is vegan but only a moderator or admin grants verification. The queue contains active
 submitted requests, not all unverified vegans. Request status is private to the owner
 and review team; selected referrers see request/confirmation status on the applicant profile or existing chat cards, never evidence.
@@ -155,3 +155,13 @@ Screenshot uploads live in a separate report-media namespace, cannot be used as 
 photos, and require reporter ownership on submission. Only the uploader and, after
 submission, active administrators may read them; responses are private and not cached.
 Resolved report screenshots follow the same twelve-month retention as report contents.
+
+`VerificationReferrals` stores an independent response per selected referrer. The
+multiple-referrer migration preserves legacy responses and timestamps; rollback can
+retain only one response per request. Profile editing uses a bounded scrolling form
+with a persistent title, tabs, save control and save feedback.
+
+Referral submission updates inbox activity and creates a referral-only thread when
+needed. These threads never grant messaging consent. Admin navigation counts active
+verification requests, pending events and unresolved reports; the count is restricted
+to administrators, including separately authorized incomplete admin accounts.

@@ -162,16 +162,23 @@ public class VerificationRequest
     public string Status { get; set; } = "Under review";
     public string Explanation { get; set; } = "";
     public string[] EvidenceUrls { get; set; } = [];
-    public Guid? ReferrerId { get; set; }
-    public string ReferralStatus { get; set; } = "Not requested";
+    public List<VerificationReferral> Referrers { get; set; } = [];
     public DateTimeOffset Submitted { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? Responded { get; set; }
     public DateTimeOffset? Resolved { get; set; }
     public Guid? ReviewedBy { get; set; }
     public string? Feedback { get; set; }
 }
+public class VerificationReferral
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid RequestId { get; set; }
+    public Guid? ReferrerId { get; set; }
+    public string Status { get; set; } = "Awaiting confirmation";
+    public DateTimeOffset? Responded { get; set; }
+}
 public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(options)
 {
+    public DbSet<VerificationReferral> VerificationReferrals => Set<VerificationReferral>();
     public DbSet<VerificationRequest> VerificationRequests => Set<VerificationRequest>();
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<PushDevice> PushDevices => Set<PushDevice>();
@@ -190,7 +197,9 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<VerificationRequest>().HasOne<Account>().WithMany().HasForeignKey(r => r.ApplicantId).OnDelete(DeleteBehavior.Cascade);
-        b.Entity<VerificationRequest>().HasOne<Account>().WithMany().HasForeignKey(r => r.ReferrerId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<VerificationRequest>().HasMany(r => r.Referrers).WithOne().HasForeignKey(r => r.RequestId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<VerificationReferral>().HasOne<Account>().WithMany().HasForeignKey(r => r.ReferrerId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<VerificationReferral>().HasIndex(r => new { r.RequestId, r.ReferrerId }).IsUnique();
         b.Entity<VerificationRequest>().HasIndex(r => new { r.ApplicantId, r.ClientId }).IsUnique();
         b.Entity<VerificationRequest>().HasIndex(r => r.ApplicantId).IsUnique().HasFilter("\"Status\" = 'Under review'");
         b.Entity<VerificationRequest>().HasIndex(r => new { r.Status, r.Submitted });

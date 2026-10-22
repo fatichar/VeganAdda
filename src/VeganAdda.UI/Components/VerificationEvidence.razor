@@ -5,8 +5,7 @@
         <p class="small">@request.Status · @request.Submitted.ToString("d MMM yyyy")</p>
         @if (request.Explanation != "") { <p class="profile-bio">@request.Explanation</p> }
         @foreach (var url in request.EvidenceUrls) { <a class="external-link" href="@url" target="_blank" rel="noopener noreferrer nofollow">@url<Icon Name="open_in_new" /></a> }
-        @if (request.ReferrerName is { } name) { <p class="small">Referral confirmation: @name · @request.ReferralStatus</p> }
-        else if (request.ReferralStatus != "Not requested") { <p class="small">Referral confirmation: @request.ReferralStatus</p> }
+        @foreach (var referrer in request.Referrers ?? []) { <p class="small">Referral confirmation: @(referrer.Name ?? "Deleted member") · @referrer.Status</p> }
     </section>
 }
 @code { [Parameter] public VerificationDetails? Details { get; set; } }

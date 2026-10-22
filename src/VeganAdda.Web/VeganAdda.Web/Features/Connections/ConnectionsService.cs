@@ -117,7 +117,9 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
                 break;
             default: throw Missing();
         }
-        await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(ChangeArea.Connections, me.Id, id); return new Ok();
+        await db.SaveChangesAsync(); await tx.CommitAsync(); var affected = new List<Guid> { me.Id, id };
+        if (action == "report") affected.AddRange(await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync());
+        await changes.Changed(ChangeArea.Connections | ChangeArea.Notifications, affected.Distinct().ToArray()); return new Ok();
     }
     public async Task<List<AdminPerson>> GetBlocked()
     {

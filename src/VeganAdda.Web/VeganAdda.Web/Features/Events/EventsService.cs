@@ -149,7 +149,9 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         e.ReviewedBy = reviewer.Id; e.ReviewedAt = DateTimeOffset.UtcNow;
         if (e.SubmittedBy.HasValue) Notice(e.SubmittedBy.Value, input.Approve ? "event-approved" : "event-review", input.Approve ? "Your event was approved and is now published." : "Your event needs an update before it can be published: " + e.ReviewNote, "/events/suggest");
         await db.SaveChangesAsync(); await tx.CommitAsync();
-        if (e.SubmittedBy.HasValue) await changes.Changed(e.SubmittedBy.Value);
+        var reviewers = await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync();
+        if (e.SubmittedBy.HasValue) reviewers.Add(e.SubmittedBy.Value);
+        await changes.Changed(reviewers.Distinct().ToArray());
         return new Ok();
     }
     public async Task<List<EventReview>> EventQueue(bool includeTestEvents, int page = 1, int pageSize = 20)

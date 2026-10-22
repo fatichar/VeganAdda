@@ -79,6 +79,7 @@ public class FeatureQueryTests(DatabaseFixture f)
                     A = first ? viewer : peer.Id,
                     B = first ? peer.Id : viewer,
                     State = i < 13 ? "accepted" : "pending",
+                    Updated = DateTimeOffset.UtcNow.AddMinutes(-i),
                     RequestedBy = peer.Id
                 });
                 if (i < 13)

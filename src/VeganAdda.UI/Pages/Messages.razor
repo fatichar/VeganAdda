@@ -44,7 +44,7 @@ else
                     <div class="chat-header">
                         <a class="icon-button mobile-back" href="/messages" aria-label="Back to chats"><Icon Name="arrow_back" /></a>
                         <Avatar Name="@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")" Photo="@(SelectedRequest?.Person.Photo ?? Selected?.Photo ?? "")" VeganVerified="@(SelectedRequest?.Person.VeganVerified ?? Selected?.VeganVerified ?? false)" />
-                        <div class="chat-heading"><h2>@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")</h2><small>@(Selected?.BlockedByMe == true ? "Member blocked" : SelectedRequest is { } currentRequest ? (currentRequest.Incoming ? "Connection request" : "Request sent") : messagePage.CanMessage ? "Connected" : "Messaging unavailable · history remains available")</small></div>
+                        <div class="chat-heading"><h2>@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")</h2><small>@(Selected?.BlockedByMe == true ? "Member blocked" : SelectedRequest is { } currentRequest ? (currentRequest.Incoming ? "Connection request" : "Request sent") : Selected?.ReferralOnly == true ? "Vegan confirmation request" : messagePage.CanMessage ? "Connected" : "Messaging unavailable · history remains available")</small></div>
                         @if (SelectedPersonId is { } personId)
                         {
                             <div class="chat-menu" @onkeydown="MenuKeyDown">
@@ -115,6 +115,10 @@ else
                     else if (messagePage.CanMessage)
                     {
                         <MessageComposer @key="Key" Sending="@sending" Submitted="SendText" />
+                    }
+                    else if (Selected?.ReferralOnly == true && SelectedPersonId is { } referralProfile)
+                    {
+                        <div class="notice">This vegan confirmation request does not create a connection. <a href="/people/@referralProfile?action=connect">Connect to chat</a>.</div>
                     }
                     else if (Selected?.BlockedByMe == true)
                     {

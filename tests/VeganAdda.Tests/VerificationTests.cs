@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
@@ -30,6 +31,119 @@ public class VerificationTests(DatabaseFixture f)
     }
 
     [Fact]
+    public async Task Verification_requests_raise_existing_chats_and_create_nonmessaging_referral_threads()
+    {
+        var applicant = await Applicant(); var referrer = await f.Member(); var other = await f.Member(); var unconnected = await f.Member();
+        await Connect(applicant, referrer); await Connect(other, referrer);
+        var key = FeatureService.Pair(applicant, referrer);
+        await f.Call(applicant, $"conversations/{key}/messages", new MessageInput(Guid.NewGuid(), "Earlier chat"), "POST");
+        await f.Call(other, $"conversations/{FeatureService.Pair(other, referrer)}/messages", new MessageInput(Guid.NewGuid(), "More recent chat"), "POST");
+        Assert.NotEqual(key, ((Inbox)await f.Call(referrer, "inbox")).Chats.Items[0].Key);
+        var input = new VerificationSubmission("", [], null, Guid.NewGuid(), [referrer, unconnected]);
+        await As(applicant, s => s.SubmitVerification(input));
+        Assert.Equal(key, ((Inbox)await f.Call(referrer, "inbox")).Chats.Items[0].Key);
+        var newKey = FeatureService.Pair(applicant, unconnected);
+        var thread = Assert.Single(((Inbox)await f.Call(unconnected, "inbox")).Chats.Items);
+        Assert.Equal(newKey, thread.Key); Assert.True(thread.ReferralOnly); Assert.False(thread.CanMessage);
+        Assert.False(((MessagePage)await f.Call(unconnected, $"conversations/{newKey}/messages")).CanMessage);
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => f.Call(unconnected, $"conversations/{newKey}/messages", new MessageInput(Guid.NewGuid(), "No consent"), "POST"))).Status);
+        Assert.True(Assert.Single(await As(unconnected, s => s.GetReferralCards(applicant))).CanRespond);
+        await using var db = f.Db(); Assert.False(await db.Messages.AnyAsync(m => m.Conversation == newKey));
+    }
+
+    [Fact]
+    public async Task Admin_pending_badge_counts_actionable_queues_and_supports_incomplete_admins()
+    {
+        var admin = await f.Member(admin: true); var applicant = await Applicant(); var referrer = await f.Member();
+        await using (var db = f.Db()) { db.Profiles.Remove((await db.Profiles.FindAsync(admin))!); await db.SaveChangesAsync(); }
+        var baseline = ((UnreadCounts)await f.Call(admin, "unread")).PendingAdminActions;
+        await As(applicant, s => s.SubmitVerification(Input(referrer)));
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        var reportId = Guid.NewGuid(); var eventId = Guid.NewGuid();
+        await using (var db = f.Db())
+        {
+            db.Reports.Add(new() { Id = reportId, ReporterId = applicant, SubjectId = referrer, Reason = "Other" });
+            db.Events.Add(new() { Id = eventId, Title = "Pending event", PendingReview = true, Start = DateTimeOffset.UtcNow.AddDays(1) });
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(baseline + 3, ((UnreadCounts)await f.Call(admin, "unread")).PendingAdminActions);
+        Assert.Equal(0, ((UnreadCounts)await f.Call(referrer, "unread")).PendingAdminActions);
+        await f.Call(admin, "admin/moderate", new ModerateInput(reportId, "resolve"), "POST");
+        await f.Call(admin, "admin/profile-review", new VeganVerificationInput(applicant, true, RequestId: request.Id), "POST");
+        await f.Feature<VeganAdda.Web.Features.Events.EventsService, Ok>(admin, s => s.ReviewEvent(new(eventId, true)));
+        Assert.Equal(baseline, ((UnreadCounts)await f.Call(admin, "unread")).PendingAdminActions);
+    }
+
+    [Fact]
+    public async Task Multiple_referrers_receive_private_independent_requests_and_responses()
+    {
+        var applicant = await Applicant(); var first = await f.Member(); var second = await f.Member(); var stranger = await f.Member();
+        var input = new VerificationSubmission("Private proof", [], null, Guid.NewGuid(), [first, second, first]);
+        await As(applicant, s => s.SubmitVerification(input));
+        await As(applicant, s => s.SubmitVerification(input));
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        Assert.Equal(2, request.Referrers!.Length);
+        foreach (var id in new[] { first, second })
+        {
+            Assert.True(Assert.Single(await As(id, s => s.GetReferralCards(applicant))).CanRespond);
+            await using var db = f.Db();
+            Assert.Equal(1, await db.Notifications.CountAsync(n => n.UserId == id && n.Kind == "referral-request"));
+        }
+        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => As(stranger, s => s.RespondToReferral(request.Id, new(true))))).Status);
+        await As(first, s => s.RespondToReferral(request.Id, new(false)));
+        await As(second, s => s.RespondToReferral(request.Id, new(true)));
+        await As(second, s => s.RespondToReferral(request.Id, new(true)));
+        var updated = (await As(applicant, s => s.GetVerification())).Request!;
+        Assert.Equal("Declined", updated.Referrers!.Single(r => r.Id == first).Status);
+        Assert.Equal("Confirmed", updated.Referrers!.Single(r => r.Id == second).Status);
+        Assert.False(((ProfileInput)await f.Call(applicant, "profile")).VeganVerified);
+        var serialized = JsonSerializer.Serialize(await As(first, s => s.GetReferralCards(applicant)), Wire.Json);
+        Assert.DoesNotContain("Private proof", serialized); Assert.DoesNotContain(second.ToString(), serialized);
+        await As(applicant, s => s.WithdrawVerification(request.Id));
+        foreach (var id in new[] { first, second }) Assert.False(Assert.Single(await As(id, s => s.GetReferralCards(applicant))).CanRespond);
+    }
+
+    [Fact]
+    public async Task Multiple_referrers_validate_atomically_and_deleted_referrers_preserve_other_responses()
+    {
+        var applicant = await Applicant(); var first = await f.Member(); var second = await f.Member(); var unverified = await Applicant();
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(new("", [], null, Guid.NewGuid(), [first, unverified]))))).Status);
+        Assert.Null((await As(applicant, s => s.GetVerification())).Request);
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(new("", [], null, Guid.NewGuid(), Enumerable.Range(0, 11).Select(_ => Guid.NewGuid()).ToArray()))))).Status);
+        await As(applicant, s => s.SubmitVerification(new("", [], first, Guid.NewGuid(), [second])));
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        await As(second, s => s.RespondToReferral(request.Id, new(true)));
+        await f.Call(first, "account", new DeleteInput("DELETE"), "DELETE");
+        var details = (await As(applicant, s => s.GetVerification())).Request!;
+        Assert.Equal("Unavailable", details.Referrers!.Single(r => r.Id == null).Status);
+        Assert.Equal("Confirmed", details.Referrers!.Single(r => r.Id == second).Status);
+    }
+
+    [Fact]
+    public async Task Migration_preserves_legacy_referral_response_and_timestamp()
+    {
+        var isolated = new DatabaseFixture(); await isolated.InitializeAsync();
+        try
+        {
+            var applicant = await isolated.Member(); var referrer = await isolated.Member();
+            await using var db = isolated.Db();
+            var migrator = db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+            await migrator.MigrateAsync("20261022095620_ReportDetailsAndScreenshots");
+            var id = Guid.NewGuid(); var client = Guid.NewGuid(); var time = DateTimeOffset.UtcNow.AddDays(-1);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "VerificationRequests" ("Id", "ApplicantId", "ClientId", "Status", "Explanation", "EvidenceUrls", "ReferrerId", "ReferralStatus", "Submitted", "Responded")
+                VALUES ({id}, {applicant}, {client}, 'Under review', 'Legacy proof', ARRAY[]::varchar[], {referrer}, 'Confirmed', {time}, {time})
+                """);
+            await migrator.MigrateAsync();
+            var row = await db.VerificationReferrals.SingleAsync(r => r.RequestId == id);
+            Assert.Equal(referrer, row.ReferrerId); Assert.Equal("Confirmed", row.Status);
+            Assert.True((time - row.Responded!.Value).Duration() < TimeSpan.FromMilliseconds(1));
+            Assert.Equal("Legacy proof", (await db.VerificationRequests.SingleAsync(r => r.Id == id)).Explanation);
+        }
+        finally { await isolated.DisposeAsync(); }
+    }
+
+    [Fact]
     public async Task Explicit_requests_notify_reviewers_and_only_selected_referrer_can_confirm()
     {
         var applicant = await Applicant(); var referrer = await f.Member(); var stranger = await f.Member();
@@ -54,7 +168,7 @@ public class VerificationTests(DatabaseFixture f)
         {
             Assert.False(await db.Notifications.AnyAsync(n => n.UserId == inactiveModerator && n.Kind == "verification-request"));
             Assert.False(await db.Messages.AnyAsync(m => m.Conversation == FeatureService.Pair(applicant, referrer)));
-            Assert.Contains(await db.Notifications.Where(n => n.UserId == referrer).ToListAsync(), n => n.Url == $"/people/{applicant}#vegan-confirmation");
+            Assert.Contains(await db.Notifications.Where(n => n.UserId == referrer).ToListAsync(), n => n.Url == "/messages/" + FeatureService.Pair(applicant, referrer));
         }
         var cards = await As(referrer, s => s.GetReferralCards(applicant));
         Assert.True(Assert.Single(cards).CanRespond);

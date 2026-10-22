@@ -9,14 +9,24 @@ public sealed class NotificationsService(FeatureContext context) : FeatureServic
 {
     public async Task<UnreadCounts> Unread()
     {
-        var me = await User();
+        var me = await User(allowIncomplete: true);
+        var complete = await db.Profiles.Where(BasicProfile.Complete).AnyAsync(p => p.Id == me.Id);
+        if (!complete && !me.Admin) throw new ApiException(409, "Complete your basic profile first to use VeganAdda.");
+        var pending = me.Admin
+            ? await db.Profiles.Where(BasicProfile.Complete).CountAsync(p => p.IsVegan == true && !p.VeganVerified
+                && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended)
+                && db.VerificationRequests.Any(r => r.ApplicantId == p.Id && r.Status == VerificationStates.UnderReview))
+                + await db.Events.CountAsync(e => e.PendingReview)
+                + await db.Reports.CountAsync(r => !r.Resolved)
+            : 0;
+        if (!complete) return new(0, 0, pending);
         var messages = await (from message in db.Messages
                               join relationship in db.Relationships on message.Conversation equals relationship.Key
                               where message.SenderId != me.Id &&
                                   ((relationship.A == me.Id && message.Id > relationship.ReadA) ||
                                    (relationship.B == me.Id && message.Id > relationship.ReadB))
                               select message.Id).CountAsync();
-        return new UnreadCounts(messages, await db.Notifications.CountAsync(n => n.UserId == me.Id && n.Kind != "message" && !n.Read));
+        return new UnreadCounts(messages, await db.Notifications.CountAsync(n => n.UserId == me.Id && n.Kind != "message" && !n.Read), pending);
     }
     public async Task<Ok> NotificationAction(string method, string[] parts, JsonElement? body)
     {

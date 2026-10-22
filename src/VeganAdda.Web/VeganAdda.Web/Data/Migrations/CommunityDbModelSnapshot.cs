@@ -605,6 +605,36 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Saved");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.VerificationReferral", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ReferrerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("Responded")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReferrerId");
+
+                    b.HasIndex("RequestId", "ReferrerId")
+                        .IsUnique();
+
+                    b.ToTable("VerificationReferrals");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.VerificationRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -630,18 +660,7 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
-                    b.Property<string>("ReferralStatus")
-                        .IsRequired()
-                        .HasMaxLength(600)
-                        .HasColumnType("character varying(600)");
-
-                    b.Property<Guid?>("ReferrerId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTimeOffset?>("Resolved")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("Responded")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("ReviewedBy")
@@ -660,8 +679,6 @@ namespace VeganAdda.Web.Data.Migrations
                     b.HasIndex("ApplicantId")
                         .IsUnique()
                         .HasFilter("\"Status\" = 'Under review'");
-
-                    b.HasIndex("ReferrerId");
 
                     b.HasIndex("ApplicantId", "ClientId")
                         .IsUnique();
@@ -806,6 +823,20 @@ namespace VeganAdda.Web.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.VerificationReferral", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ReferrerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("VeganAdda.Web.Data.VerificationRequest", null)
+                        .WithMany("Referrers")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.VerificationRequest", b =>
                 {
                     b.HasOne("VeganAdda.Web.Data.Account", null)
@@ -813,11 +844,11 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasForeignKey("ApplicantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
 
-                    b.HasOne("VeganAdda.Web.Data.Account", null)
-                        .WithMany()
-                        .HasForeignKey("ReferrerId")
-                        .OnDelete(DeleteBehavior.SetNull);
+            modelBuilder.Entity("VeganAdda.Web.Data.VerificationRequest", b =>
+                {
+                    b.Navigation("Referrers");
                 });
 #pragma warning restore 612, 618
         }

@@ -9,12 +9,13 @@ public static class VerificationStates
     public const string Withdrawn = "Withdrawn";
 }
 
-public record VerificationSubmission(string Explanation, string[] EvidenceUrls, Guid? ReferrerId, Guid ClientId);
+public record VerificationSubmission(string Explanation, string[] EvidenceUrls, Guid? ReferrerId, Guid ClientId, Guid[]? ReferrerIds = null);
 public record VerificationCandidate(Guid Id, string Name);
 public record VerificationResponse(bool Confirm);
 public record VerificationRequestAction(Guid Id);
 public record VerificationDetails(Guid Id, string Status, string Explanation, string[] EvidenceUrls,
-    Guid? ReferrerId, string? ReferrerName, string ReferralStatus, string? Feedback, DateTimeOffset Submitted);
+    Guid? ReferrerId, string? ReferrerName, string ReferralStatus, string? Feedback, DateTimeOffset Submitted, VerificationReferrer[]? Referrers = null);
+public record VerificationReferrer(Guid? Id, string? Name, string Status);
 public record VerificationStatus(string Status, VerificationDetails? Request);
 // Participant projection deliberately excludes evidence and moderator feedback.
 public record ReferralCard(Guid Id, Guid ApplicantId, string ApplicantName, string Status, string ReferralStatus, bool CanRespond);

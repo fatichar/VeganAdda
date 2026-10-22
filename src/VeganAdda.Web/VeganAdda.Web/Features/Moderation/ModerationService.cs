@@ -136,7 +136,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
             }
             else throw Missing();
         }
-        await db.SaveChangesAsync(); await changes.Changed(affected.ToArray()); return new Ok();
+        await db.SaveChangesAsync(); affected.UnionWith(await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync()); await changes.Changed(affected.ToArray()); return new Ok();
     }
     public async Task<Ok> ReviewProfile(VeganVerificationInput input, bool moderator = false)
     {
@@ -170,7 +170,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         await tx.CommitAsync();
         lifecycle.Record(input.Confirm ? LifecycleEvent.VeganConfirmed : wasVerified ? LifecycleEvent.VeganVerificationRemoved : LifecycleEvent.VeganVerificationFeedback, profile.Id, reviewer.Id);
         var recipients = await verification.Reviewers(profile.TestProfile);
-        if (request?.ReferrerId is { } referrer) recipients.Add(referrer);
+        if (request != null) recipients.AddRange(await db.VerificationReferrals.Where(r => r.RequestId == request.Id && r.ReferrerId != null).Select(r => r.ReferrerId!.Value).ToListAsync());
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(input.Id).Distinct().ToArray());
         return new Ok();
     }

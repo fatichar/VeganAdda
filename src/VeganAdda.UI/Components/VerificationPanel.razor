@@ -1,24 +1,24 @@
 @inherits Screen
 @inject IVerificationApi VerificationApi
 <section class="card verification-panel" id="verification" aria-label="Vegan verification">
-    <h3>Vegan verification</h3>
+    <h3>Verification</h3>
     <Feedback Error="@Error" Success="@Success" />
     @if (status != null)
     {
-        <p role="status">@status.Status</p>
+        @if (status.Status != VerificationStates.NotRequested) { <p role="status">@status.Status</p> }
         @if (status.Request?.Feedback is { } feedback) { <p class="notice">@feedback</p> }
         @if (status.Status == VerificationStates.UnderReview)
         {
             <p class="small">A moderator will review your request.</p>
-            @if (status.Request?.ReferrerName is { } name) { <p class="small">@name · @status.Request.ReferralStatus</p> }
-            <button type="button" class="secondary" disabled="@Busy" @onclick="Withdraw">Withdraw request</button>
+            @foreach (var referrer in status.Request?.Referrers ?? []) { <p class="small">@(referrer.Name ?? "Deleted member") · @referrer.Status</p> }
+            <button type="button" class="secondary" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="Withdraw">Withdraw request</button>
         }
-        else if (!CanRequest) { <p class="small">Save your basic profile with “I am a vegan” selected, then request verification here.</p> }
+        else if (!CanRequest) { <p class="small">Save your profile, then request verification here.</p> }
         else if (Session?.IsVegan == true && status.Status != VerificationStates.Verified)
         {
             @if (!editing)
             {
-                <button type="button" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="Open">Request vegan verification</button>
+                <button type="button" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="Open">Request verification</button>
             }
             else
             {
@@ -27,13 +27,13 @@
                         <p class="small">A moderator verifies your vegan status using your social links or a referral from a verified vegan. Include your social links and any other proof that shows you are vegan below. Only admins and moderators can see this information.</p>
                         <label for="verification-explanation">Vegan verification details (optional with a referral)</label>
                         <textarea id="verification-explanation" rows="5" maxlength="4000" @bind="explanation" @bind:event="oninput" placeholder="Share social links, other proof, or tell us about being vegan…"></textarea>
-                        <label for="verification-referrer">Ask a verified vegan for a referral (optional)</label>
-                        <small>Search for a verified vegan who knows you. You don't need to be connected. They won't see your private verification details.</small>
-                        @if (selected != null)
+                        <label for="verification-referrer">Ask verified vegans for referrals (optional)</label>
+                        <small>Choose up to ten verified vegans who know you. You don't need to be connected. They won't see your private verification details.</small>
+                        @foreach (var person in selected)
                         {
-                            <p>@selected.Name <button type="button" class="text-button" @onclick="ClearReferrer">Remove</button></p>
+                            <p class="selected-referrer" @key="person.Id">@person.Name <button type="button" class="text-button" aria-label="@($"Remove {person.Name}")" @onclick="() => selected.Remove(person)">Remove</button></p>
                         }
-                        else
+                        @if (selected.Count < 10)
                         {
                             <div class="referrer-search"><Icon Name="search" /><input id="verification-referrer" role="combobox" aria-autocomplete="list" aria-expanded="@(results.Count > 0 ? "true" : "false")" aria-controls="verification-candidates" aria-activedescendant="@(active >= 0 && active < results.Count ? $"verification-candidate-{active}" : null)" autocomplete="off" value="@query" @oninput="Search" @onkeydown="SearchKey" placeholder="Search verified vegans by name" /></div>
                             <div id="verification-candidates" role="listbox" aria-label="Verified vegans">
@@ -61,11 +61,15 @@
     bool editing, searching;
     string explanation = "", query = "";
     Guid clientId = Guid.NewGuid();
-    VerificationCandidate? selected;
+    List<VerificationCandidate> selected = [];
     List<VerificationCandidate> results = [];
     int active = -1, searchVersion;
     CancellationTokenSource? searchCancellation;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(Refresh); }
+    protected override async Task OnParametersSetAsync()
+    {
+        if (CanRequest && Session?.Id != null && Session.IsVegan != true) await Run(Refresh);
+    }
     protected override async Task Refresh()
     {
         Session = await Api.Get<Session>("session");
@@ -76,10 +80,11 @@
     {
         editing = true; clientId = Guid.NewGuid();
         explanation = string.Join("\n", new[] { status?.Request?.Explanation ?? "" }.Concat(status?.Request?.EvidenceUrls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)));
+        selected = (status?.Request?.Referrers ?? []).Where(r => r.Id.HasValue && r.Name != null && r.Status != "Unavailable").Select(r => new VerificationCandidate(r.Id!.Value, r.Name!)).ToList();
         ClearReferrer();
     }
-    void ClearReferrer() { selected = null; query = ""; results = []; active = -1; searchVersion++; searchCancellation?.Cancel(); searching = false; }
-    void Select(VerificationCandidate candidate) { ClearReferrer(); selected = candidate; }
+    void ClearReferrer() { query = ""; results = []; active = -1; searchVersion++; searchCancellation?.Cancel(); searching = false; }
+    void Select(VerificationCandidate candidate) { if (selected.Count < 10 && !selected.Any(p => p.Id == candidate.Id)) selected.Add(candidate); ClearReferrer(); }
     async Task Search(ChangeEventArgs e)
     {
         query = e.Value?.ToString() ?? ""; results = []; active = -1;
@@ -91,7 +96,7 @@
         {
             await Task.Delay(300, token);
             var found = await VerificationApi.SearchReferrers(query);
-            if (version == searchVersion) results = found;
+            if (version == searchVersion) results = found.Where(p => !selected.Any(s => s.Id == p.Id)).ToList();
         }
         catch (OperationCanceledException) { }
         catch (ApiException ex) { if (version == searchVersion) Error = ex.Message; }
@@ -109,7 +114,7 @@
     {
         try
         {
-            await VerificationApi.SubmitVerification(new(explanation, [], selected?.Id, clientId));
+            await VerificationApi.SubmitVerification(new(explanation, [], null, clientId, selected.Select(p => p.Id).ToArray()));
             editing = false; await Refresh(); Success = "Verification request submitted.";
         }
         catch (ApiException ex) when (ex.Status == 409) { await Refresh(); throw; }
