@@ -1,4 +1,4 @@
-.location-trigger{background:var(--surface);color:var(--green);border:1px solid var(--line);border-radius:14px;min-width:0;max-width:100%;padding:10px 14px;gap:8px}
+.location-trigger{background:var(--surface);color:var(--green);border:1px solid var(--control);border-radius:14px;min-width:0;max-width:100%;padding:10px 14px;gap:8px}
 .location-trigger>span:not(.material-symbols-outlined){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .location-menu{display:grid}
 .location-row{background:transparent;color:var(--forest);border-radius:0;padding:18px 0;text-align:left;justify-content:flex-start;border-bottom:1px solid var(--line)}
