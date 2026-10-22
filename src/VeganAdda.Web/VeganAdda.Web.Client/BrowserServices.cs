@@ -19,12 +19,12 @@ public class BrowserApi(HttpClient http) : ICommunityApi
         request.Content = JsonContent.Create(body, options: Wire.Json);
         return await Result<T>(await http.SendAsync(request));
     }
-    public async Task<string> Upload(Stream stream, string filename, string contentType)
+    public async Task<string> Upload(Stream stream, string filename, string contentType, bool reportScreenshot = false)
     {
         var token = await http.GetFromJsonAsync<Csrf>("api/csrf");
         using var form = new MultipartFormDataContent(); using var content = new StreamContent(stream);
         content.Headers.ContentType = new(contentType); form.Add(content, "file", filename);
-        using var request = new HttpRequestMessage(HttpMethod.Post, "api/upload") { Content = form };
+        using var request = new HttpRequestMessage(HttpMethod.Post, reportScreenshot ? "api/upload?purpose=report" : "api/upload") { Content = form };
         request.Headers.Add("X-CSRF-TOKEN", token!.Token);
         return (await Result<UploadResult>(await http.SendAsync(request))).Path;
     }
@@ -76,7 +76,7 @@ public class BrowserPlatform(NavigationManager navigation, ICommunityApi api, IJ
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
     }
     public event Action? Changed;
-    public Task<string> Upload(Stream stream, string filename, string contentType) => ((BrowserApi)api).Upload(stream, filename, contentType);
+    public Task<string> Upload(Stream stream, string filename, string contentType, bool reportScreenshot = false) => ((BrowserApi)api).Upload(stream, filename, contentType, reportScreenshot);
     public void SignIn(string returnTo) => navigation.NavigateTo("/signin?returnUrl=" + Uri.EscapeDataString(returnTo));
     public async Task SignInWithGoogle(string returnTo)
     {

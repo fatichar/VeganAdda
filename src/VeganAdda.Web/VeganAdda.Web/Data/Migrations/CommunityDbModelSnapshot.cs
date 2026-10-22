@@ -551,6 +551,13 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<DateTimeOffset>("Created")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasDefaultValue("");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(600)
@@ -564,6 +571,10 @@ namespace VeganAdda.Web.Data.Migrations
 
                     b.Property<DateTimeOffset?>("ResolvedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Screenshot")
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
 
                     b.Property<Guid?>("SubjectId")
                         .HasColumnType("uuid");

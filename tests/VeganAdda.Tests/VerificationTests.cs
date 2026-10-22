@@ -30,11 +30,10 @@ public class VerificationTests(DatabaseFixture f)
     }
 
     [Fact]
-    public async Task Explicit_requests_notify_reviewers_and_only_authorized_connections_can_confirm()
+    public async Task Explicit_requests_notify_reviewers_and_only_selected_referrer_can_confirm()
     {
         var applicant = await Applicant(); var referrer = await f.Member(); var stranger = await f.Member();
         var admin = await f.Member(admin: true); var moderator = await f.Member(); var inactiveModerator = await Applicant();
-        await Connect(applicant, referrer);
         await using (var db = f.Db())
         {
             (await db.Accounts.FindAsync(moderator))!.Moderator = true;
@@ -55,7 +54,7 @@ public class VerificationTests(DatabaseFixture f)
         {
             Assert.False(await db.Notifications.AnyAsync(n => n.UserId == inactiveModerator && n.Kind == "verification-request"));
             Assert.False(await db.Messages.AnyAsync(m => m.Conversation == FeatureService.Pair(applicant, referrer)));
-            Assert.Contains(await db.Notifications.Where(n => n.UserId == referrer).ToListAsync(), n => n.Url == "/messages/" + FeatureService.Pair(applicant, referrer));
+            Assert.Contains(await db.Notifications.Where(n => n.UserId == referrer).ToListAsync(), n => n.Url == $"/people/{applicant}#vegan-confirmation");
         }
         var cards = await As(referrer, s => s.GetReferralCards(applicant));
         Assert.True(Assert.Single(cards).CanRespond);
@@ -76,7 +75,7 @@ public class VerificationTests(DatabaseFixture f)
     }
 
     [Fact]
-    public async Task Search_is_bounded_to_eligible_accepted_connections()
+    public async Task Search_includes_unconnected_verified_vegans_and_excludes_ineligible_members()
     {
         var applicant = await Applicant(); var eligible = await f.Member(); var unverified = await Applicant();
         var disconnected = await f.Member(); var blocked = await f.Member(); var suspended = await f.Member(); var test = await f.Member();
@@ -90,9 +89,13 @@ public class VerificationTests(DatabaseFixture f)
             (await db.Profiles.FindAsync(test))!.TestProfile = true;
             db.Blocks.Add(new() { Owner = blocked, Subject = applicant }); await db.SaveChangesAsync();
         }
-        Assert.Equal(eligible, Assert.Single(await As(applicant, s => s.SearchReferrers(prefix))).Id);
+        Assert.Equal(new[] { eligible, disconnected }.Order(), (await As(applicant, s => s.SearchReferrers(prefix))).Select(p => p.Id).Order());
         Assert.Empty(await As(applicant, s => s.SearchReferrers("S")));
-        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(Input(disconnected))))).Status);
+        await As(applicant, s => s.SubmitVerification(Input(disconnected)));
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        Assert.True(Assert.Single(await As(disconnected, s => s.GetReferralCards(applicant))).CanRespond);
+        await As(disconnected, s => s.RespondToReferral(request.Id, new(true)));
+        Assert.False(((ProfileInput)await f.Call(applicant, "profile")).VeganVerified);
         for (var i = 0; i < 12; i++)
         {
             var id = await f.Member(); await Connect(applicant, id);
@@ -103,7 +106,6 @@ public class VerificationTests(DatabaseFixture f)
 
     [Theory]
     [InlineData("block")]
-    [InlineData("disconnect")]
     [InlineData("verification")]
     [InlineData("suspend")]
     [InlineData("test")]
@@ -123,6 +125,21 @@ public class VerificationTests(DatabaseFixture f)
         }
         Assert.Contains((await Assert.ThrowsAsync<ApiException>(() => As(referrer, s => s.RespondToReferral(request.Id, new(true))))).Status, new[] { 403, 409 });
         Assert.Equal("Unavailable", (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
+    }
+
+    [Fact]
+    public async Task Removing_connection_does_not_invalidate_referral()
+    {
+        var applicant = await Applicant(); var referrer = await f.Member(); await Connect(applicant, referrer);
+        await As(applicant, s => s.SubmitVerification(Input(referrer)));
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        await using (var db = f.Db())
+        {
+            (await db.Relationships.FindAsync(FeatureService.Pair(applicant, referrer)))!.State = "removed";
+            await db.SaveChangesAsync();
+        }
+        await As(referrer, s => s.RespondToReferral(request.Id, new(true)));
+        Assert.Equal("Confirmed", (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
     }
 
     [Fact]

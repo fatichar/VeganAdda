@@ -22,7 +22,7 @@ public interface IPlatform
     Task SignInWithGoogle(string returnTo);
     Task ClearFirebaseSession();
     Task StartRealtime();
-    Task<string> Upload(Stream stream, string filename, string contentType);
+    Task<string> Upload(Stream stream, string filename, string contentType, bool reportScreenshot = false);
     ChangeArea LastChange => ChangeArea.All;
     Task<bool> IsVisible() => Task.FromResult(true);
     event Action? Changed;

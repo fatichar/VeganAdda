@@ -369,7 +369,7 @@ public class CommunityTests(DatabaseFixture f)
     {
         var (a,b,key)=await Connected();
         await f.Call(a,$"conversations/{key}/messages",new MessageInput(Guid.NewGuid(),"delete history"),"POST");
-        await f.Call(b,$"people/{a}/report",new ReportInput(a,"Test report"),"POST");
+        await f.Call(b,$"people/{a}/report",new ReportInput(a,"Other", "Test report"),"POST");
         await f.Call(a,"account",new DeleteInput("DELETE"),"DELETE");
         await using var db=f.Db(); Assert.False(await db.Profiles.AnyAsync(p=>p.Id==a)); Assert.False(await db.Messages.AnyAsync(m=>m.Conversation==key)); Assert.True(await db.Reports.AnyAsync(r=>r.SubjectId==null&&r.ReporterId==b));
     }

@@ -1,0 +1,4 @@
+.member-report label { display: block; margin-top: .9rem; }
+.member-report select, .member-report textarea, .member-report ::deep input { width: 100%; min-width: 0; box-sizing: border-box; }
+.member-report small { display: block; margin: .5rem 0; }
+.report-fields { border: 0; padding: 0; margin: 0; min-width: 0; }

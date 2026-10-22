@@ -79,7 +79,7 @@ else if (data != null) {
     else {
         @if (data.Reports.Count == 0) { <Empty Icon="shield" Title="No reports to review" Text="Member reports will appear here." /> }
         @foreach (var report in data.Reports) {
-            <article class="card"><div class="section-heading"><h3>@report.Subject</h3><span class="badge">@(report.Resolved ? "Resolved" : "Needs review")</span></div><p>@report.Reason</p><small>@Date(report.Created)</small>
+            <article class="card"><div class="section-heading"><h3>@report.Subject</h3><span class="badge">@(report.Resolved ? "Resolved" : "Needs review")</span></div><p><strong>@report.Reason</strong></p>@if (report.Details != "") { <p style="white-space: pre-wrap">@report.Details</p> }@if (report.Screenshot != null) { <a href="@report.Screenshot" target="_blank" rel="noopener">View screenshot</a> }<small>@Date(report.Created)</small>
             @if (!report.Resolved) { <div class="actions"><button class="secondary" @onclick='() => Moderate(report.Id, "resolve")'>Mark reviewed</button>@if (report.SubjectId != Guid.Empty) { <button class="danger-button" @onclick='() => Moderate(report.SubjectId, "suspend")'>Suspend member</button> }</div> }</article>
         }
         <Pagination PageNumber="@reportsPage" PageSize="20" Total="@data.ReportsTotal" Busy="@Busy" PageChanged="SetPage" />

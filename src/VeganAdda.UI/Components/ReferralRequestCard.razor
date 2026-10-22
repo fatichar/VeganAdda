@@ -2,9 +2,9 @@
 @inject IVerificationApi VerificationApi
 @foreach (var card in cards)
 {
-    <section class="notice referral-request" aria-label="Vegan confirmation request">
+    <section class="notice referral-request" id="vegan-confirmation" aria-label="Vegan confirmation request">
         <strong>Vegan confirmation request</strong>
-        <p>@(card.ApplicantId == Session?.Id ? "You asked this connection to confirm you are vegan." : $"{card.ApplicantName} asked you to confirm they are vegan.")</p>
+        <p>@(card.ApplicantId == Session?.Id ? "You asked this member to confirm you are vegan." : $"{card.ApplicantName} asked you to confirm they are vegan.")</p>
         <p class="small" role="status">@card.Status · @card.ReferralStatus</p>
         @if (card.CanRespond)
         {

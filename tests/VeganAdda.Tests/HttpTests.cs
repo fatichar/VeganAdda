@@ -334,6 +334,51 @@ public class HttpTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await Post(admin, "/api/admin/profile-review", new VeganVerificationInput(user, true))).StatusCode);
         Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
     }
+    [Fact] public async Task Reports_validate_reasons_and_keep_screenshots_private_and_owned()
+    {
+        var reporter = await f.Member(); var subject = await f.Member(); var stranger = await f.Member();
+        using var member = Client(reporter); using var target = Client(subject); using var other = Client(stranger);
+        using var admin = Client(await f.Member(admin: true)); using var anonymous = Client();
+        using var bitmap = new SKBitmap(8, 8); bitmap.Erase(SKColors.Blue);
+        using var image = SKImage.FromBitmap(bitmap); using var encoded = image.Encode(SKEncodedImageFormat.Png, 90);
+        var token = await member.GetFromJsonAsync<Csrf>("/api/csrf");
+        using var form = new MultipartFormDataContent(); var content = new ByteArrayContent(encoded.ToArray());
+        content.Headers.ContentType = new("image/png"); form.Add(content, "file", "screenshot.png");
+        using var upload = new HttpRequestMessage(HttpMethod.Post, "/api/upload?purpose=report") { Content = form };
+        upload.Headers.Add("X-CSRF-TOKEN", token!.Token);
+        var response = await member.SendAsync(upload); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var path = (await response.Content.ReadFromJsonAsync<UploadResult>())!.Path;
+        Assert.Matches("^/report-media/[a-f0-9]{32}\\.jpg$", path);
+        Assert.Equal(HttpStatusCode.OK, (await member.GetAsync(path)).StatusCode);
+        foreach (var viewer in new[] { anonymous, target, other, admin }) Assert.Equal(HttpStatusCode.NotFound, (await viewer.GetAsync(path)).StatusCode);
+
+        async Task<HttpResponseMessage> Report(HttpClient client, ReportInput input)
+        {
+            var csrf = await client.GetFromJsonAsync<Csrf>("/api/csrf");
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/people/{subject}/report") { Content = JsonContent.Create(input) };
+            request.Headers.Add("X-CSRF-TOKEN", csrf!.Token); return await client.SendAsync(request);
+        }
+        Assert.Equal(HttpStatusCode.BadRequest, (await Report(member, new(subject, ""))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Report(member, new(subject, "Unsupported"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Report(member, new(subject, "Other", new string('a', 1001)))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Report(member, new(subject, "Other", Screenshot: "/media/" + path[14..]))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Report(other, new(subject, "Spam", Screenshot: path))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Report(member, new(subject, "Harassment", "  Private details  ", path))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Report(member, new(subject, "Not a vegan"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(path)).StatusCode);
+        var cache = (await admin.GetAsync(path)).Headers.CacheControl!;
+        Assert.True(cache.Private); Assert.True(cache.NoStore);
+        foreach (var viewer in new[] { anonymous, target, other }) Assert.Equal(HttpStatusCode.NotFound, (await viewer.GetAsync(path)).StatusCode);
+        var reports = await admin.GetFromJsonAsync<AdminData>("/api/admin?section=Reports");
+        var report = Assert.Single(reports!.Reports, r => r.Screenshot == path);
+        Assert.Equal("Harassment", report.Reason); Assert.Equal("Private details", report.Details);
+        Assert.DoesNotContain(path, await (await target.GetAsync($"/api/people/{reporter}")).Content.ReadAsStringAsync());
+        var profile = await member.GetFromJsonAsync<ProfileInput>("/api/profile"); profile!.Photo = path;
+        var csrfToken = await member.GetFromJsonAsync<Csrf>("/api/csrf");
+        using var save = new HttpRequestMessage(HttpMethod.Post, "/api/profile") { Content = JsonContent.Create(profile) };
+        save.Headers.Add("X-CSRF-TOKEN", csrfToken!.Token);
+        Assert.Equal(HttpStatusCode.BadRequest, (await member.SendAsync(save)).StatusCode);
+    }
     [Fact] public async Task SignalR_authenticates_origin_and_delivers_invalidation_after_persisted_message()
     {
         var a = await f.Member(); var b = await f.Member(); using var ca = Client(a); using var cb = Client(b);

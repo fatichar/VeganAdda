@@ -36,9 +36,10 @@ else if (model != null) {
         }
         else
         {
-            <div><strong>Vegan status unverified</strong><small>You can use the community while you wait. Request verification below after saving your profile.</small></div>
+            <div><strong>Vegan status unverified</strong><small>You can use the community while you wait for verification.</small></div>
         }
     </div>
+    @if (!model.VeganVerified) { <VerificationPanel CanRequest="@(Session.BasicProfileComplete && Session.IsVegan == true)" /> }
 }
 @if (model.IsVegan == false) { <p class="small muted">Non-vegan members can connect and appear when someone includes non-vegan profiles in Discover. Event suggestions, referrals and moderation require verified vegan status.</p> }
 </fieldset>
@@ -69,7 +70,7 @@ else if (model != null) {
 <fieldset class="profile-section"><legend>Visibility</legend><label class="check-row"><input type="checkbox" @bind="model.Public" /><span>Show my profile to public visitors<small>Your name, photo, city, state, country, profession, bio, interests and non-dating intentions will be public. Social links are visible only to signed-in members. Public profiles may be featured. Dating is always excluded from public responses.</small></span></label></fieldset>
 <fieldset class="profile-section"><legend>Event visibility</legend><label class="check-row"><input type="checkbox" @bind="model.DefaultAttendeeVisible" /><span>Show me in attendee lists by default<small>Applies to future attendance choices. You can change visibility for each event.</small></span></label></fieldset>
 </section>
-<p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p><button class="full" disabled="@(Busy || locationBusy)">@(Busy ? "Saving…" : onboarding ? "Complete basic profile" : "Save changes")<Icon Name="arrow_forward" /></button>
+<p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p><button class="full" disabled="@(Busy || locationBusy)">@(Busy ? "Saving…" : "Save changes")<Icon Name="arrow_forward" /></button>
 </fieldset></form> }</div>
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
@@ -104,7 +105,3 @@ else if (model != null) {
     Task SaveProfile() => Run(async () => { model!.Interests = interests.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries); await Profiles.SaveProfile(model!); if (onboarding) Nav.NavigateTo(ProfileSetup.SafeReturnUrl(ReturnUrl), true); else { model = await Profiles.GetProfile(); Session = await Api.Get<Session>("session"); interests = string.Join(", ", model.Interests); Success = "Your profile has been updated."; } });
     Task Upload(InputFileChangeEventArgs e) => Run(async () => { var file = e.File; if (file.Size > 2 * 1024 * 1024) { Error = "Please choose an image smaller than 2 MB."; return; } await using var stream = file.OpenReadStream(2 * 1024 * 1024); model!.Photo = await Platform.Upload(stream, file.Name, file.ContentType); Success = "Photo ready. Save your profile to keep it."; });
 }
-
-
-
-@if (Session?.BasicProfileComplete == true && Session.VeganStatusUnverified) { <div class="narrow"><VerificationPanel /></div> }

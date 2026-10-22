@@ -133,6 +133,8 @@ public class Report
     public Guid? ReporterId { get; set; }
     public Guid? SubjectId { get; set; }
     public string Reason { get; set; } = "";
+    public string Details { get; set; } = "";
+    public string? Screenshot { get; set; }
     public bool Resolved { get; set; }
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ResolvedAt { get; set; }
@@ -229,6 +231,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
         b.Entity<VerificationRequest>().Property(r => r.Explanation).HasMaxLength(4000);
+        b.Entity<Report>().Property(r => r.Details).HasMaxLength(1000).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
         b.Entity<PushDevice>().HasIndex(x => x.Token).IsUnique();

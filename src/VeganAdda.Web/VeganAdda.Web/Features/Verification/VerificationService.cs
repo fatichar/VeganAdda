@@ -10,8 +10,6 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
     private IQueryable<Profile> EligibleReferrers(Guid applicant) => db.Profiles.Where(BasicProfile.Complete)
         .Where(p => p.Id != applicant && p.IsVegan == true && p.VeganVerified && !p.TestProfile
             && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended)
-            && db.Relationships.Any(r => r.State == "accepted" &&
-                ((r.A == applicant && r.B == p.Id) || (r.B == applicant && r.A == p.Id)))
             && !db.Blocks.Any(b => (b.Owner == applicant && b.Subject == p.Id) || (b.Owner == p.Id && b.Subject == applicant)));
 
     internal Task<bool> Eligible(Guid applicant, Guid referrer) => EligibleReferrers(applicant).AnyAsync(p => p.Id == referrer);
@@ -60,7 +58,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
             throw new ApiException(400, "Add up to five evidence links.");
         var urls = input.EvidenceUrls.Select(u => Url(u)).Where(u => u != null).Cast<string>().Distinct().ToArray();
         if (explanation.Length == 0 && urls.Length == 0 && !input.ReferrerId.HasValue)
-            throw new ApiException(400, "Add an explanation, evidence link, or a connection who can confirm you are vegan.");
+            throw new ApiException(400, "Add verification details or choose a verified vegan who can refer you.");
         await using var tx = await db.Database.BeginTransactionAsync();
         await UserLock(me.Id);
         if (await db.VerificationRequests.AnyAsync(r => r.ApplicantId == me.Id && r.ClientId == input.ClientId)) return new Ok();
@@ -72,7 +70,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         if (input.ReferrerId is { } referrer)
         {
             await PairLock(Pair(me.Id, referrer));
-            if (!await Eligible(me.Id, referrer)) throw new ApiException(409, "Choose an active verified vegan connection.");
+            if (!await Eligible(me.Id, referrer)) throw new ApiException(409, "Choose an active verified vegan member.");
         }
         db.VerificationRequests.Add(new() { ApplicantId = me.Id, ClientId = input.ClientId, Explanation = explanation,
             EvidenceUrls = urls, ReferrerId = input.ReferrerId, ReferralStatus = input.ReferrerId.HasValue ? "Awaiting confirmation" : "Not requested" });
@@ -81,7 +79,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
             Notice(recipient, "verification-request", "A member requested vegan verification.", "/moderation");
         if (input.ReferrerId is { } target)
         {
-            Notice(target, "referral-request", "A connection asked you to confirm they are vegan.", "/messages/" + Pair(me.Id, target));
+            Notice(target, "referral-request", "A member asked you to confirm they are vegan.", $"/people/{me.Id}#vegan-confirmation");
             recipients.Add(target);
         }
         profile.ReviewNote = null;
@@ -139,8 +137,8 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         row.ReferralStatus = response; row.Responded = DateTimeOffset.UtcNow;
         var recipients = await Reviewers();
         foreach (var recipient in recipients)
-            Notice(recipient, "referral-response", "A connection responded to a vegan verification request.", "/moderation");
-        Notice(applicant, "referral-response", input.Confirm ? "Your connection confirmed you are vegan. A moderator will review your request." : "Your connection declined to confirm your vegan status. Your request remains under review.", "/settings/profile#verification");
+            Notice(recipient, "referral-response", "A member responded to a vegan verification request.", "/moderation");
+        Notice(applicant, "referral-response", input.Confirm ? "Your referrer confirmed you are vegan. A moderator will review your request." : "Your referrer declined to confirm your vegan status. Your request remains under review.", "/settings/profile#verification");
         await db.SaveChangesAsync(); await tx.CommitAsync();
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(applicant).Append(me.Id).Distinct().ToArray());
         return new Ok();

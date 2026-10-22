@@ -32,7 +32,7 @@ public class ServerPlatform : IPlatform
     public Task SignInWithGoogle(string returnTo) => Task.CompletedTask;
     public Task ClearFirebaseSession() => Task.CompletedTask;
     public Task StartRealtime() => Task.CompletedTask;
-    public Task<string> Upload(Stream stream, string filename, string contentType) => throw new InvalidOperationException("Uploads require an interactive client.");
+    public Task<string> Upload(Stream stream, string filename, string contentType, bool reportScreenshot = false) => throw new InvalidOperationException("Uploads require an interactive client.");
 }
 public class CommunityHub(CommunityDb db) : Hub
 {

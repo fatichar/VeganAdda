@@ -43,23 +43,23 @@ public browsing; incomplete profiles never appear in discovery.
 independent of referrals. Profile edits preserve it; selecting non-vegan clears it.
 Social links are optional contact details for signed-in members and authorized reviewers;
 anonymous projections omit them. Verification is requested explicitly through the
-Verification feature. A request contains a private explanation, up to five HTTPS
-links, and/or one eligible accepted connection. A connection can confirm the member
+Verification feature. A request contains private verification details (social links or other proof)
+and/or one eligible verified vegan referrer. No connection is required. A referrer can confirm the member
 is vegan but only a moderator or admin grants verification. The queue contains active
 submitted requests, not all unverified vegans. Request status is private to the owner
-and review team; selected connections see request/confirmation status in chat cards, never evidence.
+and review team; selected referrers see request/confirmation status on the applicant profile or existing chat cards, never evidence.
 
 Requests may be withdrawn or resubmitted after feedback. Account locks, a filtered
 unique index and client request IDs prevent duplicate active requests and repeated
-notifications. In-app notices link reviewers to `/moderation`, connections to their
-existing chat, and applicants to profile settings. Push remains chat-only.
+notifications. In-app notices link reviewers to `/moderation`, referrers to the
+applicant profile, and applicants to profile settings. Push remains chat-only.
 Referral-code creation/redemption is retired with HTTP 410; historical referrals
 remain labelled context for reviewers. Existing verified statuses are preserved;
 unverified members without a request start at Not requested. Evidence and resolved
 requests remain restricted until applicant account deletion (which cascades them);
 deleting a referrer removes that identity without deleting the applicant's request.
 Verification removal does not hide a complete profile or cascade to referred
-members. Active, verified, non-test vegans may confirm connections, suggest events and
+members. Active, verified, non-test vegans may provide referrals, suggest events and
 become moderators. Discovery includes unverified vegans unless filtered out.
 
 Feature consent is always enabled and is no longer editable. Administrators choose
@@ -81,7 +81,7 @@ legacy trust or earlier consent choices.
 | Events | Published events, attendance/check-in, submissions and event review |
 | Moderation | Administrative/member review workflows; uses Events and Referrals |
 | Referrals | Historical referral context and eligibility; retired invitation endpoint |
-| Verification | Explicit requests, private evidence, eligible connection search and confirmations |
+| Verification | Explicit requests, private evidence, eligible referrer search and confirmations |
 | Notifications | Notices and unread projections |
 | Saved | Paged saved profiles/events; uses their visibility/projection policies |
 | Shared | Request context, common guards/validation, transaction locks, endpoint support |
@@ -149,3 +149,9 @@ expensive, Testcontainers if local database provisioning becomes a recurring obs
 and a SignalR backplane/shared media/key storage strategy before adding replicas.
 Do not cache member-specific projections without preserving viewer/permission scope.
 No claim of 100,000-user throughput follows from the regression tests alone.
+
+Member reports use preset reasons, optional private details and one normalized image.
+Screenshot uploads live in a separate report-media namespace, cannot be used as profile
+photos, and require reporter ownership on submission. Only the uploader and, after
+submission, active administrators may read them; responses are private and not cached.
+Resolved report screenshots follow the same twelve-month retention as report contents.

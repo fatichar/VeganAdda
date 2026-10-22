@@ -1,4 +1,8 @@
 export function initializeTabs(form) {
+    form.addEventListener('keydown', event => {
+        // Selecting an autocomplete suggestion must not submit the profile form.
+        if (event.target.id === 'verification-referrer' && event.key === 'Enter') event.preventDefault();
+    });
     const list = form.querySelector('[role="tablist"]');
     list.addEventListener('keydown', event => {
         const tabs = [...list.querySelectorAll('[role="tab"]')];

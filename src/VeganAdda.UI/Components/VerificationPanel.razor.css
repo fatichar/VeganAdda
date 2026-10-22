@@ -5,3 +5,6 @@
 [role="option"] { text-align: left; }
 [role="option"][aria-selected="true"] { outline: 2px solid currentColor; }
 .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.referrer-search { position: relative; }
+.referrer-search ::deep .material-symbols-outlined { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--muted); }
+.referrer-search input { padding-left: 2.6rem; }

@@ -66,7 +66,7 @@ public class ChatRefreshTests
         public void SignIn(string returnTo) => throw new NotSupportedException();
         public Task SignInWithGoogle(string returnTo) => throw new NotSupportedException();
         public Task ClearFirebaseSession() => throw new NotSupportedException();
-        public Task<string> Upload(Stream stream, string filename, string contentType) => throw new NotSupportedException();
+        public Task<string> Upload(Stream stream, string filename, string contentType, bool reportScreenshot = false) => throw new NotSupportedException();
     }
 
     // Exercise the component's refresh operation without introducing a renderer

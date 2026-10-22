@@ -101,7 +101,19 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
                 break;
             case "report":
                 var report = Read<ReportInput>(body);
-                db.Reports.Add(new() { ReporterId = me.Id, SubjectId = id, Reason = Text(report.Reason, 1000, true) });
+                var reason = Text(report.Reason, 80, true);
+                if (report.PersonId != id || !ReportReasons.All.Contains(reason)) throw new ApiException(400, "Choose a report reason.");
+                var screenshot = report.Screenshot;
+                if (!string.IsNullOrEmpty(screenshot))
+                {
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(screenshot, @"^/report-media/[a-f0-9]{32}\.jpg$"))
+                        throw new ApiException(400, "Upload a supported screenshot.");
+                    var root = Path.Combine(config["Storage:MediaPath"] ?? "uploads", "reports");
+                    var name = screenshot[14..];
+                    if (!File.Exists(Path.Combine(root, name)) || !File.Exists(Path.Combine(root, name + ".owner-" + me.Id.ToString("N")))) throw Denied();
+                }
+                db.Reports.Add(new() { ReporterId = me.Id, SubjectId = id, Reason = reason,
+                    Details = Text(report.Details, 1000), Screenshot = string.IsNullOrEmpty(screenshot) ? null : screenshot });
                 break;
             default: throw Missing();
         }

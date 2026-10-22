@@ -21,6 +21,13 @@ public static class Media
             await csrf.ValidateRequestAsync(ctx);
             if (actor.Id is not { } id || !await db.Accounts.AnyAsync(a => a.Id == id && !a.Suspended)) return Results.Unauthorized();
             if (!ctx.Request.HasFormContentType) throw new ApiException(400, "Choose a supported image file.");
+            var purpose = ctx.Request.Query["purpose"].ToString();
+            if (purpose is not ("" or "report")) throw new ApiException(400, "Choose a supported upload purpose.");
+            var reportScreenshot = purpose == "report";
+            if (reportScreenshot && !await db.Profiles.Where(BasicProfile.Complete).AnyAsync(p => p.Id == id))
+                throw new ApiException(409, "Complete your basic profile first to use VeganAdda.");
+            var destination = reportScreenshot ? Path.Combine(root, "reports") : root;
+            Directory.CreateDirectory(destination);
             var form = await ctx.Request.ReadFormAsync(); var file = form.Files.FirstOrDefault();
             if (file == null || file.Length == 0 || file.Length > 2 * 1024 * 1024) throw new ApiException(400, "Choose a JPG, PNG or WebP image smaller than 2 MB.");
             if (file.ContentType is not ("image/jpeg" or "image/png" or "image/webp")) throw new ApiException(400, "Choose a JPG, PNG or WebP image.");
@@ -55,13 +62,24 @@ public static class Media
                 using var resized = oriented.Resize(new SKImageInfo(Math.Max(1, (int)(oriented.Width * scale)), Math.Max(1, (int)(oriented.Height * scale))), new SKSamplingOptions(SKFilterMode.Linear)) ?? throw new ApiException(400, "This image could not be resized.");
                 using var image = SKImage.FromBitmap(resized); using var encoded = image.Encode(SKEncodedImageFormat.Jpeg, 88);
                 var name = Guid.NewGuid().ToString("N") + ".jpg";
-                await using (var output = File.Create(Path.Combine(root, name))) encoded.SaveTo(output);
-                await File.WriteAllTextAsync(Path.Combine(root, name + ".owner-" + id.ToString("N")), "");
-                return Results.Ok(new { path = "/media/" + name });
+                await using (var output = File.Create(Path.Combine(destination, name))) encoded.SaveTo(output);
+                await File.WriteAllTextAsync(Path.Combine(destination, name + ".owner-" + id.ToString("N")), "");
+                return Results.Ok(new { path = (reportScreenshot ? "/report-media/" : "/media/") + name });
             }
             catch (ArgumentException) { throw new ApiException(400, "This image could not be read."); }
             finally { UploadSlots.Release(); }
         }).DisableAntiforgery();
+        app.MapGet("/report-media/{name}", async (string name, CommunityDb db, IActor actor, HttpContext ctx) =>
+        {
+            ctx.Response.Headers.CacheControl = "private, no-store";
+            if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[a-f0-9]{32}\.jpg$") || actor.Id is not { } id) return Results.NotFound();
+            var account = await db.Accounts.SingleOrDefaultAsync(a => a.Id == id && !a.Suspended);
+            if (account == null) return Results.NotFound();
+            var file = Path.Combine(root, "reports", name);
+            var owner = File.Exists(file + ".owner-" + id.ToString("N"));
+            var admin = account.Admin && await db.Reports.AnyAsync(r => r.Screenshot == "/report-media/" + name);
+            return (owner || admin) && File.Exists(file) ? Results.File(file, "image/jpeg") : Results.NotFound();
+        });
         app.MapGet("/media/{name}", async (string name, CommunityDb db, IActor actor, ProfileVisibility visibility) =>
         {
             if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[a-f0-9]{32}\.(jpg|png|webp)$")) return Results.NotFound();
