@@ -1,5 +1,7 @@
-.discovery-heading{justify-content:flex-end;margin-bottom:12px}
-.discovery .filter-bar{margin-bottom:18px;gap:10px}
+.discovery-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.discovery-heading{justify-content:flex-start;margin-bottom:0;min-width:0}
+.discovery .filter-bar{flex:1;min-width:0;margin:0;gap:10px}
+.discovery-heading ::deep .location-trigger{min-height:48px;padding:9px 12px;border-radius:12px}
 .discovery .filter-toggle{border-radius:12px;width:48px;height:48px}
 .discovery-chips{display:flex;flex-wrap:wrap;gap:8px;margin:-3px 0 18px}
 .discovery-chip{min-height:36px;padding:6px 12px;gap:6px;background:#e4ece3;color:var(--forest);font-size:.8rem;font-weight:500}
@@ -9,4 +11,4 @@
 input[type=range]{padding:10px 0;accent-color:var(--forest);border:0;background:transparent}
 .discovery-filter-form>label{margin-top:20px}
 .discovery-filter-form fieldset{margin:0 0 20px}
-@media(max-width:767px){.discovery .people-grid{gap:14px}.discovery-scope{font-size:.72rem}}
+@media(max-width:767px){.discovery-toolbar{flex-direction:column;align-items:stretch;gap:8px;margin-bottom:14px}.discovery-heading{margin:0}.discovery-heading ::deep .location-trigger{min-height:44px}.discovery .filter-bar{width:100%}.discovery .people-grid{gap:14px}.discovery-scope{font-size:.72rem}}

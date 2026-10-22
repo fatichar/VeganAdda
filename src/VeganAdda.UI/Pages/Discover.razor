@@ -12,7 +12,7 @@
         </section>
     }
     <h1 class="sr-only">Discover</h1>
-    <div class="discovery-heading">
+    <div class="discovery-toolbar"><div class="discovery-heading">
         <LocationFilter Country="@country" State="@state" City="@city" OverrideLabel="@(nearby ? $"Near me · {radius} km" : null)" Profile="profile" Selected="PlaceSelected" NearbyRequested="OpenNearby" />
     </div>
     @if (Session?.Id != null)
@@ -21,6 +21,10 @@
             <div class="search-field"><label class="sr-only" for="people-search">Search people and interests</label><input id="people-search" type="search" enterkeyhint="search" placeholder="Search people or interests" maxlength="200" @bind="search" @bind:event="oninput" /><button type="submit" class="icon-button search-submit" aria-label="Search"><Icon Name="search" /></button></div>
             <button type="button" class="icon-button secondary filter-toggle" aria-label="Filters" aria-haspopup="dialog" @onclick="OpenFilters"><Icon Name="tune" />@if (HasFilters) { <span class="filter-dot"></span> }</button>
         </form>
+    }
+    </div>
+    @if (Session?.Id != null)
+    {
         @if (HasFilters)
         {
             <div class="discovery-chips" aria-label="Active filters">

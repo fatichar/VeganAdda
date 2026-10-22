@@ -1,6 +1,7 @@
-<article class="person-card @(Discovery ? "discovery-person-card" : "")">
-    @if (Discovery && !string.IsNullOrWhiteSpace(Person.Photo)) { <a href="/people/@Person.Id" tabindex="-1" aria-hidden="true"><img class="discovery-person-photo" src="@Person.Photo" alt="" loading="lazy" /></a> }
-    <div class="person-header"><a class="person-identity" href="/people/@Person.Id"><Avatar Name="@Person.Name" Photo="@Person.Photo" VeganVerified="@Person.VeganVerified" /><div><h3>@Person.Name@if (Person.Age.HasValue) { <text>, @Person.Age</text> }</h3><span class="location"><Icon Name="location_on" />@Person.City@if (Discovery && Person.State != "") { <text>, @Person.State</text> }</span>@if (Person.IsVegan == false) { <span class="badge">Not vegan</span> } else if (Person.VeganStatusUnverified) { <span class="badge">Vegan status unverified</span> }</div></a><button class="icon-button" aria-label="@((Person.Saved ? "Unsave " : "Save ") + Person.Name)" @onclick="() => Save.InvokeAsync(Person)"><Icon Name="@(Person.Saved ? "bookmark" : "bookmark_border")" /></button></div>
+<article class="person-card @(Discovery ? "discovery-person-card" : "") @(HasDiscoveryPhoto ? "has-discovery-photo" : "")">
+    @if (HasDiscoveryPhoto) { <a class="discovery-person-media" href="/people/@Person.Id" tabindex="-1" aria-hidden="true"><img class="discovery-person-photo" src="@Person.Photo" alt="" loading="lazy" /></a> }
+    <div class="person-content">
+    <div class="person-header"><a class="person-identity" href="/people/@Person.Id">@if (!HasDiscoveryPhoto) { <Avatar Name="@Person.Name" Photo="@Person.Photo" VeganVerified="@Person.VeganVerified" /> }<div><h3>@Person.Name@if (Person.Age.HasValue) { <text>, @Person.Age</text> }</h3><span class="location"><Icon Name="location_on" />@Person.City@if (Discovery && Person.State != "") { <text>, @Person.State</text> }</span>@if (HasDiscoveryPhoto && Person.VeganVerified) { <span class="photo-verified" aria-label="Verified vegan"><Icon Name="check_circle" /></span> }@if (Person.IsVegan == false) { <span class="badge">Not vegan</span> } else if (Person.VeganStatusUnverified) { <span class="badge">Vegan status unverified</span> }</div></a><button class="icon-button" aria-label="@((Person.Saved ? "Unsave " : "Save ") + Person.Name)" @onclick="() => Save.InvokeAsync(Person)"><Icon Name="@(Person.Saved ? "bookmark" : "bookmark_border")" /></button></div>
     @if (!string.IsNullOrWhiteSpace(Person.Profession)) { <p class="person-profession">@Person.Profession</p> }
     @if (!string.IsNullOrWhiteSpace(Person.Bio)) { <p class="bio">@Person.Bio</p> }
     @if (Person.IsBirthday) { <p class="birthday-highlight"><Icon Name="cake" />Birthday today</p> }
@@ -14,6 +15,7 @@
         else if (Person.Relationship is "sent" or "received") { <a class="button small-button secondary" href="/messages/@Pair">@(Person.Relationship == "sent" ? "Request sent" : "View request")</a> }
         else { <button class="small-button" @onclick="() => Connect.InvokeAsync(Person)"><Icon Name="person_add" />Connect</button> }
     </div>
+    </div>
 </article>
 @code {
     [Parameter, EditorRequired] public Person Person { get; set; } = default!;
@@ -21,5 +23,6 @@
     [Parameter] public Guid? Viewer { get; set; }
     [Parameter] public EventCallback<Person> Connect { get; set; }
     [Parameter] public EventCallback<Person> Save { get; set; }
+    bool HasDiscoveryPhoto => Discovery && !string.IsNullOrWhiteSpace(Person.Photo);
     string Pair => string.CompareOrdinal(Viewer.ToString(), Person.Id.ToString()) < 0 ? $"{Viewer:N}_{Person.Id:N}" : $"{Person.Id:N}_{Viewer:N}";
 }

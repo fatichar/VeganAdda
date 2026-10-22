@@ -4,7 +4,7 @@
 <form class="composer-form" @ref="form" @onsubmit="Send" @onsubmit:preventDefault>
     <div class="composer">
         <label for="message" class="sr-only">Your message</label>
-        <textarea id="message" rows="2" maxlength="2000" @bind="text" @bind:event="oninput" placeholder="Message…"></textarea>
+        <textarea id="message" rows="1" maxlength="2000" @bind="text" @bind:event="oninput" placeholder="Message…"></textarea>
         <button type="submit" class="icon-button" aria-label="Send message" disabled="@(string.IsNullOrWhiteSpace(text) || Sending)"><Icon Name="send" /></button>
     </div>
     <label class="enter-send"><input type="checkbox" data-enter-send checked />Enter to send <span class="muted">· Shift+Enter for a new line</span></label>

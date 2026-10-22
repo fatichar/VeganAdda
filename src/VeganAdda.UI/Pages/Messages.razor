@@ -77,7 +77,7 @@ else
                         </div>
                     }
                     <div class="message-history" aria-live="polite" @ref="historyElement">
-                        @if (SelectedPersonId is { } referralPersonId) { <ReferralRequestCard @key="referralPersonId" PersonId="@referralPersonId" /> }
+                        @if (SelectedPersonId is { } referralPersonId) { <ReferralRequestCard @key="(referralPersonId, referralRevision)" PersonId="@referralPersonId" StatusOnly="true" /> }
                         @if (SelectedRequest is { } introduction)
                         {
                             <div class="request-introduction">
@@ -98,6 +98,10 @@ else
                             <div class="message-row mine"><div class="message-bubble">@item.Text</div><small>@(item.Failed ? "Failed to send" : "Sending…")</small>@if (item.Failed) { <button class="text-button" @onclick="() => SendPending(item)">Retry message</button> }</div>
                         }
                     </div>
+                    @if (SelectedPersonId is { } pendingReferralPersonId)
+                    {
+                        <div class="chat-referral-actions"><ReferralRequestCard @key="(pendingReferralPersonId, referralRevision)" PersonId="@pendingReferralPersonId" ActionableOnly="true" Changed="ReferralChanged" /></div>
+                    }
                     @if (SelectedRequest is { } selectedRequest)
                     {
                         <div class="request-actions">
@@ -142,6 +146,7 @@ else
     MessagePage? messagePage;
     string loadedKey = "", confirmAction = "";
     bool sending, refreshing, refreshAgain, hasOlder, menuOpen;
+    int referralRevision;
     int requestPage = 1, chatPage = 1;
     bool scrollToLatest;
     long latestFetchedMessageId;
@@ -228,6 +233,7 @@ else
         finally { refreshing = false; if (refreshAgain) await Refresh(); }
     }
     Task SetRequestPage(int value) => Run(async () => { requestPage = value; await Refresh(); });
+    void ReferralChanged() => referralRevision++;
     Task SetChatPage(int value) => Run(async () => { chatPage = value; await Refresh(); });
     Task Older() => Run(async () =>
     {
