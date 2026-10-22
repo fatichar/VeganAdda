@@ -4,7 +4,7 @@
 .discovery-heading ::deep .location-trigger{min-height:48px;padding:9px 12px;border-radius:12px}
 .discovery .filter-toggle{border-radius:12px;width:48px;height:48px}
 .discovery-chips{display:flex;flex-wrap:wrap;gap:8px;margin:-3px 0 18px}
-.discovery-chip{min-height:36px;padding:6px 12px;gap:6px;background:#e4ece3;color:var(--forest);font-size:.8rem;font-weight:500}
+.discovery-chip{min-height:44px;padding:6px 12px;gap:6px;background:#e4ece3;color:var(--forest);font-size:.8rem;font-weight:500;border-radius:var(--r-control)}
 .discovery-chip .material-symbols-outlined{font-size:17px}
 .discovery-scope{color:var(--muted);margin:0 0 18px}
 .radius-labels{display:flex;justify-content:space-between;color:var(--muted);font-size:.75rem;margin:0 0 24px}
