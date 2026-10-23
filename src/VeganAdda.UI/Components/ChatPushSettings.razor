@@ -1,40 +1,66 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 @implements IAsyncDisposable
+@if (inviteVisible)
+{
+    <div class="modal-backdrop" @onkeydown="KeyDown">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="chat-push-heading" tabindex="-1" @ref="dialogElement">
+            <span tabindex="0" class="focus-guard" @onfocus="() => enableButton.FocusAsync()"></span>
+            <div class="section-heading">
+                <h2 id="chat-push-heading">Enable browser notifications</h2>
+                <button class="icon-button" aria-label="Close notification prompt" @ref="closeButton" @onclick="DismissInvite"><Icon Name="close" /></button>
+            </div>
+            <p>Get an alert when a new message arrives.</p>
+            @if (error != "") { <span role="status" class="small muted">@error</span> }
+            <div class="actions">
+                <button class="secondary" disabled="@busy" @onclick="DismissInvite">Not now</button>
+                <button @ref="enableButton" disabled="@busy" @onclick="Toggle">Enable notifications</button>
+            </div>
+            <span tabindex="0" class="focus-guard" @onfocus="() => closeButton.FocusAsync()"></span>
+        </section>
+    </div>
+}
 @if (state != "" || error != "")
 {
-<div class="actions" aria-label="Chat notifications">
-    @if (state is "enabled" or "off")
-    {
-        @if (inviteVisible)
+    <div class="actions" aria-label="Chat notifications">
+        @if (state is "enabled" or "off")
         {
-            <span class="small muted">Get an alert when a new message arrives.</span>
-            <button class="text-button" disabled="@busy" @onclick="Toggle">Enable chat notifications</button>
-            <button class="text-button" disabled="@busy" @onclick="DismissInvite">Not now</button>
+            <button class="text-button" disabled="@busy" @onclick="Toggle">@(state == "enabled" ? "Turn off chat notifications" : "Enable chat notifications")</button>
         }
-        else { <button class="text-button" disabled="@busy" @onclick="Toggle">@(state == "enabled" ? "Turn off chat notifications" : "Enable chat notifications")</button> }
-    }
-    else if (state == "blocked") { <span class="small muted">Allow notifications in your browser settings to enable chat alerts.</span> }
-    else if (state == "unsupported") { <span class="small muted">Chat alerts need a supported browser. On iPhone, add VeganAdda to your Home Screen first.</span> }
-    @if (error != "") { <span role="status" class="small muted">@error</span> }
-</div>
+        else if (state == "blocked") { <span class="small muted">Allow notifications in your browser settings to enable chat alerts.</span> }
+        else if (state == "unsupported") { <span class="small muted">Chat alerts need a supported browser. On iPhone, add VeganAdda to your Home Screen first.</span> }
+        @if (error != "" && !inviteVisible) { <span role="status" class="small muted">@error</span> }
+    </div>
 }
 @code {
     string state = "", error = "";
-    bool busy, inviteVisible;
+    bool busy, inviteVisible, focusPending;
     IJSObjectReference? module;
+    ElementReference dialogElement, enableButton, closeButton;
+
     protected override async Task OnAfterRenderAsync(bool first)
     {
-        if (!first) return;
-        try
+        if (first)
         {
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-push.js");
-            state = await module.InvokeAsync<string>("refresh");
-            inviteVisible = await module.InvokeAsync<bool>("claimInvite", state == "off");
+            try
+            {
+                module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-push.js");
+                state = await module.InvokeAsync<string>("refresh");
+                inviteVisible = await module.InvokeAsync<bool>("claimInvite", state == "off");
+                if (inviteVisible) focusPending = true;
+            }
+            catch (JSException) { error = "Chat notification settings are unavailable. Refresh to try again."; }
+            StateHasChanged();
+            return;
         }
-        catch (JSException) { error = "Chat notification settings are unavailable. Refresh to try again."; }
-        StateHasChanged();
+
+        if (focusPending && inviteVisible)
+        {
+            focusPending = false;
+            try { await enableButton.FocusAsync(); } catch { }
+        }
     }
+
     async Task Toggle()
     {
         if (module == null) return;
@@ -43,6 +69,7 @@
         catch (JSException) { error = "Could not update chat notifications. Please try again."; }
         finally { busy = false; }
     }
-    void DismissInvite() => inviteVisible = false;
+    void DismissInvite() { inviteVisible = false; error = ""; }
+    void KeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") DismissInvite(); }
     public async ValueTask DisposeAsync() { if (module != null) await module.DisposeAsync(); }
 }

@@ -4,7 +4,7 @@ import { getMessaging, getToken, deleteToken, isSupported, onMessage } from 'fir
 let messaging, registration, listening;
 export function claimInvite(isEligible) {
   if (!isEligible) return false;
-  const key = 'veganadda-chat-push-invite-seen';
+  const key = 'veganadda-chat-push-popup-seen';
   try {
     if (localStorage.getItem(key)) return false;
     localStorage.setItem(key, 'true');
