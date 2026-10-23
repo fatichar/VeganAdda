@@ -1,3 +1,5 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 @inherits Screen
 <details class="member-report">
     <summary>Report this member</summary>
@@ -12,7 +14,7 @@
     <textarea id="report-details" maxlength="1000" rows="3" @bind="details" @bind:event="oninput" placeholder="Tell the community team what happened…"></textarea>
     <label for="report-screenshot">Screenshot (optional)</label>
     <InputFile id="report-screenshot" @key="uploadKey" OnChange="Upload" accept="image/jpeg,image/png,image/webp" disabled="@(Busy || !RendererInfo.IsInteractive)" />
-    <small>JPG, PNG or WebP · up to 2 MB. Report details and screenshots are visible only to administrators.</small>
+    <small>JPG, PNG or WebP · up to 10 MB. Report details and screenshots are visible only to administrators.</small>
     @if (screenshot != null) { <p class="small">Screenshot attached. <button type="button" class="text-button" @onclick="RemoveScreenshot">Remove</button></p> }
     <button type="button" class="secondary" @onclick="Submit" disabled="@(Busy || reason == "" || !RendererInfo.IsInteractive)">Submit report</button>
     </fieldset>
@@ -26,9 +28,12 @@
     Task Upload(InputFileChangeEventArgs e) => Act(async () =>
     {
         var file = e.File;
-        if (file.Size > 2 * 1024 * 1024) { Error = "Please choose an image smaller than 2 MB."; return; }
-        await using var stream = file.OpenReadStream(2 * 1024 * 1024);
-        screenshot = await Platform.Upload(stream, file.Name, file.ContentType, reportScreenshot: true);
+        if (file.Size > 10 * 1024 * 1024) { Error = "Please choose an image smaller than 10 MB."; return; }
+        var (stream, name, contentType) = await ImageResizer.ProcessUpload(JS, e, "report-screenshot");
+        await using (stream)
+        {
+            screenshot = await Platform.Upload(stream, name, contentType, reportScreenshot: true);
+        }
     });
     Task Submit() => Act(async () =>
     {

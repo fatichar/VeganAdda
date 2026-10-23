@@ -1,5 +1,7 @@
 @page "/events/suggest"
 @page "/events/suggest/{Id:guid}"
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 @inherits Screen
 <PageTitle>Suggest an event · VeganAdda</PageTitle>
 <div class="narrow"><a class="back-link" href="/events"><Icon Name="arrow_back" />Events</a><h1>Suggest an event</h1><Feedback Error="@Error" Success="@Success" />
@@ -42,5 +44,5 @@ else if (profile != null) {
     void NewEvent() { edit = new(); eventPlace = new() { Country = profile?.Country ?? "India", State = profile?.State ?? "", City = profile?.City ?? "" }; start = end = null; }
     void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); eventPlace = new() { Country = item.Country, State = item.State, City = item.City }; var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
     Task Save() => Run(async () => { edit!.Country = eventPlace.Country; edit.State = eventPlace.State; edit.City = eventPlace.City; edit.LocalStart = start; edit.LocalEnd = end; await Api.Send<Ok>("event-submissions", edit); edit = null; await Refresh(); Success = "Your event was submitted for review."; });
-    Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 2 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 2 MB."); await using var stream = e.File.OpenReadStream(2 * 1024 * 1024); edit!.Cover = await Platform.Upload(stream, e.File.Name, e.File.ContentType); });
+    Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 10 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 10 MB."); var (stream, name, contentType) = await ImageResizer.ProcessUpload(JS, e, "event-cover"); await using (stream) { edit!.Cover = await Platform.Upload(stream, name, contentType); } });
 }
