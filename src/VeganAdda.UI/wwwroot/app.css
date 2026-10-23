@@ -232,8 +232,11 @@ body:has(.profile-editor) .site-footer{display:none}
 .chat-referral-actions .referral-request p{margin:4px 0}
 .chat-referral-actions .referral-request .actions{margin-top:8px}
 .chat-referral-actions .referral-request .actions button{min-height:44px}
-.message-history{min-height:0;background:#f8faf7}
-.message-bubble{border-color:#d3dbd2}
+.message-history{min-height:0;background:#e8eee8}
+.message-bubble{border-color:#c7d2c7}
+.mine .message-bubble{background:#28573e;border-color:#28573e}
+.conversation.selected,.conversation-request.selected{background:#d8e4d6;box-shadow:inset 4px 0 var(--forest)}
+.conversation.selected strong{color:var(--green);font-weight:800}
 .composer-form{background:#fff}
 .composer-form .composer textarea{min-height:44px;height:44px;max-height:44px;background:#fff;border:1px solid var(--control);padding:9px 12px;line-height:1.45}
 .composer-form .composer button{width:44px;min-width:44px;height:44px;min-height:44px}
@@ -256,6 +259,6 @@ body:has(.profile-editor) .site-footer{display:none}
   .chat-layout.has-conversation .composer-form{padding-bottom:env(safe-area-inset-bottom)}
   .chat-layout.has-conversation .composer{padding:7px 10px;gap:8px}
   .chat-layout.has-conversation .enter-send{display:none}
-  .chat-layout.has-conversation .message-bubble{background:#fff;border-color:#d1dad0;color:#17251c}
-  .chat-layout.has-conversation .mine .message-bubble{background:var(--green);border-color:var(--green);color:#fff}
+  .chat-layout.has-conversation .message-bubble{background:#fff;border-color:#c7d2c7;color:#17251c}
+  .chat-layout.has-conversation .mine .message-bubble{background:#28573e;border-color:#28573e;color:#fff}
 }

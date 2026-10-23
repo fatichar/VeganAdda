@@ -30,7 +30,7 @@ else
                 <Pagination PageNumber="@requestPage" PageSize="10" Total="@requestTotal" Busy="@Busy" PageChanged="SetRequestPage" />
                 @foreach (var c in VisibleChats)
                 {
-                    <a class="conversation @(c.Key == Key ? "selected" : "") @(c.Unread > 0 ? "has-unread" : "")" href="/messages/@c.Key" @key="c.Key">
+                    <a class="conversation @(c.Key == Key ? "selected" : "") @(c.Unread > 0 ? "has-unread" : "")" href="/messages/@c.Key" aria-current="@(c.Key == Key ? "page" : null)" @key="c.Key">
                         <Avatar Name="@c.Name" Photo="@c.Photo" VeganVerified="@c.VeganVerified" /><div class="conversation-copy"><div class="conversation-top"><strong>@c.Name</strong><small title="@Date(c.Updated)">@InboxTimestamp.Format(c.Updated, DateTimeOffset.UtcNow)</small></div><div class="conversation-preview"><p>@c.Latest</p>@if (c.Unread > 0) { <span class="count" aria-label="@($"{c.Unread} unread messages")">@c.Unread</span> }</div></div>
                     </a>
                 }
