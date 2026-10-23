@@ -43,7 +43,9 @@
     @if (selectedEvent != null) { <p class="small discovery-scope"><a href="/events/@selectedEvent.Id">@selectedEvent.Title</a> · @(checkedIn ? "Self-reported check-ins. Refresh to update." : "Members who opted into the attendee list.") <button class="text-button" disabled="@Busy" @onclick="Search">Refresh</button></p> }
     @if (Session?.Id != null && Session.IsVegan == null) { <div class="notice" role="status">Choose your vegan status to finish setting up your member profile. <a href="/settings/profile">Update your profile</a>.</div> }
     <Feedback Error="@Error" Success="@Success" />
-    @if (!Loaded || Busy) { <p role="status" class="loading">Finding people…</p> }
+    @if (!Loaded || Busy || !searched) { <p role="status" class="loading">Finding people…</p> }
+    else if (searched && people.Count == 0 && Session?.Id == null && eventId == "" && !nearby && country == "" && state == "" && city == "") { <Empty Title="No public profiles yet" Text="Public vegan profiles will show here. Choose a city above, or sign in to see members who are not public."><a class="button" href="/signin?returnUrl=%2F">Sign in</a></Empty> }
+    else if (people.Count == 0 && Session?.Id == null && eventId == "") { <Empty Title="No people found" Text="Try a wider location."><button class="secondary" @onclick="Search">Refresh</button></Empty> }
     else if (people.Count == 0) { <Empty Title="@(checkedIn ? "No checked-in people found" : "No people found")" Text="@(eventId != "" ? "Members appear after opting into attendance visibility. Try refreshing or adjusting your filters." : "Try a wider location or adjust your filters.")"><button class="secondary" @onclick="Search">Refresh</button><button class="text-button" @onclick="ClearFilters">Reset filters</button></Empty> }
     else { <div class="people-grid">@foreach (var p in people) { <PersonCard Person="p" Viewer="Session?.Id" Connect="Connect" Save="Save" Discovery="true" /> }</div> }
     <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
@@ -99,7 +101,7 @@
     int? minAge, maxAge, draftMinAge, draftMaxAge;
     double? latitude, longitude;
     ProfileInput? profile; string? lastCity; int locationRequest;
-    bool locationReady;
+    bool locationReady, searched;
     List<Person> people = []; Person? connecting;
     bool HasFilters => genders.Length > 0 || eventId != "" || interest != "" || intent != "" || includeNonVegan || verifiedVegansOnly || minAge.HasValue || maxAge.HasValue;
     string PanelTitle => panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
@@ -137,6 +139,7 @@
         catch (JSException) { }
         locationReady = true;
         await Run(Refresh);
+        searched = true;
         await InvokeAsync(StateHasChanged);
     }
     protected override async Task Refresh()
