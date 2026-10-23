@@ -51,15 +51,22 @@ export function invalidPanel(form) {
 
 let fieldError = null;
 const fieldErrorForms = new WeakSet();
+const fieldErrorId = 'profile-field-error';
 
 function fieldErrorNote() {
     const note = document.createElement('small');
+    note.id = fieldErrorId;
     note.className = 'field-error';
     note.style.color = 'var(--error)';
     return note;
 }
 
 function clearFieldError() {
+    for (const control of fieldError?.controls ?? []) {
+        const describedBy = (control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(id => id && id !== fieldErrorId);
+        if (describedBy.length) control.setAttribute('aria-describedby', describedBy.join(' '));
+        else control.removeAttribute('aria-describedby');
+    }
     fieldError?.note?.remove();
     fieldError = null;
 }
@@ -83,6 +90,19 @@ function placeFieldError(form) {
     fieldError.note ??= fieldErrorNote();
     fieldError.note.textContent = fieldError.message;
     (control.closest('label') ?? control).insertAdjacentElement('afterend', fieldError.note);
+    const named = fieldError.name ? form.elements.namedItem(fieldError.name) : null;
+    const controls = named instanceof RadioNodeList ? [...named] : [control];
+    for (const previous of fieldError.controls ?? []) {
+        if (controls.includes(previous)) continue;
+        const describedBy = (previous.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(id => id && id !== fieldErrorId);
+        if (describedBy.length) previous.setAttribute('aria-describedby', describedBy.join(' '));
+        else previous.removeAttribute('aria-describedby');
+    }
+    for (const item of controls) {
+        const describedBy = (item.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
+        if (!describedBy.includes(fieldErrorId)) item.setAttribute('aria-describedby', [...describedBy, fieldErrorId].join(' '));
+    }
+    fieldError.controls = controls;
 }
 
 function bindFieldErrorClear(form) {
@@ -102,10 +122,14 @@ function bindFieldErrorClear(form) {
             clearFieldError();
             return;
         }
+        if (control.validity.valid) {
+            clearFieldError();
+            return;
+        }
         const anchor = control.closest('label') ?? control;
         if (anchor.nextSibling !== fieldError.note) placeFieldError(form);
     });
-    observer.observe(form, { childList: true, subtree: true });
+    observer.observe(form, { childList: true, subtree: true, attributes: true, attributeFilter: ['value', 'selected', 'checked', 'disabled'] });
 }
 
 export function reportValidity(form) {
@@ -119,6 +143,7 @@ export function reportValidity(form) {
     invalid.focus();
     invalid.reportValidity();
     bindFieldErrorClear(form);
-    fieldError = { id: invalid.id, name: invalid.name || '', message: invalid.validationMessage, note: fieldError?.note ?? fieldErrorNote() };
+    clearFieldError();
+    fieldError = { id: invalid.id, name: invalid.name || '', message: invalid.validationMessage, note: fieldErrorNote(), controls: [] };
     placeFieldError(form);
 }

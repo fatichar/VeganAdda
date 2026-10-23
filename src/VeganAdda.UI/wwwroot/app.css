@@ -219,7 +219,7 @@ body:has(.profile-editor) .site-footer{display:none}
 .discovery-person-card.has-discovery-photo .person-footer{margin-top:auto}
 .discovery-person-card .person-footer>.button,.discovery-person-card .person-footer>button{min-height:44px;background:#e6f1e9;color:var(--green);border-color:var(--control);box-shadow:none}
 .discovery-person-card .person-footer>.button:hover,.discovery-person-card .person-footer>button:hover{background:#d8e9de}
-.discovery-person-card .person-footer>.secondary{background:#f2f4f0;border-color:#dce2da}
+.discovery-person-card .person-footer>.secondary{background:#f2f4f0;border-color:var(--control)}
 .photo-verified{display:inline-flex;vertical-align:middle;margin-left:5px;color:var(--forest)}
 .photo-verified .material-symbols-outlined{font-size:16px}
 @media(min-width:768px){.discovery-person-card.has-discovery-photo{grid-column:span 2}.discovery-person-card.has-discovery-photo .discovery-person-photo{height:100%}}
