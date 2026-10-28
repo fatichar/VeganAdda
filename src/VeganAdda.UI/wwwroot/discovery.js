@@ -38,3 +38,22 @@ export async function currentPosition() {
             : "Your device couldn't determine its location. Try again or choose a city."};
     } finally {clearTimeout(timer);}
 }
+
+const scrollObservers = new Map();
+export function observeScroll(element, dotNetHelper) {
+    if (!element) return;
+    const observer = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) {
+            dotNetHelper.invokeMethodAsync('LoadNextPage');
+        }
+    }, { rootMargin: '400px' });
+    observer.observe(element);
+    scrollObservers.set(element, observer);
+}
+export function unobserveScroll(element) {
+    const observer = scrollObservers.get(element);
+    if (observer) {
+        observer.disconnect();
+        scrollObservers.delete(element);
+    }
+}
