@@ -50,6 +50,10 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
             {
                 // A reciprocal request is an explicit mutual connection.
                 r.State = "accepted";
+                if (!string.IsNullOrEmpty(r.Introduction))
+                {
+                    db.Messages.Add(new ChatMessage { Conversation = key, SenderId = r.RequestedBy, ClientId = Guid.NewGuid(), Text = r.Introduction, PushPending = false });
+                }
                 Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key);
             }
             else
@@ -64,7 +68,15 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         {
             if (r == null) throw Missing();
             var incoming = r.RequestedBy != me.Id;
-            if (action == "accept" && r.State == "pending" && incoming) { r.State = "accepted"; Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key); }
+            if (action == "accept" && r.State == "pending" && incoming)
+            {
+                r.State = "accepted";
+                if (!string.IsNullOrEmpty(r.Introduction))
+                {
+                    db.Messages.Add(new ChatMessage { Conversation = key, SenderId = r.RequestedBy, ClientId = Guid.NewGuid(), Text = r.Introduction, PushPending = false });
+                }
+                Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key);
+            }
             else if (action == "decline" && r.State == "pending" && incoming) { r.State = "declined"; Notice(input.PersonId, "declined", $"{me.Name} declined your connection request.", "/messages"); }
             else if (action == "cancel" && r.State == "pending" && !incoming) r.State = "cancelled";
             else if (action == "remove" && r.State == "accepted") r.State = "removed";
