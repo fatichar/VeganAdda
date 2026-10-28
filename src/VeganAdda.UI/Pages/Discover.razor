@@ -50,7 +50,12 @@
     else if (people.Count == 0 && Session?.Id == null && eventId == "") { <Empty Title="No people found" Text="Try a wider location."><button class="secondary" @onclick="Search">Refresh</button></Empty> }
     else if (people.Count == 0) { <Empty Title="@(checkedIn ? "No checked-in people found" : "No people found")" Text="@(eventId != "" ? "Members appear after opting into attendance visibility. Try refreshing or adjusting your filters." : "Try a wider location or adjust your filters.")"><button class="secondary" @onclick="Search">Refresh</button><button class="text-button" @onclick="ClearFilters">Reset filters</button></Empty> }
     else { <div class="people-grid">@foreach (var p in people) { <PersonCard Person="p" Viewer="Session?.Id" Connect="Connect" Save="Save" Discovery="true" /> }</div> }
-    <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
+    @if (people.Count > 0 && people.Count < total)
+    {
+        <div @ref="loadMoreTrigger" class="loading-more">
+            @if (Busy) { <p class="loading">Loading more...</p> }
+        </div>
+    }
     <ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
 </div>
 <DiscoveryPanel Open='@(panel != "")' Title="@PanelTitle" Closed="ClosePanel">
@@ -105,6 +110,7 @@
     ProfileInput? profile; string? lastCity; int locationRequest;
     bool locationReady, searched, searchSucceeded;
     List<Person> people = []; Person? connecting;
+    ElementReference loadMoreTrigger; DotNetObjectReference<Discover>? thisReference; IJSObjectReference? module;
     bool HasFilters => genders.Length > 0 || eventId != "" || interest != "" || intent != "" || includeNonVegan || verifiedVegansOnly || minAge.HasValue || maxAge.HasValue;
     string PanelTitle => panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
     protected override async Task OnInitializedAsync()
@@ -128,22 +134,50 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
-        if (!firstRender) return;
-        try
+        if (firstRender)
         {
-            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
-            var saved = await module.InvokeAsync<DiscoveryInput?>("loadPlace");
-            if (City == null && Event == null && saved != null)
+            try
             {
-                country = saved.Country; state = saved.State; city = saved.City;
+                module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
+                var saved = await module.InvokeAsync<DiscoveryInput?>("loadPlace");
+                if (City == null && Event == null && saved != null)
+                {
+                    country = saved.Country; state = saved.State; city = saved.City;
+                }
             }
+            catch (JSException) { }
+            locationReady = true;
+            await Run(Refresh);
+            searched = true;
+            await InvokeAsync(StateHasChanged);
         }
-        catch (JSException) { }
-        locationReady = true;
-        await Run(Refresh);
-        searched = true;
-        await InvokeAsync(StateHasChanged);
+        if (module != null && loadMoreTrigger.Context != null)
+        {
+            thisReference ??= DotNetObjectReference.Create(this);
+            try { await module.InvokeVoidAsync("observeScroll", loadMoreTrigger, thisReference); }
+            catch (JSException) { }
+        }
     }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        thisReference?.Dispose();
+        if (module != null && loadMoreTrigger.Context != null)
+        {
+            _ = module.InvokeVoidAsync("unobserveScroll", loadMoreTrigger).AsTask();
+        }
+    }
+
+    [JSInvokable]
+    public async Task LoadNextPage()
+    {
+        if (Busy || people.Count >= total) return;
+        page++;
+        await Run(Refresh);
+        StateHasChanged();
+    }
+
     protected override async Task Refresh()
     {
         searchSucceeded = false;
@@ -153,7 +187,11 @@
             result = await Profiles.SearchPeople( new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = page });
         else
             result = await Profiles.SearchPeople(new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = page });
-        people = result.Items; total = result.Total;
+
+        if (page == 1) people = result.Items;
+        else people.AddRange(result.Items);
+
+        total = result.Total;
         searchSucceeded = true;
     }
     void OpenPanel(string value) { panelError = ""; panel = value; }
@@ -229,8 +267,7 @@
     }
     void ToggleGender(string value, ChangeEventArgs e) => draftGenders = e.Value is true ? draftGenders.Append(value).Distinct().ToArray() : draftGenders.Where(g => g != value).ToArray();
     Task RemoveGender(string value) { genders = genders.Where(g => g != value).ToArray(); return Search(); }
-    Task Search() { page = 1; return Run(Refresh); }
-    Task SetPage(int value) { page = value; return Run(Refresh); }
+    Task Search() { page = 1; people.Clear(); return Run(Refresh); }
     Task Connect(Person p) { if (Session?.Id == null) Platform.SignIn($"/people/{p.Id}?action=connect"); else if (!Session.BasicProfileComplete) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{p.Id}?action=connect")}"); else connecting = p; return Task.CompletedTask; }
     async Task Save(Person p) { if (!ReadyForAction($"/people/{p.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"people/{p.Id}/save"); await Refresh(); Success = p.Saved ? "Profile unsaved." : "Profile saved."; }); }
     async Task Connected() { Success = "Request sent."; await Run(Refresh); }
