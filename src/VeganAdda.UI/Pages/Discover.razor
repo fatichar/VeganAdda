@@ -2,6 +2,7 @@
 @using Microsoft.JSInterop
 @inherits Screen
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 <PageTitle>Discover · VeganAdda</PageTitle>
 <div class="discovery">
     @if (Session?.Id == null)
@@ -43,14 +44,19 @@
     @if (selectedEvent != null) { <p class="small discovery-scope"><a href="/events/@selectedEvent.Id">@selectedEvent.Title</a> · @(checkedIn ? "Self-reported check-ins. Refresh to update." : "Members who opted into the attendee list.") <button class="text-button" disabled="@Busy" @onclick="Search">Refresh</button></p> }
     @if (Session?.Id != null && Session.IsVegan == null) { <div class="notice" role="status">Choose your vegan status to finish setting up your member profile. <a href="/settings/profile">Update your profile</a>.</div> }
     <Feedback Error="@Error" Success="@Success" />
-    @if (!Loaded || Busy || !searched) { <p role="status" class="loading">Finding people…</p> }
+    @if (!Loaded || (Busy && !loadingMore) || !searched) { <p role="status" class="loading">Finding people…</p> }
     else if (!searchSucceeded) { <Empty Title="People couldn't load" Text="The search didn't complete. Try again."><button class="secondary" @onclick="Search">Retry</button></Empty> }
     else if (people.Count == 0 && total > 0 && page > 1) { <Empty Title="No people on this page" Text="The results may have changed. Return to the first page."><button class="secondary" @onclick="Search">First page</button></Empty> }
     else if (people.Count == 0 && Session?.Id == null && eventId == "" && !nearby && country == "" && state == "" && city == "") { <Empty Title="No public profiles yet" Text="Public vegan profiles will show here. Choose a city above, or sign in to see members who are not public."><a class="button" href="/signin?returnUrl=%2F">Sign in</a></Empty> }
     else if (people.Count == 0 && Session?.Id == null && eventId == "") { <Empty Title="No people found" Text="Try a wider location."><button class="secondary" @onclick="Search">Refresh</button></Empty> }
     else if (people.Count == 0) { <Empty Title="@(checkedIn ? "No checked-in people found" : "No people found")" Text="@(eventId != "" ? "Members appear after opting into attendance visibility. Try refreshing or adjusting your filters." : "Try a wider location or adjust your filters.")"><button class="secondary" @onclick="Search">Refresh</button><button class="text-button" @onclick="ClearFilters">Reset filters</button></Empty> }
-    else { <div class="people-grid">@foreach (var p in people) { <PersonCard Person="p" Viewer="Session?.Id" Connect="Connect" Save="Save" Discovery="true" /> }</div> }
-    <Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
+    else { <div class="people-grid">@foreach (var p in people) { <PersonCard @key="p.Id" Person="p" Viewer="Session?.Id" Connect="Connect" Save="Save" Discovery="true" /> }</div> }
+    <div @ref="loadMoreTrigger" class="discovery-load-more">
+        @if (searchSucceeded && hasMore)
+        {
+            <button class="secondary" disabled="@Busy" @onclick="LoadMore">@(loadingMore ? "Finding more people…" : loadMoreFailed ? "Retry loading more" : "Load more people")</button>
+        }
+    </div>
     <ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
 </div>
 <DiscoveryPanel Open='@(panel != "")' Title="@PanelTitle" Closed="ClosePanel">
@@ -104,6 +110,11 @@
     double? latitude, longitude;
     ProfileInput? profile; string? lastCity; int locationRequest;
     bool locationReady, searched, searchSucceeded;
+    bool loadingMore, loadMoreFailed, hasMore, disposed;
+    int searchVersion;
+    ElementReference loadMoreTrigger;
+    IJSObjectReference? discoveryModule;
+    DotNetObjectReference<Discover>? scrollReference;
     List<Person> people = []; Person? connecting;
     bool HasFilters => genders.Length > 0 || eventId != "" || interest != "" || intent != "" || includeNonVegan || verifiedVegansOnly || minAge.HasValue || maxAge.HasValue;
     string PanelTitle => panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
@@ -117,22 +128,29 @@
     }
     protected override async Task OnParametersSetAsync()
     {
+        var parametersChanged = City != lastCity || Event != lastEvent || CheckedIn != lastCheckedIn;
         if (City != lastCity) { lastCity = City; nearby = false; country = state = ""; city = City == "All India" ? "" : City ?? ""; page = 1; }
         if (Event != lastEvent || CheckedIn != lastCheckedIn)
         {
             lastEvent = Event; lastCheckedIn = CheckedIn; eventId = Event ?? ""; checkedIn = eventId != "" && CheckedIn; selectedEvent = null; page = 1;
             if (eventId != "") { country = state = city = ""; nearby = false; latitude = longitude = null; }
         }
-        if (locationReady) await Run(Refresh);
+        if (locationReady && parametersChanged) await Run(Refresh);
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
-        if (!firstRender) return;
+        if (!firstRender)
+        {
+            if (discoveryModule != null && !disposed)
+                await discoveryModule.InvokeVoidAsync("observeScroll", loadMoreTrigger, scrollReference, searchSucceeded && hasMore && !Busy && !loadMoreFailed);
+            return;
+        }
         try
         {
-            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
-            var saved = await module.InvokeAsync<DiscoveryInput?>("loadPlace");
+            discoveryModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
+            scrollReference = DotNetObjectReference.Create(this);
+            var saved = await discoveryModule.InvokeAsync<DiscoveryInput?>("loadPlace");
             if (City == null && Event == null && saved != null)
             {
                 country = saved.Country; state = saved.State; city = saved.City;
@@ -146,15 +164,54 @@
     }
     protected override async Task Refresh()
     {
+        page = 1;
+        var version = ++searchVersion;
+        loadMoreFailed = false;
         searchSucceeded = false;
         if (eventId != "" && selectedEvent?.Id.ToString() != eventId) selectedEvent = await Api.Get<EventCard>("events/" + eventId);
+        var result = await FetchPage(1);
+        if (disposed || version != searchVersion) return;
+        people = result.Items; total = result.Total;
+        hasMore = result.Items.Count > 0 && result.PageNumber * result.PageSize < total;
+        searchSucceeded = true;
+    }
+    async Task<Page<Person>> FetchPage(int requestedPage)
+    {
         Page<Person> result;
         if (nearby)
-            result = await Profiles.SearchPeople( new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = page });
+            result = await Profiles.SearchPeople( new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = requestedPage });
         else
-            result = await Profiles.SearchPeople(new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = page });
-        people = result.Items; total = result.Total;
-        searchSucceeded = true;
+            result = await Profiles.SearchPeople(new DiscoveryInput { Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = requestedPage });
+        return result;
+    }
+    [JSInvokable]
+    public Task LoadNextPage() => InvokeAsync(async () =>
+    {
+        var loading = LoadMore();
+        StateHasChanged();
+        await loading;
+        if (!disposed) StateHasChanged();
+    });
+    protected async Task LoadMore()
+    {
+        if (disposed || Busy || loadingMore || !searchSucceeded || !hasMore) return;
+        var version = searchVersion;
+        loadingMore = true;
+        loadMoreFailed = true;
+        try
+        {
+            await Run(async () =>
+            {
+                var result = await FetchPage(page + 1);
+                if (disposed || version != searchVersion) return;
+                var existing = people.Select(p => p.Id).ToHashSet();
+                people.AddRange(result.Items.Where(p => existing.Add(p.Id)));
+                page = result.PageNumber; total = result.Total;
+                hasMore = result.Items.Count > 0 && page * result.PageSize < total;
+                loadMoreFailed = false;
+            });
+        }
+        finally { loadingMore = false; }
     }
     void OpenPanel(string value) { panelError = ""; panel = value; }
     void ClosePanel() { panel = ""; panelError = ""; locating = false; locationRequest++; }
@@ -230,7 +287,21 @@
     void ToggleGender(string value, ChangeEventArgs e) => draftGenders = e.Value is true ? draftGenders.Append(value).Distinct().ToArray() : draftGenders.Where(g => g != value).ToArray();
     Task RemoveGender(string value) { genders = genders.Where(g => g != value).ToArray(); return Search(); }
     Task Search() { page = 1; return Run(Refresh); }
-    Task SetPage(int value) { page = value; return Run(Refresh); }
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        base.Dispose();
+        try
+        {
+            if (discoveryModule != null)
+            {
+                await discoveryModule.InvokeVoidAsync("unobserveScroll", loadMoreTrigger);
+                await discoveryModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        finally { scrollReference?.Dispose(); }
+    }
     Task Connect(Person p) { if (Session?.Id == null) Platform.SignIn($"/people/{p.Id}?action=connect"); else if (!Session.BasicProfileComplete) Nav.NavigateTo($"/onboarding?returnUrl={E($"/people/{p.Id}?action=connect")}"); else connecting = p; return Task.CompletedTask; }
     async Task Save(Person p) { if (!ReadyForAction($"/people/{p.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"people/{p.Id}/save"); await Refresh(); Success = p.Saved ? "Profile unsaved." : "Profile saved."; }); }
     async Task Connected() { Success = "Request sent."; await Run(Refresh); }

@@ -12,3 +12,4 @@ input[type=range]{padding:10px 0;accent-color:var(--forest);border:0;background:
 .discovery-filter-form>label{margin-top:20px}
 .discovery-filter-form fieldset{margin:0 0 20px}
 @media(max-width:767px){.discovery-toolbar{flex-direction:column;align-items:stretch;gap:8px;margin-bottom:14px}.discovery-heading{margin:0}.discovery-heading ::deep .location-trigger{min-height:44px}.discovery .filter-bar{width:100%}.discovery .people-grid{gap:14px}.discovery-scope{font-size:.72rem}}
+.discovery-load-more { min-height: 1px; display: flex; justify-content: center; margin-top: 24px; }

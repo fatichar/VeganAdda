@@ -1,25 +1,14 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 @implements IAsyncDisposable
-@if (inviteVisible)
-{
-    <div class="modal-backdrop" @onkeydown="KeyDown">
-        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="chat-push-heading" tabindex="-1" @ref="dialogElement">
-            <span tabindex="0" class="focus-guard" @onfocus="() => enableButton.FocusAsync()"></span>
-            <div class="section-heading">
-                <h2 id="chat-push-heading">Enable browser notifications</h2>
-                <button class="icon-button" aria-label="Close notification prompt" @ref="closeButton" @onclick="DismissInvite"><Icon Name="close" /></button>
-            </div>
-            <p>Get an alert when a new message arrives.</p>
-            @if (error != "") { <span role="status" class="small muted">@error</span> }
-            <div class="actions">
-                <button class="secondary" disabled="@busy" @onclick="DismissInvite">Not now</button>
-                <button @ref="enableButton" disabled="@busy" @onclick="Toggle">Enable notifications</button>
-            </div>
-            <span tabindex="0" class="focus-guard" @onfocus="() => closeButton.FocusAsync()"></span>
-        </section>
+<DiscoveryPanel Open="@inviteVisible" Title="Enable browser notifications" Closed="DismissInvite">
+    <p>Get an alert when a new message arrives.</p>
+    @if (error != "") { <span role="status" class="small muted">@error</span> }
+    <div class="actions">
+        <button class="secondary" disabled="@busy" @onclick="DismissInvite">Not now</button>
+        <button disabled="@busy" @onclick="Toggle">Enable notifications</button>
     </div>
-}
+</DiscoveryPanel>
 @if (state != "" || error != "")
 {
     <div class="actions" aria-label="Chat notifications">
@@ -34,9 +23,8 @@
 }
 @code {
     string state = "", error = "";
-    bool busy, inviteVisible, focusPending;
+    bool busy, inviteVisible;
     IJSObjectReference? module;
-    ElementReference dialogElement, enableButton, closeButton;
 
     protected override async Task OnAfterRenderAsync(bool first)
     {
@@ -47,17 +35,9 @@
                 module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-push.js");
                 state = await module.InvokeAsync<string>("refresh");
                 inviteVisible = await module.InvokeAsync<bool>("claimInvite", state == "off");
-                if (inviteVisible) focusPending = true;
             }
             catch (JSException) { error = "Chat notification settings are unavailable. Refresh to try again."; }
             StateHasChanged();
-            return;
-        }
-
-        if (focusPending && inviteVisible)
-        {
-            focusPending = false;
-            try { await enableButton.FocusAsync(); } catch { }
         }
     }
 
@@ -70,6 +50,5 @@
         finally { busy = false; }
     }
     void DismissInvite() { inviteVisible = false; error = ""; }
-    void KeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") DismissInvite(); }
     public async ValueTask DisposeAsync() { if (module != null) await module.DisposeAsync(); }
 }

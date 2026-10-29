@@ -40,11 +40,14 @@ export async function currentPosition() {
 }
 
 const scrollObservers = new Map();
-export function observeScroll(element, dotNetHelper) {
-    if (!element) return;
+export function observeScroll(element, dotNetHelper, enabled = true) {
+    unobserveScroll(element);
+    if (!element || !enabled || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(entries => {
-        if (entries[0].isIntersecting) {
-            dotNetHelper.invokeMethodAsync('LoadNextPage');
+        if (entries.some(entry => entry.isIntersecting) && scrollObservers.get(element) === observer) {
+            unobserveScroll(element);
+            // The component rearms after rendering; one observation loads one page.
+            dotNetHelper.invokeMethodAsync('LoadNextPage').catch(() => {});
         }
     }, { rootMargin: '400px' });
     observer.observe(element);
