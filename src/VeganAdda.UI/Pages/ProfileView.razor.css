@@ -1,0 +1,28 @@
+.profile-photo-banner {
+    height: clamp(280px, 55vw, 520px);
+    padding: 0;
+}
+
+.profile-photo {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.profile-photo-banner > .badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+}
+
+.profile-verification {
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+@media (max-width: 600px) {
+    .profile-photo-banner {
+        height: clamp(280px, 90vw, 420px);
+    }
+}
