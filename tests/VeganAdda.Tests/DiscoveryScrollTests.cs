@@ -53,7 +53,11 @@ public class DiscoveryScrollTests
     static Person Person() => new(Guid.NewGuid(), "Member", "Pune", "", "", [], [], null, null, null, false, false, "");
     sealed class Harness : Discover
     {
-        public Harness(IProfilesApi api) => Profiles = api;
+        public Harness(IProfilesApi api)
+        {
+            Profiles = api;
+            typeof(Discover).GetField("locationReady", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(this, true);
+        }
         public Task Reload() => Refresh();
         public Task More() => LoadMore();
         public Task ParentRerender()

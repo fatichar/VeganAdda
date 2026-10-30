@@ -5,8 +5,13 @@
 @inherits Screen
 <PageTitle>Community administration · VeganAdda</PageTitle>
 <span class="eyebrow">Care for the community</span><h1>Community administration</h1><Feedback Error="@Error" Success="@Success" />
-@if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
-else if (data != null) {
+@if (!initialized) { <p class="loading" role="status">Loading administration…</p> }
+else if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
+else if (data == null) {
+    @if (Error == "") { <p class="loading" role="status">Loading administration…</p> }
+    else { <button class="secondary" @onclick="() => Run(Refresh)">Retry</button> }
+}
+else {
     <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => SwitchTab(t)">@t@if (t == "Members" && data.ProfilesTotal > 0) { <span class="badge" aria-label="Vegans awaiting verification">@data.ProfilesTotal</span> }</button> }</div>
     @if (tab == "Events") {
         <div class="admin-event-toolbar"><EventLocationFilter Country="@country" State="@state" City="@city" Profile="adminProfile" Selected="FilterEvents" /><button @onclick="NewEvent"><Icon Name="add" />Create event</button></div>
@@ -137,12 +142,31 @@ else if (data != null) {
 @code {
     string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     IJSObjectReference? memberActionsModule; DotNetObjectReference<AdminPage>? memberActionsReference;
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(async () => { adminProfile = await Api.Get<ProfileInput>("profile"); await Refresh(); }); }
+    bool initialized, restoring, viewStateReady;
+    public record AdminViewState(string Tab, string Verification, string Country, string State, string City, int EventsPage, int MembersPage, int ReportsPage);
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); initialized = true; }
     protected override async Task OnAfterRenderAsync(bool firstRender) {
-        if (firstRender) {
+        if (!initialized || restoring) return;
+        if (!viewStateReady && Session?.IsAdmin == true) {
+            restoring = true;
             memberActionsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/admin-actions.js");
             memberActionsReference = DotNetObjectReference.Create(this);
             await memberActionsModule.InvokeVoidAsync("attachOutsideClick", memberActionsReference);
+            if (Session?.IsAdmin == true)
+            {
+                var saved = await memberActionsModule.InvokeAsync<AdminViewState?>("loadViewState", "admin", Session.Id);
+                if (saved != null)
+                {
+                    tab = saved.Tab is "Events" or "Members" or "Reports" ? saved.Tab : "Members";
+                    memberVerification = saved.Verification is "pending" or "all" or "verified" or "unverified" or "no-profile" ? saved.Verification : "pending";
+                    country = saved.Country; state = saved.State; city = saved.City;
+                    eventsPage = Math.Max(1, saved.EventsPage); membersPage = Math.Max(1, saved.MembersPage); reportsPage = Math.Max(1, saved.ReportsPage);
+                }
+                viewStateReady = true;
+                await Run(Refresh);
+                restoring = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
         await base.OnAfterRenderAsync(firstRender);
     }
@@ -151,11 +175,16 @@ else if (data != null) {
         ? InvokeAsync(() => { openMemberActions = null; bulkActionsOpen = false; StateHasChanged(); })
         : Task.CompletedTask;
     protected override async Task Refresh() {
+        if (!viewStateReady || Session?.IsAdmin != true) return;
+        if (memberActionsModule != null)
+            await memberActionsModule.InvokeVoidAsync("saveViewState", "admin", Session.Id,
+                new AdminViewState(tab, memberVerification, country, state, city, eventsPage, membersPage, reportsPage));
         data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}&country={E(country)}&state={E(state)}&city={E(city)}");
         foreach (var person in data.People) if (selectedMembers.ContainsKey(person.Id)) selectedMembers[person.Id] = person;
         if (tab == "Events") eventsPage = data.PageNumber; else if (tab == "Reports") reportsPage = data.PageNumber; else membersPage = data.PageNumber;
         if (expandedMember is { } id && data.People.Any(p => p.Id == id && p.HasProfile)) memberProfile = await Api.Get<ProfileReview>($"admin/members/{id}");
         else { expandedMember = null; memberProfile = null; }
+        if (tab == "Events" && adminProfile == null) adminProfile = await Api.Get<ProfileInput>("profile");
     }
     int CurrentPage => tab == "Events" ? eventsPage : tab == "Reports" ? reportsPage : membersPage;
     Task SwitchTab(string value) { tab = value; return Run(Refresh); }

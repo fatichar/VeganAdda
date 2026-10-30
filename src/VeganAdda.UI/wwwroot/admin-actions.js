@@ -14,3 +14,4 @@ export function detachOutsideClick() {
     document.removeEventListener("pointerdown", outsideClickHandler, true);
     outsideClickHandler = undefined;
 }
+export { loadViewState, saveViewState } from './view-state.js';

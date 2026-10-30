@@ -1,3 +1,4 @@
+export { loadViewState, saveViewState } from './view-state.js';
 let trigger;
 const placeKey = 'veganadda-discovery-place';
 export function loadPlace() {

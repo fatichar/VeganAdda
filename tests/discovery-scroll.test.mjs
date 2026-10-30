@@ -12,7 +12,7 @@ function setup(supported = true) {
     }
     const context = vm.createContext(supported ? { IntersectionObserver: Observer } : {});
     const source = readFileSync(new URL('../src/VeganAdda.UI/wwwroot/discovery.js', import.meta.url), 'utf8');
-    vm.runInContext(source.replaceAll('export ', ''), context);
+    vm.runInContext(source.replace(/^export \{[^\n]+\n/gm, '').replaceAll('export ', ''), context);
     return { context, observers };
 }
 

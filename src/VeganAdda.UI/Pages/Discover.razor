@@ -109,7 +109,7 @@
     int? minAge, maxAge, draftMinAge, draftMaxAge;
     double? latitude, longitude;
     ProfileInput? profile; string? lastCity; int locationRequest;
-    bool locationReady, searched, searchSucceeded;
+    bool initialized, restoring, locationReady, searched, searchSucceeded;
     bool loadingMore, loadMoreFailed, hasMore, disposed;
     int searchVersion;
     ElementReference loadMoreTrigger;
@@ -125,6 +125,7 @@
         {
             profile = await Profiles.GetProfile(); dating = profile.LookingFor.Contains("Dating");
         });
+        initialized = true;
     }
     protected override async Task OnParametersSetAsync()
     {
@@ -139,31 +140,61 @@
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await base.OnAfterRenderAsync(firstRender);
-        if (!firstRender)
+        if (!initialized || disposed) return;
+        if (restoring) return;
+        if (locationReady)
         {
             if (discoveryModule != null && !disposed)
                 await discoveryModule.InvokeVoidAsync("observeScroll", loadMoreTrigger, scrollReference, searchSucceeded && hasMore && !Busy && !loadMoreFailed);
+            await base.OnAfterRenderAsync(firstRender);
             return;
         }
+        restoring = true;
         try
         {
             discoveryModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/discovery.js");
             scrollReference = DotNetObjectReference.Create(this);
-            var saved = await discoveryModule.InvokeAsync<DiscoveryInput?>("loadPlace");
-            if (City == null && Event == null && saved != null)
+            var filters = await discoveryModule.InvokeAsync<DiscoveryInput?>("loadViewState", "discover", Session?.Id);
+            if (filters != null)
+            {
+                search = filters.Search; interest = filters.Interest; intent = filters.Intent;
+                genders = filters.Genders; verifiedVegansOnly = filters.VerifiedVegansOnly;
+                includeNonVegan = filters.IncludeNonVegan; minAge = filters.MinAge; maxAge = filters.MaxAge;
+            }
+            var saved = filters ?? await discoveryModule.InvokeAsync<DiscoveryInput?>("loadPlace");
+            if (City == null && saved != null && (Event == null || filters?.Event == Event))
             {
                 country = saved.Country; state = saved.State; city = saved.City;
+                if (saved.RadiusKm is { } savedRadius)
+                {
+                    radius = draftRadius = savedRadius;
+                    var position = await discoveryModule.InvokeAsync<CurrentPosition>("currentPosition");
+                    if (position.Latitude.HasValue && position.Longitude.HasValue && position.Error == "")
+                    {
+                        latitude = position.Latitude; longitude = position.Longitude; nearby = true;
+                    }
+                    else { panel = "nearby"; panelError = position.Error; }
+                }
             }
         }
         catch (JSException) { }
         locationReady = true;
         await Run(Refresh);
         searched = true;
+        restoring = false;
         await InvokeAsync(StateHasChanged);
+        await base.OnAfterRenderAsync(firstRender);
     }
     protected override async Task Refresh()
     {
+        if (!locationReady) return;
+        if (locationReady && discoveryModule != null)
+            await discoveryModule.InvokeVoidAsync("saveViewState", "discover", Session?.Id, new DiscoveryInput
+            {
+                Event = eventId, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent,
+                Genders = genders, VerifiedVegansOnly = verifiedVegansOnly, IncludeNonVegan = includeNonVegan,
+                MinAge = minAge, MaxAge = maxAge, RadiusKm = nearby ? radius : null
+            });
         page = 1;
         var version = ++searchVersion;
         loadMoreFailed = false;
