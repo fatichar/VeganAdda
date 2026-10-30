@@ -5,16 +5,16 @@
     <Feedback Error="@Error" Success="@Success" />
     @if (status != null)
     {
-        @if (status.Status != VerificationStates.NotRequested) { <p role="status">@status.Status</p> }
+        @if (status.Status != VerificationState.NotRequested) { <p role="status">@status.Status.Label()</p> }
         @if (status.Request?.Feedback is { } feedback) { <p class="notice">@feedback</p> }
-        @if (status.Status == VerificationStates.UnderReview)
+        @if (status.Status == VerificationState.UnderReview)
         {
             <p class="small">A moderator will review your request.</p>
-            @foreach (var referrer in status.Request?.Referrers ?? []) { <p class="small">@(referrer.Name ?? "Deleted member") · @referrer.Status</p> }
+            @foreach (var referrer in status.Request?.Referrers ?? []) { <p class="small">@(referrer.Name ?? "Deleted member") · @referrer.Status.Label()</p> }
             <button type="button" class="secondary" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="Withdraw">Withdraw request</button>
         }
         else if (!CanRequest) { <p class="small">Save your profile, then request verification here.</p> }
-        else if (Session?.IsVegan == true && status.Status != VerificationStates.Verified)
+        else if (Session?.IsVegan == true && status.Status != VerificationState.Verified)
         {
             @if (!editing)
             {
@@ -74,13 +74,13 @@
     {
         Session = await Api.Get<Session>("session");
         status = await VerificationApi.GetVerification();
-        if (status.Status is VerificationStates.UnderReview or VerificationStates.Verified) editing = false;
+        if (status.Status is VerificationState.UnderReview or VerificationState.Verified) editing = false;
     }
     void Open()
     {
         editing = true; clientId = Guid.NewGuid();
         explanation = string.Join("\n", new[] { status?.Request?.Explanation ?? "" }.Concat(status?.Request?.EvidenceUrls ?? []).Where(x => !string.IsNullOrWhiteSpace(x)));
-        selected = (status?.Request?.Referrers ?? []).Where(r => r.Id.HasValue && r.Name != null && r.Status != "Unavailable").Select(r => new VerificationCandidate(r.Id!.Value, r.Name!)).ToList();
+        selected = (status?.Request?.Referrers ?? []).Where(r => r.Id.HasValue && r.Name != null && r.Status != ReferralState.Unavailable).Select(r => new VerificationCandidate(r.Id!.Value, r.Name!)).ToList();
         ClearReferrer();
     }
     void ClearReferrer() { query = ""; results = []; active = -1; searchVersion++; searchCancellation?.Cancel(); searching = false; }

@@ -45,8 +45,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         if (input.IsVegan == false)
         {
             p.VeganVerified = false; me.Moderator = false;
-            await db.VerificationRequests.Where(r => r.ApplicantId == me.Id && r.Status == VerificationStates.UnderReview)
-                .ExecuteUpdateAsync(set => set.SetProperty(r => r.Status, VerificationStates.Withdrawn).SetProperty(r => r.Resolved, DateTimeOffset.UtcNow));
+            await db.VerificationRequests.Where(r => r.ApplicantId == me.Id && r.Status == VerificationState.UnderReview)
+                .ExecuteUpdateAsync(set => set.SetProperty(r => r.Status, VerificationState.Withdrawn).SetProperty(r => r.Resolved, DateTimeOffset.UtcNow));
         }
         if (!p.Public || !p.FeatureConsent) p.Featured = false;
         if (p.AdultConfirmedAt == default) p.AdultConfirmedAt = DateTimeOffset.UtcNow;

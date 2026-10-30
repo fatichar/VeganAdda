@@ -2,10 +2,10 @@
 {
     <section class="verification-evidence" aria-label="Private verification evidence">
         <h3>Verification request</h3>
-        <p class="small">@request.Status · @request.Submitted.ToString("d MMM yyyy")</p>
+        <p class="small">@request.Status.Label() · @request.Submitted.ToString("d MMM yyyy")</p>
         @if (request.Explanation != "") { <p class="profile-bio">@request.Explanation</p> }
         @foreach (var url in request.EvidenceUrls) { <a class="external-link" href="@url" target="_blank" rel="noopener noreferrer nofollow">@url<Icon Name="open_in_new" /></a> }
-        @foreach (var referrer in request.Referrers ?? []) { <p class="small">Referral confirmation: @(referrer.Name ?? "Deleted member") · @referrer.Status</p> }
+        @foreach (var referrer in request.Referrers ?? []) { <p class="small">Referral confirmation: @(referrer.Name ?? "Deleted member") · @referrer.Status.Label()</p> }
     </section>
 }
 @code { [Parameter] public VerificationDetails? Details { get; set; } }

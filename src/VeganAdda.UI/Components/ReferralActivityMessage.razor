@@ -1,0 +1,11 @@
+<div class="chat-activity" @key="(Activity.RequestId, Activity.Kind)">
+    <p>@Text</p>
+    <small><time datetime="@Activity.OccurredAt.ToString("O")">@DateLabel</time></small>
+</div>
+@code {
+    [Parameter, EditorRequired] public ReferralActivity Activity { get; set; } = default!;
+    [Parameter, EditorRequired] public ReferralCard Card { get; set; } = default!;
+    [Parameter] public bool ApplicantIsViewer { get; set; }
+    [Parameter] public string DateLabel { get; set; } = "";
+    string Text => ReferralActivityText.Format(Activity, Card.ApplicantName, ApplicantIsViewer);
+}

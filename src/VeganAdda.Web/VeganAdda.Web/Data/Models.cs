@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using VeganAdda.Contracts;
 
 namespace VeganAdda.Web.Data;
 
@@ -159,7 +160,7 @@ public class VerificationRequest
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ApplicantId { get; set; }
     public Guid ClientId { get; set; }
-    public string Status { get; set; } = "Under review";
+    public VerificationState Status { get; set; } = VerificationState.UnderReview;
     public string Explanation { get; set; } = "";
     public string[] EvidenceUrls { get; set; } = [];
     public List<VerificationReferral> Referrers { get; set; } = [];
@@ -173,7 +174,7 @@ public class VerificationReferral
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid RequestId { get; set; }
     public Guid? ReferrerId { get; set; }
-    public string Status { get; set; } = "Awaiting confirmation";
+    public ReferralState Status { get; set; } = ReferralState.AwaitingConfirmation;
     public DateTimeOffset? Responded { get; set; }
 }
 public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(options)
@@ -196,6 +197,11 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // Preserve the existing text columns and values, including the active-request index.
+        b.Entity<VerificationRequest>().Property(r => r.Status).HasMaxLength(600)
+            .HasConversion(value => value.Label(), value => VerificationStorage.ParseVerification(value));
+        b.Entity<VerificationReferral>().Property(r => r.Status).HasMaxLength(600)
+            .HasConversion(value => value.Label(), value => VerificationStorage.ParseReferral(value));
         b.Entity<VerificationRequest>().HasOne<Account>().WithMany().HasForeignKey(r => r.ApplicantId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<VerificationRequest>().HasMany(r => r.Referrers).WithOne().HasForeignKey(r => r.RequestId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<VerificationReferral>().HasOne<Account>().WithMany().HasForeignKey(r => r.ReferrerId).OnDelete(DeleteBehavior.SetNull);

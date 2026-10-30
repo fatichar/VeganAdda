@@ -4,6 +4,7 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 @inject IMessagingApi MessagingApi
+@inject IVerificationApi VerificationApi
 <PageTitle>Messages · VeganAdda</PageTitle>
 <h1 class="sr-only">Messages</h1>
 <Feedback Error="@Error" Success="@Success" />
@@ -77,7 +78,6 @@ else
                         </div>
                     }
                     <div class="message-history" aria-live="polite" @ref="historyElement">
-                        @if (SelectedPersonId is { } referralPersonId) { <ReferralRequestCard @key="(referralPersonId, referralRevision)" PersonId="@referralPersonId" StatusOnly="true" /> }
                         @if (SelectedRequest is { } introduction)
                         {
                             <div class="request-introduction">
@@ -89,9 +89,16 @@ else
                             </div>
                         }
                         @if (hasOlder) { <button class="secondary older" @onclick="Older" disabled="@Busy">Load earlier messages</button> }
-                        @foreach (var message in history)
+                        @foreach (var item in Timeline)
                         {
-                            <div class="message-row @(message.SenderId == Session.Id ? "mine" : "")" @key="message.Id"><div class="message-bubble">@message.Text</div><small>@Date(message.SentAt) @(message.SenderId == Session.Id ? "· Sent" : "")</small></div>
+                            @if (item.Message is { } message)
+                            {
+                                <div class="message-row @(message.SenderId == Session.Id ? "mine" : "")" @key="message.Id"><div class="message-bubble">@message.Text</div><small>@Date(message.SentAt) @(message.SenderId == Session.Id ? "· Sent" : "")</small></div>
+                            }
+                            else if (item.Activity is { } activity && item.Card is { } card)
+                            {
+                                <ReferralActivityMessage @key="(activity.RequestId, activity.Kind)" Activity="@activity" Card="@card" ApplicantIsViewer="@(card.ApplicantId == Session.Id)" DateLabel="@Date(activity.OccurredAt)" />
+                            }
                         }
                         @foreach (var item in pending.Values.Where(p => p.Key == Key).ToList())
                         {
@@ -143,6 +150,12 @@ else
     List<Conversation> conversations = [];
     List<ConnectionItem> connections = [];
     List<Message> history = [];
+    List<ReferralCard> referralCards = [];
+    record TimelineItem(DateTimeOffset At, Message? Message = null, ReferralCard? Card = null, ReferralActivity? Activity = null);
+    IEnumerable<TimelineItem> Timeline => history.Select(m => new TimelineItem(m.SentAt, Message: m))
+        .Concat(referralCards.SelectMany(c => c.Activities.Select(a => new TimelineItem(a.OccurredAt, Card: c, Activity: a)))
+            .Where(item => !hasOlder || history.Count == 0 || item.At >= history[0].SentAt))
+        .OrderBy(item => item.At);
     MessagePage? messagePage;
     string loadedKey = "", confirmAction = "";
     bool sending, refreshing, refreshAgain, hasOlder, menuOpen;
@@ -166,7 +179,7 @@ else
     class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; }
     protected override async Task OnParametersSetAsync()
     {
-        if (Key != loadedKey) { history.Clear(); latestFetchedMessageId = 0; messagePage = null; hasOlder = false; confirmAction = ""; menuOpen = false; loadedKey = Key ?? ""; }
+        if (Key != loadedKey) { history.Clear(); referralCards.Clear(); latestFetchedMessageId = 0; messagePage = null; hasOlder = false; confirmAction = ""; menuOpen = false; loadedKey = Key ?? ""; }
         if (Session?.Id != null) await Run(Refresh);
     }
     protected override async Task OnAfterRenderAsync(bool first)
@@ -221,6 +234,11 @@ else
                 }
                 if (Key != key) return;
                 messagePage = result;
+                var cards = SelectedPersonId is { } personId ? await VerificationApi.GetReferralCards(personId) : [];
+                if (Key != key) return;
+                if (!referralCards.SelectMany(c => c.Activities).SequenceEqual(cards.SelectMany(c => c.Activities))) scrollToLatest = true;
+                referralCards = cards;
+                referralRevision++;
                 foreach (var m in history) pending.Remove(m.ClientId);
                 if (history.Count > 0 && Selected?.Unread > 0)
                 {
@@ -233,7 +251,7 @@ else
         finally { refreshing = false; if (refreshAgain) await Refresh(); }
     }
     Task SetRequestPage(int value) => Run(async () => { requestPage = value; await Refresh(); });
-    void ReferralChanged() => referralRevision++;
+    Task ReferralChanged() => Run(Refresh);
     Task SetChatPage(int value) => Run(async () => { chatPage = value; await Refresh(); });
     Task Older() => Run(async () =>
     {

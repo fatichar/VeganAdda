@@ -7,6 +7,9 @@ namespace VeganAdda.Web.Features.Verification;
 
 public sealed class VerificationService(FeatureContext context) : FeatureService(context)
 {
+    private static ReferralState ReferralStatus(ReferralState response, bool eligible) =>
+        !eligible && response is ReferralState.AwaitingConfirmation or ReferralState.Confirmed ? ReferralState.Unavailable : response;
+
     private IQueryable<Profile> EligibleReferrers(Guid applicant) => db.Profiles.Where(BasicProfile.Complete)
         .Where(p => p.Id != applicant && p.IsVegan == true && p.VeganVerified && !p.TestProfile
             && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended)
@@ -29,10 +32,10 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var eligible = await EligibleReferrers(applicant).Where(p => ids.Contains(p.Id)).Select(p => p.Id).ToListAsync();
         var referrers = row.Referrers.OrderBy(r => r.Id).Select(r => new VerificationReferrer(r.ReferrerId,
             r.ReferrerId.HasValue ? names.GetValueOrDefault(r.ReferrerId.Value) : null,
-            r.Status is "Awaiting confirmation" or "Confirmed" && (!r.ReferrerId.HasValue || !eligible.Contains(r.ReferrerId.Value)) ? "Unavailable" : r.Status)).ToArray();
+            ReferralStatus(r.Status, r.ReferrerId.HasValue && eligible.Contains(r.ReferrerId.Value)))).ToArray();
         var first = referrers.FirstOrDefault();
         return new(row.Id, row.Status, row.Explanation, row.EvidenceUrls, first?.Id, first?.Name,
-            first?.Status ?? "Not requested", row.Feedback, row.Submitted, referrers);
+            first?.Status ?? ReferralState.NotRequested, row.Feedback, row.Submitted, referrers);
     }
 
     public async Task<VerificationStatus> GetVerification()
@@ -40,8 +43,8 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var me = await User(allowIncomplete: true);
         var profile = await db.Profiles.FindAsync(me.Id);
         var details = await Details(me.Id);
-        return new(profile?.VeganVerified == true ? VerificationStates.Verified
-            : details?.Status is VerificationStates.UnderReview or VerificationStates.ChangesRequested ? details.Status : VerificationStates.NotRequested, details);
+        return new(profile?.VeganVerified == true ? VerificationState.Verified
+            : details?.Status is VerificationState.UnderReview or VerificationState.ChangesRequested ? details.Status : VerificationState.NotRequested, details);
     }
 
     public async Task<List<VerificationCandidate>> SearchReferrers(string search)
@@ -72,7 +75,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var profile = await db.Profiles.SingleAsync(p => p.Id == me.Id);
         if (profile.IsVegan != true || profile.VeganVerified || profile.TestProfile)
             throw new ApiException(409, "Only unverified vegan members with real profiles can request verification.");
-        if (await db.VerificationRequests.AnyAsync(r => r.ApplicantId == me.Id && r.Status == VerificationStates.UnderReview))
+        if (await db.VerificationRequests.AnyAsync(r => r.ApplicantId == me.Id && r.Status == VerificationState.UnderReview))
             throw new ApiException(409, "Your verification request is already under review.");
         foreach (var referrer in referrers)
         {
@@ -110,8 +113,8 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var me = await User();
         await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
         var row = await db.VerificationRequests.SingleOrDefaultAsync(r => r.Id == id && r.ApplicantId == me.Id) ?? throw Missing();
-        if (row.Status != VerificationStates.UnderReview) throw new ApiException(409, "This request is no longer under review.");
-        row.Status = VerificationStates.Withdrawn; row.Resolved = DateTimeOffset.UtcNow;
+        if (row.Status != VerificationState.UnderReview) throw new ApiException(409, "This request is no longer under review.");
+        row.Status = VerificationState.Withdrawn; row.Resolved = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(); await tx.CommitAsync();
         var recipients = await Reviewers();
         recipients.AddRange(await db.VerificationReferrals.Where(r => r.RequestId == row.Id && r.ReferrerId != null).Select(r => r.ReferrerId!.Value).ToListAsync());
@@ -131,10 +134,27 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         {
             var referral = row.Referrers.Single(r => r.ReferrerId == (row.ApplicantId == me.Id ? personId : me.Id));
             var eligible = referral.ReferrerId.HasValue && await Eligible(row.ApplicantId, referral.ReferrerId.Value);
-            var response = !eligible && referral.Status is "Awaiting confirmation" or "Confirmed" ? "Unavailable" : referral.Status;
+            var response = ReferralStatus(referral.Status, eligible);
             var name = await db.Accounts.Where(a => a.Id == row.ApplicantId).Select(a => a.Name).SingleAsync();
+            List<ReferralActivity> activities = [new(row.Id, ReferralActivityKind.Requested, row.Submitted, row.ApplicantId == me.Id)];
+            if (referral.Responded is { } responded && referral.Status is ReferralState.Confirmed or ReferralState.Declined)
+                activities.Add(new(row.Id, referral.Status == ReferralState.Confirmed ? ReferralActivityKind.Confirmed : ReferralActivityKind.Declined,
+                    responded, referral.ReferrerId == me.Id));
+            if (row.Resolved is { } resolved)
+            {
+                ReferralActivityKind? kind = row.Status switch
+                {
+                    VerificationState.Verified => ReferralActivityKind.Verified,
+                    VerificationState.Withdrawn => ReferralActivityKind.Withdrawn,
+                    VerificationState.ChangesRequested => ReferralActivityKind.ChangesRequested,
+                    _ => null
+                };
+                if (kind.HasValue) activities.Add(new(row.Id, kind.Value, resolved,
+                    row.Status == VerificationState.Withdrawn ? row.ApplicantId == me.Id : row.ReviewedBy == me.Id));
+            }
             cards.Add(new(row.Id, row.ApplicantId, name, row.Status, response,
-                referral.ReferrerId == me.Id && eligible && row.Status == VerificationStates.UnderReview && referral.Status == "Awaiting confirmation"));
+                referral.ReferrerId == me.Id && eligible && row.Status == VerificationState.UnderReview && referral.Status == ReferralState.AwaitingConfirmation,
+                activities.ToArray()));
         }
         return cards;
     }
@@ -146,13 +166,13 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         await using var tx = await db.Database.BeginTransactionAsync(); await PairLock(Pair(applicant, me.Id)); await UserLock(applicant);
         var row = await db.VerificationRequests.SingleAsync(r => r.Id == id);
         var referral = await db.VerificationReferrals.SingleAsync(r => r.RequestId == id && r.ReferrerId == me.Id);
-        if (row.Status != VerificationStates.UnderReview || !await Eligible(applicant, me.Id)
+        if (row.Status != VerificationState.UnderReview || !await Eligible(applicant, me.Id)
             || !await db.Profiles.Where(BasicProfile.Complete).AnyAsync(p => p.Id == applicant && p.IsVegan == true && !p.TestProfile)
             || !await db.Accounts.AnyAsync(a => a.Id == applicant && !a.Suspended))
             throw new ApiException(409, "This confirmation request is no longer available.");
-        var response = input.Confirm ? "Confirmed" : "Declined";
+        var response = input.Confirm ? ReferralState.Confirmed : ReferralState.Declined;
         if (referral.Status == response) return new Ok();
-        if (referral.Status != "Awaiting confirmation") throw new ApiException(409, "You have already responded to this request.");
+        if (referral.Status != ReferralState.AwaitingConfirmation) throw new ApiException(409, "You have already responded to this request.");
         referral.Status = response; referral.Responded = DateTimeOffset.UtcNow;
         var recipients = await Reviewers();
         foreach (var recipient in recipients)

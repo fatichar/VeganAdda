@@ -1,11 +1,11 @@
 @inherits Screen
 @inject IVerificationApi VerificationApi
-@foreach (var card in cards.Where(card => ActionableOnly ? card.CanRespond : !StatusOnly || !card.CanRespond))
+@foreach (var card in cards.Where(card => card.Status == VerificationState.UnderReview && (ActionableOnly ? card.CanRespond : true)))
 {
     <section class="notice referral-request @(ActionableOnly ? "referral-request-pinned" : "")" id="vegan-confirmation" aria-label="Vegan confirmation request">
         <strong>Vegan confirmation request</strong>
         <p>@(card.ApplicantId == Session?.Id ? "You asked this member to confirm you are vegan." : $"{card.ApplicantName} asked you to confirm they are vegan.")</p>
-        @if (!ActionableOnly) { <p class="small" role="status">@card.Status · @card.ReferralStatus</p> }
+        @if (!ActionableOnly) { <p class="small" role="status">@card.Status.Label() · @card.ReferralStatus.Label()</p> }
         @if (card.CanRespond)
         {
             <p class="small">Confirm only if you know this person is vegan. A moderator makes the final verification decision.</p>
@@ -17,7 +17,6 @@
 @code {
     [Parameter] public Guid PersonId { get; set; }
     [Parameter] public bool ActionableOnly { get; set; }
-    [Parameter] public bool StatusOnly { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
     List<ReferralCard> cards = [];
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); }

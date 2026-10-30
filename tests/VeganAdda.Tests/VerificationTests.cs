@@ -94,8 +94,8 @@ public class VerificationTests(DatabaseFixture f)
         await As(second, s => s.RespondToReferral(request.Id, new(true)));
         await As(second, s => s.RespondToReferral(request.Id, new(true)));
         var updated = (await As(applicant, s => s.GetVerification())).Request!;
-        Assert.Equal("Declined", updated.Referrers!.Single(r => r.Id == first).Status);
-        Assert.Equal("Confirmed", updated.Referrers!.Single(r => r.Id == second).Status);
+        Assert.Equal(ReferralState.Declined, updated.Referrers!.Single(r => r.Id == first).Status);
+        Assert.Equal(ReferralState.Confirmed, updated.Referrers!.Single(r => r.Id == second).Status);
         Assert.False(((ProfileInput)await f.Call(applicant, "profile")).VeganVerified);
         var serialized = JsonSerializer.Serialize(await As(first, s => s.GetReferralCards(applicant)), Wire.Json);
         Assert.DoesNotContain("Private proof", serialized); Assert.DoesNotContain(second.ToString(), serialized);
@@ -115,8 +115,8 @@ public class VerificationTests(DatabaseFixture f)
         await As(second, s => s.RespondToReferral(request.Id, new(true)));
         await f.Call(first, "account", new DeleteInput("DELETE"), "DELETE");
         var details = (await As(applicant, s => s.GetVerification())).Request!;
-        Assert.Equal("Unavailable", details.Referrers!.Single(r => r.Id == null).Status);
-        Assert.Equal("Confirmed", details.Referrers!.Single(r => r.Id == second).Status);
+        Assert.Equal(ReferralState.Unavailable, details.Referrers!.Single(r => r.Id == null).Status);
+        Assert.Equal(ReferralState.Confirmed, details.Referrers!.Single(r => r.Id == second).Status);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class VerificationTests(DatabaseFixture f)
                 """);
             await migrator.MigrateAsync();
             var row = await db.VerificationReferrals.SingleAsync(r => r.RequestId == id);
-            Assert.Equal(referrer, row.ReferrerId); Assert.Equal("Confirmed", row.Status);
+            Assert.Equal(referrer, row.ReferrerId); Assert.Equal(ReferralState.Confirmed, row.Status);
             Assert.True((time - row.Responded!.Value).Duration() < TimeSpan.FromMilliseconds(1));
             Assert.Equal("Legacy proof", (await db.VerificationRequests.SingleAsync(r => r.Id == id)).Explanation);
         }
@@ -154,7 +154,7 @@ public class VerificationTests(DatabaseFixture f)
             (await db.Accounts.FindAsync(inactiveModerator))!.Moderator = true;
             await db.SaveChangesAsync();
         }
-        Assert.Equal(VerificationStates.NotRequested, (await As(applicant, s => s.GetVerification())).Status);
+        Assert.Equal(VerificationState.NotRequested, (await As(applicant, s => s.GetVerification())).Status);
         var input = Input(referrer, "Private evidence description", ["https://example.org/vegan-evidence"]);
         await As(applicant, s => s.SubmitVerification(input));
         await As(applicant, s => s.SubmitVerification(input)); // Transport retry is idempotent.
@@ -178,12 +178,12 @@ public class VerificationTests(DatabaseFixture f)
         Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => As(stranger, s => s.RespondToReferral(request.Id, new(true))))).Status);
         await As(referrer, s => s.RespondToReferral(request.Id, new(true)));
         await As(referrer, s => s.RespondToReferral(request.Id, new(true)));
-        Assert.Equal("Confirmed", (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
+        Assert.Equal(ReferralState.Confirmed, (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
         Assert.False(((ProfileInput)await f.Call(applicant, "profile")).VeganVerified);
         var review = (ProfileReview)await f.Call(admin, $"admin/members/{applicant}");
         Assert.Equal(input.Explanation, review.Verification!.Explanation);
         await f.Call(moderator, "moderation/profile-review", new VeganVerificationInput(applicant, true, RequestId: request.Id), "POST");
-        Assert.Equal(VerificationStates.Verified, (await As(applicant, s => s.GetVerification())).Status);
+        Assert.Equal(VerificationState.Verified, (await As(applicant, s => s.GetVerification())).Status);
         Assert.False(Assert.Single(await As(referrer, s => s.GetReferralCards(applicant))).CanRespond);
         Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => f.Call(moderator, "moderation/profile-review", new VeganVerificationInput(applicant, false, "More evidence", request.Id), "POST"))).Status);
     }
@@ -238,7 +238,7 @@ public class VerificationTests(DatabaseFixture f)
             await db.SaveChangesAsync();
         }
         Assert.Contains((await Assert.ThrowsAsync<ApiException>(() => As(referrer, s => s.RespondToReferral(request.Id, new(true))))).Status, new[] { 403, 409 });
-        Assert.Equal("Unavailable", (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
+        Assert.Equal(ReferralState.Unavailable, (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
     }
 
     [Fact]
@@ -253,7 +253,7 @@ public class VerificationTests(DatabaseFixture f)
             await db.SaveChangesAsync();
         }
         await As(referrer, s => s.RespondToReferral(request.Id, new(true)));
-        Assert.Equal("Confirmed", (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
+        Assert.Equal(ReferralState.Confirmed, (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
     }
 
     [Fact]
@@ -265,19 +265,78 @@ public class VerificationTests(DatabaseFixture f)
         Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(Input(explanation: "Duplicate"))))).Status);
         Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(admin, "admin/profile-review", new VeganVerificationInput(applicant, false, " ", request.Id), "POST"))).Status);
         await f.Call(admin, "admin/profile-review", new VeganVerificationInput(applicant, false, "Please explain further", request.Id), "POST");
-        Assert.Equal(VerificationStates.ChangesRequested, (await As(applicant, s => s.GetVerification())).Status);
+        Assert.Equal(VerificationState.ChangesRequested, (await As(applicant, s => s.GetVerification())).Status);
         await As(applicant, s => s.SubmitVerification(Input(links: ["https://example.org/evidence"])));
         var resubmitted = (await As(applicant, s => s.GetVerification())).Request!;
         Assert.NotEqual(request.Id, resubmitted.Id);
         Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => f.Call(admin, "admin/profile-review", new VeganVerificationInput(applicant, true, RequestId: request.Id), "POST"))).Status);
         await As(applicant, s => s.WithdrawVerification(resubmitted.Id));
-        Assert.Equal(VerificationStates.NotRequested, (await As(applicant, s => s.GetVerification())).Status);
+        Assert.Equal(VerificationState.NotRequested, (await As(applicant, s => s.GetVerification())).Status);
         await As(applicant, s => s.SubmitVerification(Input(explanation: "Resubmit")));
         var profile = (ProfileInput)await f.Call(applicant, "profile"); profile.IsVegan = false;
         await f.Call(applicant, "profile", profile, "POST");
-        Assert.Equal(VerificationStates.NotRequested, (await As(applicant, s => s.GetVerification())).Status);
+        Assert.Equal(VerificationState.NotRequested, (await As(applicant, s => s.GetVerification())).Status);
         await using var db = f.Db();
-        Assert.False(await db.VerificationRequests.AnyAsync(r => r.ApplicantId == applicant && r.Status == VerificationStates.UnderReview));
+        Assert.False(await db.VerificationRequests.AnyAsync(r => r.ApplicantId == applicant && r.Status == VerificationState.UnderReview));
+    }
+
+    [Theory]
+    [InlineData("admin", VerificationState.Verified)]
+    [InlineData("moderator", VerificationState.Verified)]
+    [InlineData("feedback", VerificationState.ChangesRequested)]
+    [InlineData("withdraw", VerificationState.Withdrawn)]
+    public async Task Closed_requests_project_dated_actions_without_inventing_referrer_responses(string resolution, VerificationState expectedStatus)
+    {
+        var applicant = await Applicant(); var referrer = await f.Member(admin: resolution == "admin");
+        var reviewer = resolution == "admin" ? referrer : await f.Member(admin: resolution != "moderator");
+        if (resolution == "moderator")
+        {
+            await using var db = f.Db();
+            (await db.Accounts.FindAsync(reviewer))!.Moderator = true;
+            await db.SaveChangesAsync();
+        }
+        await As(applicant, s => s.SubmitVerification(Input(referrer)));
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        var pending = Assert.Single(await As(referrer, s => s.GetReferralCards(applicant)));
+        Assert.Equal(ReferralState.AwaitingConfirmation, pending.ReferralStatus);
+        Assert.True(pending.CanRespond);
+
+        if (resolution == "admin")
+            await f.Call(reviewer, "admin/moderate", new ModerateInput(applicant, "confirm-vegan"), "POST");
+        else if (resolution == "withdraw")
+            await As(applicant, s => s.WithdrawVerification(request.Id));
+        else
+            await f.Call(reviewer, resolution == "moderator" ? "moderation/profile-review" : "admin/profile-review",
+                new VeganVerificationInput(applicant, resolution == "moderator", "Please add evidence", request.Id), "POST");
+
+        foreach (var (viewer, person) in new[] { (referrer, applicant), (applicant, referrer) })
+        {
+            var card = Assert.Single(await As(viewer, s => s.GetReferralCards(person)));
+            Assert.Equal(expectedStatus, card.Status);
+            Assert.Equal(ReferralState.AwaitingConfirmation, card.ReferralStatus);
+            Assert.Equal(2, card.Activities.Length);
+            var action = card.Activities[1];
+            Assert.Equal(request.Id, action.RequestId);
+            Assert.True(action.OccurredAt >= card.Activities[0].OccurredAt);
+            Assert.Equal(resolution switch { "admin" or "moderator" => ReferralActivityKind.Verified, "feedback" => ReferralActivityKind.ChangesRequested, _ => ReferralActivityKind.Withdrawn }, action.Kind);
+            Assert.Equal(resolution == "admin" ? viewer == reviewer : resolution == "withdraw" && viewer == applicant, action.ByViewer);
+            Assert.False(card.CanRespond);
+        }
+        var details = (await As(applicant, s => s.GetVerification())).Request!;
+        Assert.Equal(ReferralState.AwaitingConfirmation, details.ReferralStatus);
+        Assert.Equal(ReferralState.AwaitingConfirmation, Assert.Single(details.Referrers!).Status);
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => As(referrer, s => s.RespondToReferral(request.Id, new(true))))).Status);
+        // Keep the unanswered response as history; resolved requests are projected correctly on read.
+        await using var history = f.Db();
+        var referral = await history.VerificationReferrals.SingleAsync(r => r.RequestId == request.Id);
+        Assert.Equal(ReferralState.AwaitingConfirmation, referral.Status);
+        Assert.Null(referral.Responded);
+        var resolved = await history.VerificationRequests.SingleAsync(r => r.Id == request.Id);
+        Assert.Equal(resolved.Resolved, Assert.Single(await As(referrer, s => s.GetReferralCards(applicant))).Activities[1].OccurredAt);
+        Assert.Equal(expectedStatus.Label(), await history.Database.SqlQuery<string>($"""
+            SELECT "Status" AS "Value" FROM "VerificationRequests" WHERE "Id" = {request.Id}
+            """).SingleAsync());
+        Assert.False(history.Database.HasPendingModelChanges());
     }
 
     [Fact]
@@ -287,10 +346,11 @@ public class VerificationTests(DatabaseFixture f)
         await As(applicant, s => s.SubmitVerification(Input(referrer)));
         var request = (await As(applicant, s => s.GetVerification())).Request!;
         await As(referrer, s => s.RespondToReferral(request.Id, new(false)));
-        Assert.Equal(VerificationStates.UnderReview, (await As(applicant, s => s.GetVerification())).Status);
-        Assert.Equal("Declined", (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
+        Assert.Equal(VerificationState.UnderReview, (await As(applicant, s => s.GetVerification())).Status);
+        Assert.Equal(ReferralState.Declined, (await As(applicant, s => s.GetVerification())).Request!.ReferralStatus);
         await f.Call(admin, "admin/moderate", new ModerateInput(applicant, "confirm-vegan"), "POST");
-        Assert.Equal(VerificationStates.Verified, (await As(applicant, s => s.GetVerification())).Request!.Status);
+        Assert.Equal(VerificationState.Verified, (await As(applicant, s => s.GetVerification())).Request!.Status);
+        Assert.Equal(ReferralState.Declined, Assert.Single(await As(referrer, s => s.GetReferralCards(applicant))).ReferralStatus);
     }
 
     [Fact]

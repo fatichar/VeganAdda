@@ -13,7 +13,7 @@ namespace VeganAdda.Web.Features.Moderation;
 public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle, VerificationService verification, IFirebaseUserEmailLookup emailLookup, IProfileReminderEmailSender emailSender, ILogger<ModerationService> logger) : FeatureService(context)
 {
     private IQueryable<Profile> ReviewableProfiles() => db.Profiles.Where(BasicProfile.Complete)
-        .Where(p => p.IsVegan == true && !p.VeganVerified && db.VerificationRequests.Any(r => r.ApplicantId == p.Id && r.Status == VerificationStates.UnderReview) && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
+        .Where(p => p.IsVegan == true && !p.VeganVerified && db.VerificationRequests.Any(r => r.ApplicantId == p.Id && r.Status == VerificationState.UnderReview) && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended));
 
     public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1, string country = "", string state = "", string city = "")
     {
@@ -229,14 +229,14 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         var account = await db.Accounts.FindAsync(profile.Id) ?? throw Missing();
         if (input.Confirm && (profile.IsVegan != true || account.Suspended || !BasicProfile.IsComplete(profile)))
             throw new ApiException(409, "Only an active member with a complete profile and vegan status can be confirmed.");
-        var request = await db.VerificationRequests.SingleOrDefaultAsync(r => r.ApplicantId == profile.Id && r.Status == VerificationStates.UnderReview);
+        var request = await db.VerificationRequests.SingleOrDefaultAsync(r => r.ApplicantId == profile.Id && r.Status == VerificationState.UnderReview);
         if ((!reviewer.Admin || input.RequestId.HasValue) && (request == null || request.Id != input.RequestId))
             throw new ApiException(409, "This request has changed. Refresh the review queue.");
         if (!input.Confirm && !profile.VeganVerified && request == null)
             throw new ApiException(409, "There is no active verification request to review.");
         if (request != null)
         {
-            request.Status = input.Confirm ? VerificationStates.Verified : VerificationStates.ChangesRequested;
+            request.Status = input.Confirm ? VerificationState.Verified : VerificationState.ChangesRequested;
             request.Feedback = input.Confirm ? null : Text(input.Note, 500, true);
             request.Resolved = DateTimeOffset.UtcNow; request.ReviewedBy = reviewer.Id;
         }

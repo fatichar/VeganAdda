@@ -85,7 +85,7 @@ public class HttpTests : IDisposable
         var input = new VerificationSubmission("Private verification explanation", ["https://example.org/private-evidence"], referrer, Guid.NewGuid());
         Assert.Equal(HttpStatusCode.BadRequest, (await member.PostAsJsonAsync("/api/verification", input)).StatusCode);
         var initial = await member.GetFromJsonAsync<VerificationStatus>("/api/verification");
-        Assert.Equal(VerificationStates.NotRequested, initial!.Status);
+        Assert.Equal(VerificationState.NotRequested, initial!.Status);
         await Post(member, "/api/verification", input);
         var owner = (await member.GetFromJsonAsync<VerificationStatus>("/api/verification"))!;
         var html = await member.GetStringAsync($"/people/{applicant}");
@@ -103,7 +103,7 @@ public class HttpTests : IDisposable
         await Post(connection, $"/api/verification/referrals/{owner.Request!.Id}/respond", new VerificationResponse(true));
         Assert.False((await member.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
         await Post(reviewer, "/api/admin/profile-review", new VeganVerificationInput(applicant, true, RequestId: owner.Request.Id));
-        Assert.Equal(VerificationStates.Verified, (await member.GetFromJsonAsync<VerificationStatus>("/api/verification"))!.Status);
+        Assert.Equal(VerificationState.Verified, (await member.GetFromJsonAsync<VerificationStatus>("/api/verification"))!.Status);
     }
 
     [Fact]

@@ -266,3 +266,5 @@ body:has(.profile-editor) .site-footer{display:none}
   .chat-layout.has-conversation .message-bubble{background:#fff;border-color:#c7d2c7;color:#17251c}
   .chat-layout.has-conversation .mine .message-bubble{background:#28573e;border-color:#28573e;color:#fff}
 }
+
+.chat-activity{align-self:center;max-width:100%;padding:.65rem 1rem;text-align:center;color:var(--forest);font-size:.85rem}.chat-activity p{margin:0;overflow-wrap:anywhere}.chat-activity small{margin-top:.2rem}
