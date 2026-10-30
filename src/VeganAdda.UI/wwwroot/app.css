@@ -201,6 +201,10 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 html:has(.profile-editor){overflow:clip}
 body:has(.profile-editor) .page{min-height:0;padding-bottom:0}
 body:has(.profile-editor) .site-footer{display:none}
+@media(max-width:767px){
+  body:has(.profile-editor) .page{padding-top:8px}
+  body:has(.profile-editor) .bottom-nav{display:none}
+}
 
 .admin-link{position:relative}
 .desktop-nav .admin-link .count{margin-left:5px}

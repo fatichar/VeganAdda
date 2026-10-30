@@ -4,11 +4,13 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 <PageTitle>Your profile · VeganAdda</PageTitle>
-<div class="narrow profile-editor"><header class="profile-editor-heading"><a class="back-link" href="/settings"><Icon Name="arrow_back" />Back</a><h1>@(onboarding ? "Complete your basic profile" : "Edit profile")</h1></header>
+<div class="narrow profile-editor"><header class="profile-editor-heading"><a class="back-link icon-button" href="/settings" aria-label="Back to settings"><Icon Name="arrow_back" /></a><h1>@(onboarding ? "Complete your basic profile" : "Edit profile")</h1>
+@if (model != null && Session?.Id != null) { <button type="submit" form="profile-form" disabled="@(!RendererInfo.IsInteractive || Busy || locationBusy || !HasChanges)">@(Busy ? "Saving…" : "Save")</button> }
+</header>
 @if (model == null) { <Feedback Error="@Error" Success="@Success" /> }
 @if (Session?.Id == null) { <a class="button" href="@SignInUrl">Sign in to create a profile</a> }
 else if (model != null) {
-<form @ref="profileForm" @onsubmit="Save" @onsubmit:preventDefault novalidate class="form-card" @oninput="ProfileEdited" @onchange="ProfileEdited"><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
+<form id="profile-form" @ref="profileForm" @onsubmit="Save" @onsubmit:preventDefault novalidate class="form-card" @oninput="ProfileEdited" @onchange="ProfileEdited"><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">
 <div class="profile-tabs" role="tablist" aria-label="Profile sections">
 @for (var i = 0; i < tabs.Length; i++) { var index = i; <button type="button" id="profile-tab-@index" role="tab" aria-selected="@(activeTab == index ? "true" : "false")" aria-controls="profile-panel-@index" tabindex="@(activeTab == index ? 0 : -1)" @onclick="() => activeTab = index">@tabs[index]</button> }
 </div>
@@ -21,7 +23,7 @@ else if (model != null) {
 <h2 class="sr-only">Basic info</h2>
 <p class="small muted">Fields marked <RequiredMark /> are required.</p>
 <fieldset class="profile-section"><legend>Personal details</legend>
-<div class="profile-photo-field"><Avatar Name="@model.Name" Photo="@model.Photo" VeganVerified="@(model.IsVegan == true && model.VeganVerified)" Size="large" /><div><label for="photo">Profile photo <span class="muted">(optional)</span></label><InputFile id="photo" OnChange="Upload" accept="image/jpeg,image/png,image/webp" /><small>JPG, PNG or WebP · up to 10 MB</small>@if (model.Photo != "") { <button type="button" class="text-button" @onclick="() => model.Photo = string.Empty">Remove photo</button> }</div></div>
+<div class="profile-photo-field"><Avatar Name="@model.Name" Photo="@model.Photo" VeganVerified="@(model.IsVegan == true && model.VeganVerified)" /><div class="profile-photo-controls"><div class="profile-photo-actions"><label for="photo" class="button secondary photo-upload">Change photo<span class="sr-only"> (optional)</span></label><InputFile id="photo" class="sr-only" OnChange="Upload" accept="image/jpeg,image/png,image/webp" aria-describedby="photo-help" />@if (model.Photo != "") { <button type="button" class="text-button" @onclick="() => model.Photo = string.Empty">Remove<span class="sr-only"> photo</span></button> }</div><small id="photo-help">Optional · JPG, PNG or WebP · up to 10 MB</small></div></div>
 <label for="name">Your name <RequiredMark /></label><input id="name" required maxlength="80" autocomplete="name" @bind="model.Name" @bind:event="oninput" placeholder="Name" />
 <label for="gender">Gender <RequiredMark /></label><select id="gender" required @bind="model.Gender"><option value="" disabled>Select gender</option>@foreach (var gender in Wire.Genders) { <option>@gender</option> }</select><small>Used to match gender filters in Discover.</small>
 </fieldset>
@@ -68,7 +70,8 @@ else if (model != null) {
 <fieldset class="profile-section"><legend>Visibility</legend><label class="check-row"><input type="checkbox" @bind="model.Public" /><span>Show my profile to public visitors<small>Your name, photo, city, state, country, profession, bio, interests and non-dating intentions will be public. Social links are visible only to signed-in members. Public profiles may be featured. Dating is always excluded from public responses.</small></span></label></fieldset>
 <fieldset class="profile-section"><legend>Event visibility</legend><label class="check-row"><input type="checkbox" @bind="model.DefaultAttendeeVisible" /><span>Show me in attendee lists by default<small>Applies to future attendance choices. You can change visibility for each event.</small></span></label></fieldset>
 </section>
-<p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p></div><footer class="profile-save"><div class="save-feedback"><Feedback Error="@Error" Success="@Success" /></div><button disabled="@(Busy || locationBusy || !HasChanges)">@(Busy ? "Saving…" : "Save changes")<Icon Name="arrow_forward" /></button></footer>
+<p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p></div>
+@if (!string.IsNullOrEmpty(Error) || !string.IsNullOrEmpty(Success)) { <footer class="profile-save"><div class="save-feedback"><Feedback Error="@Error" Success="@Success" /></div></footer> }
 </fieldset></form> }</div>
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
@@ -81,7 +84,7 @@ else if (model != null) {
     void ProfileEdited() { if (HasChanges) Success = ""; }
     int activeTab;
     ElementReference profileForm;
-    readonly string[] tabs = ["Basic info", "Optional details", "Preferences"];
+    readonly string[] tabs = ["Basic info", "Details", "Preferences"];
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
