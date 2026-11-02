@@ -19,6 +19,37 @@ public class DiscoveryTests(DatabaseFixture f)
     }
 
     [Fact]
+    public async Task Connection_views_filter_before_paging_and_preserve_pending_requests_and_blocks()
+    {
+        var viewer = await f.Member();
+        var accepted = new List<Guid>();
+        for (var i = 0; i < 14; i++) accepted.Add(await Located("India", "Maharashtra", "Pune", 0, 0));
+        var pending = await Located("India", "Maharashtra", "Pune", 0, 0);
+        var stranger = await Located("India", "Maharashtra", "Pune", 0, 0);
+        var removed = await Located("India", "Maharashtra", "Pune", 0, 0);
+        await using (var db = f.Db())
+        {
+            foreach (var (peer, i) in accepted.Select((id, i) => (id, i)))
+                db.Relationships.Add(new() { Key = VeganAdda.Web.Services.CommunityService.Pair(viewer, peer),
+                    A = i % 2 == 0 ? viewer : peer, B = i % 2 == 0 ? peer : viewer, State = "accepted", RequestedBy = viewer });
+            db.Relationships.Add(new() { Key = VeganAdda.Web.Services.CommunityService.Pair(viewer, pending), A = viewer, B = pending, State = "pending", RequestedBy = viewer });
+            db.Relationships.Add(new() { Key = VeganAdda.Web.Services.CommunityService.Pair(viewer, removed), A = viewer, B = removed, State = "removed", RequestedBy = viewer });
+            db.Blocks.Add(new() { Owner = accepted[0], Subject = viewer });
+            await db.SaveChangesAsync();
+        }
+        var newPeople = Assert.IsType<Page<Person>>(await Search(viewer, new()));
+        Assert.Equal(3, newPeople.Total);
+        Assert.Equal(new[] { pending, stranger, removed }.Order(), newPeople.Items.Select(p => p.Id).Order());
+        var first = Assert.IsType<Page<Person>>(await f.Call(viewer, $"people?connectionsOnly=true&search={marker}"));
+        var second = Assert.IsType<Page<Person>>(await Search(viewer, new() { ConnectionsOnly = true, Page = 2, Latitude = 0, Longitude = 0, RadiusKm = 1 }));
+        Assert.Equal(13, first.Total); Assert.Equal(13, second.Total);
+        Assert.Equal(12, first.Items.Count); Assert.Single(second.Items);
+        Assert.Equal(accepted.Skip(1).Order(), first.Items.Concat(second.Items).Select(p => p.Id).Order());
+        Assert.All(first.Items, p => Assert.Equal("connected", p.Relationship));
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, "people?connectionsOnly=true"))).Status);
+    }
+
+    [Fact]
     public async Task Location_filters_are_optional_scoped_and_case_insensitive()
     {
         var city = "City-" + Guid.NewGuid().ToString("N");

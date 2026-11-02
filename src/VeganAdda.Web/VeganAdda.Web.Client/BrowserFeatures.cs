@@ -24,6 +24,7 @@ public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISave
             return transport.Send<Page<Person>>("people/search", input);
         var query = new Dictionary<string, string?>
         {
+            ["connectionsOnly"] = input.ConnectionsOnly.ToString().ToLowerInvariant(),
             ["event"] = input.Event,
             ["checkedIn"] = input.CheckedIn.ToString().ToLowerInvariant(),
             ["country"] = input.Country,

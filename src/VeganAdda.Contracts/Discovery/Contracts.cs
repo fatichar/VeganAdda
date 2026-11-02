@@ -2,6 +2,7 @@ namespace VeganAdda.Contracts;
 
 public class DiscoveryInput
 {
+    public bool ConnectionsOnly { get; set; }
     public string Event { get; set; } = "";
     public bool CheckedIn { get; set; }
     public string Country { get; set; } = "";

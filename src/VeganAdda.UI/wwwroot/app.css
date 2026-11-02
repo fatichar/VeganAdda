@@ -24,6 +24,14 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .focus-guard{position:fixed;width:1px;height:1px;opacity:0;overflow:hidden}
 
 /* Keep discovery focused on people; details live on the profile and event screens. */
+.discovery-views{position:relative;isolation:isolate;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:340px;max-width:100%;padding:4px;margin-bottom:20px;border-radius:999px;background:#dfe8dc}
+.discovery-views:before{content:"";position:absolute;z-index:-1;inset:4px auto 4px 4px;width:calc(50% - 4px);border-radius:999px;background:#fff;box-shadow:0 2px 5px #1b433226;transition:transform .2s ease}
+.discovery-views:has(button:last-child[aria-pressed="true"]):before{transform:translateX(100%)}
+.discovery-views button{min-width:0;min-height:44px;padding:10px 12px;border:0;border-radius:999px;background:transparent;color:#526056;font-size:.875rem;font-weight:600;white-space:nowrap}
+.discovery-views button[aria-pressed="true"]{background:transparent;color:var(--forest);font-weight:700}
+.discovery-views button:focus-visible{outline:3px solid var(--forest);outline-offset:1px}
+@media(prefers-reduced-motion:reduce){.discovery-views:before{transition:none}}
+@media(max-width:767px){.discovery-views{width:100%}.discovery-views button{padding-inline:12px}}
 .discovery-heading{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-bottom:16px}
 .discovery-heading h1{font-size:2rem;margin:0}
 .city-picker{display:flex;align-items:center;gap:4px;margin:0;color:var(--forest);min-width:0}
