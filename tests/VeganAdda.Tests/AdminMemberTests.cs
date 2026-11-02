@@ -3,12 +3,61 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
 using VeganAdda.Web.Features.Verification;
+using VeganAdda.Web.Features.Moderation;
 
 namespace VeganAdda.Tests;
 
 [Collection("Postgres")]
 public class AdminMemberTests(DatabaseFixture f)
 {
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(null, false, false)]
+    [InlineData(true, false, true)]
+    public async Task Profile_feedback_notifies_members_without_changing_verification(bool? isVegan, bool verified, bool activeRequest)
+    {
+        var admin = await f.Member(admin: true);
+        var member = await f.Member();
+        await using (var db = f.Db())
+        {
+            var profile = (await db.Profiles.FindAsync(member))!;
+            profile.IsVegan = isVegan;
+            profile.VeganVerified = verified;
+            (await db.Accounts.FindAsync(member))!.Moderator = verified;
+            await db.SaveChangesAsync();
+        }
+        if (activeRequest)
+            await f.Feature<VerificationService, Ok>(member, service => service.SubmitVerification(
+                new VerificationSubmission("Please verify my vegan status.", [], null, Guid.NewGuid())));
+
+        const string note = "Please add more detail to your bio.";
+        await f.Feature<ModerationService, Ok>(admin, service => service.RequestProfileChanges(new(member, "  " + note + "  ")));
+
+        await using var saved = f.Db();
+        var updated = (await saved.Profiles.FindAsync(member))!;
+        Assert.Equal(note, updated.ReviewNote);
+        Assert.Equal(admin, updated.ReviewedBy);
+        Assert.NotNull(updated.ReviewedAt);
+        Assert.Equal(verified, updated.VeganVerified);
+        Assert.Equal(isVegan, updated.IsVegan);
+        Assert.Equal(verified, (await saved.Accounts.FindAsync(member))!.Moderator);
+        var notice = Assert.Single(await saved.Notifications.Where(n => n.UserId == member && n.Kind == "profile-changes-requested").ToListAsync());
+        Assert.Contains(note, notice.Text);
+        Assert.Equal("/settings/profile", notice.Url);
+        Assert.Equal(note, Assert.IsType<ProfileInput>(await f.Call(member, "profile")).ReviewNote);
+        var requests = await saved.VerificationRequests.Where(r => r.ApplicantId == member).ToListAsync();
+        if (activeRequest)
+        {
+            var request = Assert.Single(requests);
+            Assert.Equal(VerificationState.UnderReview, request.Status);
+            Assert.Null(request.Feedback);
+            Assert.Null(request.Resolved);
+        }
+        else Assert.Empty(requests);
+    }
+
     [Fact]
     public async Task Waiting_verification_filter_requires_a_submitted_reviewable_request()
     {
@@ -51,10 +100,18 @@ public class AdminMemberTests(DatabaseFixture f)
         var admin = await f.Member(admin: true);
         var approved = await f.Member();
         var pending = await f.Member();
+        var nonVegan = await f.Member();
+        var missingStatus = await f.Member();
         var incomplete = new Account { Name = "Incomplete member", Subject = Guid.NewGuid().ToString() };
         await using (var db = f.Db())
         {
             (await db.Profiles.FindAsync(pending))!.VeganVerified = false;
+            var nonVeganProfile = (await db.Profiles.FindAsync(nonVegan))!;
+            nonVeganProfile.IsVegan = false;
+            nonVeganProfile.VeganVerified = false;
+            var missingStatusProfile = (await db.Profiles.FindAsync(missingStatus))!;
+            missingStatusProfile.IsVegan = null;
+            missingStatusProfile.VeganVerified = false;
             db.Accounts.Add(incomplete);
             await db.SaveChangesAsync();
         }
@@ -64,7 +121,8 @@ public class AdminMemberTests(DatabaseFixture f)
         Assert.All(approvedRows, p => Assert.True(p.VeganVerified && p.HasProfile));
         var pendingRows = (await AllMembers(admin, "unverified")).People;
         Assert.Contains(pendingRows, p => p.Id == pending);
-        Assert.All(pendingRows, p => Assert.True(!p.VeganVerified && p.HasProfile));
+        Assert.DoesNotContain(pendingRows, p => p.Id == nonVegan || p.Id == missingStatus);
+        Assert.All(pendingRows, p => Assert.True(p.IsVegan == true && !p.VeganVerified && p.HasProfile));
         var incompleteRows = (await AllMembers(admin, "no-profile")).People;
         Assert.Contains(incompleteRows, p => p.Id == incomplete.Id);
         Assert.All(incompleteRows, p => Assert.False(p.HasProfile));
@@ -72,6 +130,8 @@ public class AdminMemberTests(DatabaseFixture f)
         Assert.Contains(allRows, p => p.Id == approved);
         Assert.Contains(allRows, p => p.Id == pending);
         Assert.Contains(allRows, p => p.Id == incomplete.Id);
+        Assert.Contains(allRows, p => p.Id == nonVegan);
+        Assert.Contains(allRows, p => p.Id == missingStatus);
         Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(admin, "admin?verification=invalid"))).Status);
     }
 
@@ -87,7 +147,7 @@ public class AdminMemberTests(DatabaseFixture f)
                 var account = new Account { Name = $"!Pagination pending {i:00}", Subject = Guid.NewGuid().ToString() };
                 ids.Add(account.Id);
                 db.Accounts.Add(account);
-                db.Profiles.Add(new() { Id = account.Id, Name = account.Name, VeganVerified = false, AdultConfirmedAt = DateTimeOffset.UtcNow });
+                db.Profiles.Add(new() { Id = account.Id, Name = account.Name, IsVegan = true, VeganVerified = false, AdultConfirmedAt = DateTimeOffset.UtcNow });
             }
             await db.SaveChangesAsync();
         }

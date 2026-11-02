@@ -71,6 +71,29 @@ public class HttpTests : IDisposable
         request.Headers.Add("X-CSRF-TOKEN", token!.Token); var response = await c.SendAsync(request); if (!response.IsSuccessStatusCode) throw new Exception($"HTTP {response.StatusCode}: {await response.Content.ReadAsStringAsync()}"); return response;
     }
     [Fact]
+    public async Task Profile_feedback_requires_admin_and_csrf_and_keeps_the_note_private()
+    {
+        var admin = await f.Member(admin: true);
+        var member = await f.Member();
+        var other = await f.Member();
+        using var reviewer = Client(admin);
+        using var owner = Client(member);
+        using var outsider = Client(other);
+        using var anonymous = Client();
+        var input = new ProfileFeedbackInput(member, "Private request: please add your profession.");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/admin/profile-feedback", input)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await reviewer.PostAsJsonAsync("/api/admin/profile-feedback", input)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAllowFailure(outsider, "/api/admin/profile-feedback", input)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAllowFailure(reviewer, "/api/admin/profile-feedback", input with { Note = " " })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAllowFailure(reviewer, "/api/admin/profile-feedback", input with { Note = new string('x', 501) })).StatusCode);
+        await Post(reviewer, "/api/admin/profile-feedback", input);
+        Assert.Equal(input.Note, (await owner.GetFromJsonAsync<ProfileInput>("/api/profile"))!.ReviewNote);
+        Assert.DoesNotContain(input.Note, await outsider.GetStringAsync($"/api/people/{member}"));
+        Assert.DoesNotContain(input.Note, await anonymous.GetStringAsync($"/api/people/{member}"));
+        Assert.True((await owner.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+    }
+
+    [Fact]
     public async Task Verification_routes_enforce_csrf_and_keep_evidence_out_of_public_and_chat_projections()
     {
         var applicant = await f.Member(); var referrer = await f.Member(); var admin = await f.Member(admin: true);

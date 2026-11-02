@@ -29,3 +29,5 @@
 @media (max-width: 1000px) { .admin-events.editing { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) { .admin-event-card { padding: 20px; gap: 12px; } .admin-event-thumb { display: none; } .admin-event-card .section-heading { flex-wrap: wrap; } }
 @media (max-width: 700px) { .admin-member .admin-row { align-items: flex-start; flex-direction: column; } .admin-member-identity { align-items: flex-start; } .admin-member-actions { width: 100%; justify-content: flex-end; } .admin-bulk-confirm { align-items: flex-start; } }
+.admin-feedback { position: sticky; top: 120px; z-index: 6; }
+@media (max-width: 767px) { .admin-feedback { top: 70px; } }

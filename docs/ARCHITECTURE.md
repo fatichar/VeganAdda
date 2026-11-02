@@ -49,6 +49,12 @@ is vegan but only a moderator or admin grants verification. The queue contains a
 submitted requests, not all unverified vegans. Request status is private to the owner
 and review team; selected referrers see request/confirmation status on the applicant profile or existing chat cards, never evidence.
 
+Admin profile feedback is independent of vegan verification. The admin member form
+uses `/api/admin/profile-feedback` to save a private review note and notify the
+member in-app, including members without a verification request and non-vegans.
+It preserves verification, request/referrer status and moderator access. Verification
+decisions remain in Community review and the explicit verification actions.
+
 Requests may be withdrawn or resubmitted after feedback. Account locks, a filtered
 unique index and client request IDs prevent duplicate active requests and repeated
 notifications. In-app notices link reviewers to `/moderation`, referrers to the

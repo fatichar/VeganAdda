@@ -35,7 +35,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
             "" or "all" => members,
             "verified" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && p.VeganVerified)),
             "pending" => members.Where(a => reviewableProfiles.Any(p => p.Id == a.Id)),
-            "unverified" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && !p.VeganVerified)),
+            "unverified" => members.Where(a => db.Profiles.Any(p => p.Id == a.Id && p.IsVegan == true && !p.VeganVerified)),
             "no-profile" => members.Where(a => !db.Profiles.Any(p => p.Id == a.Id)),
             _ => throw new ApiException(400, "Choose a supported vegan verification filter.")
         };
@@ -219,6 +219,23 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         }
         await db.SaveChangesAsync(); affected.UnionWith(await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync()); await changes.Changed(affected.ToArray()); return new Ok();
     }
+    public async Task<Ok> RequestProfileChanges(ProfileFeedbackInput input)
+    {
+        var admin = await User(admin: true);
+        var note = Text(input.Note, 500, true);
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await UserLock(input.Id);
+        var profile = await db.Profiles.FindAsync(input.Id) ?? throw Missing();
+        profile.ReviewNote = note;
+        profile.ReviewedBy = admin.Id;
+        profile.ReviewedAt = DateTimeOffset.UtcNow;
+        Notice(profile.Id, "profile-changes-requested", "The community team requested changes to your profile: " + note, "/settings/profile");
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications, new[] { profile.Id, admin.Id }.Distinct().ToArray());
+        return new Ok();
+    }
+
     public async Task<Ok> ReviewProfile(VeganVerificationInput input, bool moderator = false)
     {
         var reviewer = await User(admin: !moderator, moderator: moderator);

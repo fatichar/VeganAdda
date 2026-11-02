@@ -13,6 +13,7 @@ public static class ModerationEndpoints
         api.MapGet("/admin/members/{id}", (string id, ModerationService service) => Json(service.AdminMemberProfile(Guid.Parse(id)))).WithName("Moderation_Get_1").RequireAuthorization();
         api.MapGet("/moderation", (HttpContext ctx, ModerationService service) => Json(service.Moderation(Q(ctx, "section") is { Length: > 0 } s ? s : "Profiles", Page(ctx)))).WithName("Moderation_Get_2").RequireAuthorization();
         api.MapPost("/admin/profile-review", (HttpContext ctx, ModerationService service) => Json(service.ReviewProfile(Body<VeganVerificationInput>(ctx)))).WithName("Moderation_Post_3").RequireAuthorization();
+        api.MapPost("/admin/profile-feedback", (HttpContext ctx, ModerationService service) => Json(service.RequestProfileChanges(Body<ProfileFeedbackInput>(ctx)))).WithName("Moderation_RequestProfileChanges").RequireAuthorization();
         api.MapPost("/moderation/profile-review", (HttpContext ctx, ModerationService service) => Json(service.ReviewProfile(Body<VeganVerificationInput>(ctx), moderator: true))).WithName("Moderation_Post_4").RequireAuthorization();
         api.MapPost("/admin/moderate", (HttpContext ctx, ModerationService service) => Json(service.Moderate(Body<ModerateInput>(ctx)))).WithName("Moderation_Post_5").RequireAuthorization();
         api.MapPost("/admin/members/bulk-action", (HttpContext ctx, ModerationService service) => Json(service.BulkMemberAction(Body<BulkMemberActionInput>(ctx), ctx.RequestAborted))).WithName("Moderation_Post_6").RequireAuthorization();

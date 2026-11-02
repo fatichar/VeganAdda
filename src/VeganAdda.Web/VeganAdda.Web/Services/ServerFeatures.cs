@@ -4,13 +4,15 @@ using VeganAdda.Web.Features.Discovery;
 using VeganAdda.Web.Features.Messaging;
 using VeganAdda.Web.Features.Profiles;
 using VeganAdda.Web.Features.Saved;
+using VeganAdda.Web.Features.Moderation;
 
 namespace VeganAdda.Web.Services;
 
 // Each overlapping prerender operation has an independent DbContext. Typed results
 // need no serialization round-trip through the path-based compatibility adapter.
-public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi
+public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi
 {
+    public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => Call<ModerationService, Ok>(service => service.RequestProfileChanges(input));
     private async Task<T> Call<TService, T>(Func<TService, Task<T>> operation) where TService : notnull
     {
         await using var scope = scopes.CreateAsyncScope();

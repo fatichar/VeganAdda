@@ -2,9 +2,10 @@
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject IModerationApi Moderation
 @inherits Screen
 <PageTitle>Community administration · VeganAdda</PageTitle>
-<span class="eyebrow">Care for the community</span><h1>Community administration</h1><Feedback Error="@Error" Success="@Success" />
+<span class="eyebrow">Care for the community</span><h1>Community administration</h1><div class="admin-feedback"><Feedback Error="@Error" Success="@Success" /></div>
 @if (!initialized) { <p class="loading" role="status">Loading administration…</p> }
 else if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
 else if (data == null) {
@@ -122,8 +123,10 @@ else {
                         <VerificationEvidence Details="@profile.Verification" />
                         @if (profile.ReferredBy != null) { <p class="small">Historical referral: @profile.ReferredBy</p> }
                         @if (profile.ReviewNote != null) { <p class="notice">Previous review: @profile.ReviewNote</p> }
-                        <label for="review-@p.Id">Note for member if changes are needed</label><textarea id="review-@p.Id" @bind:get="reviewNotes.GetValueOrDefault(p.Id, string.Empty)" @bind:set="value => reviewNotes[p.Id] = value ?? string.Empty" @bind:event="oninput" maxlength="500" rows="2" placeholder="Explain what needs updating"></textarea>
-                        <div class="actions"><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(reviewNotes.GetValueOrDefault(p.Id)))" @onclick="() => ReviewProfile(p.Id, false)">Request changes</button></div>
+                        <label for="review-@p.Id">Profile changes to request from this member</label><textarea id="review-@p.Id" @bind:get="reviewNotes.GetValueOrDefault(p.Id, string.Empty)" @bind:set="value => reviewNotes[p.Id] = value ?? string.Empty" @bind:event="oninput" maxlength="500" rows="2" placeholder="Explain what needs updating"></textarea>
+                        <p class="small muted">Sends profile feedback without changing vegan verification. Review verification requests in <a href="/moderation">Community review</a>.</p>
+                        <div class="actions"><button class="secondary" disabled="@(Busy || string.IsNullOrWhiteSpace(reviewNotes.GetValueOrDefault(p.Id)))" @onclick="() => RequestProfileChanges(p.Id)">@(reviewFeedbackMember == p.Id && reviewSending ? "Sending…" : "Request changes")</button></div>
+                        @if (reviewFeedbackMember == p.Id) { <Feedback Error="@reviewError" Success="@reviewSuccess" /> }
                     </div>
                 }
             </article>
@@ -143,6 +146,9 @@ else {
     string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     IJSObjectReference? memberActionsModule; DotNetObjectReference<AdminPage>? memberActionsReference;
     bool initialized, restoring, viewStateReady;
+    Guid? reviewFeedbackMember;
+    bool reviewSending;
+    string reviewError = "", reviewSuccess = "";
     public record AdminViewState(string Tab, string Verification, string Country, string State, string City, int EventsPage, int MembersPage, int ReportsPage);
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); initialized = true; }
     protected override async Task OnAfterRenderAsync(bool firstRender) {
@@ -234,7 +240,26 @@ else {
     void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); eventPlace = new() { Country = item.Country, State = item.State, City = item.City }; var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
     Task SaveEvent() => Run(async () => { edit!.Country = eventPlace.Country; edit.State = eventPlace.State; edit.City = eventPlace.City; edit.LocalStart = start; edit.LocalEnd = end; await Api.Send<Ok>("admin/events", edit); await Refresh(); Success = "Event saved."; });
     Task Moderate(Guid id, string action) => Run(async () => { await Api.Send<Ok>("admin/moderate", new ModerateInput(id, action)); await Refresh(); Success = action == "confirm-vegan" ? "Vegan status verified." : action == "remove-vegan-verification" ? "Vegan verification removed." : "Community record updated."; });
-    Task ReviewProfile(Guid id, bool approve) => Run(async () => { var note = reviewNotes.GetValueOrDefault(id); await Api.Send<Ok>("admin/profile-review", new VeganVerificationInput(id, approve, note, memberProfile?.Verification?.Id)); reviewNotes.Remove(id); await Refresh(); Success = approve ? "Vegan status verified." : "Changes requested."; });
+    async Task RequestProfileChanges(Guid id) {
+        if (Busy) return;
+        reviewFeedbackMember = id;
+        reviewSending = true;
+        reviewError = reviewSuccess = "";
+        Success = "";
+        await Run(async () => {
+            var note = reviewNotes.GetValueOrDefault(id, string.Empty);
+            await Moderation.RequestProfileChanges(new ProfileFeedbackInput(id, note));
+            reviewNotes.Remove(id);
+            Success = "Profile changes requested. The member has been notified in VeganAdda.";
+            try { await Refresh(); }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException) {
+                Error = "The feedback was sent, but the member list couldn't refresh. Reload the page to see the latest status.";
+            }
+        });
+        reviewSending = false;
+        reviewError = Error;
+        reviewSuccess = Success;
+    }
     Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 10 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 10 MB."); var (stream, name, contentType) = await ImageResizer.ProcessUpload(JS, e, "cover"); await using (stream) { edit!.Cover = await Platform.Upload(stream, name, contentType); } });
     public async ValueTask DisposeAsync() {
         if (memberActionsModule != null) {

@@ -9,6 +9,11 @@ public record ProfileReview(Guid Id, string Name, string City, string Bio, strin
     public bool VeganVerificationPending => Verification?.Status == VerificationState.UnderReview;
 }
 public record VeganVerificationInput(Guid Id, bool Confirm, string? Note = null, Guid? RequestId = null);
+public record ProfileFeedbackInput(Guid Id, string Note);
+public interface IModerationApi
+{
+    Task<Ok> RequestProfileChanges(ProfileFeedbackInput input);
+}
 public record ModerateInput(Guid Id, string Action);
 public record BulkMemberActionInput(List<Guid> MemberIds, string Action);
 public record BulkMemberActionResult(string Action, int Affected, int Skipped, int Failed);
