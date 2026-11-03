@@ -100,6 +100,16 @@ an intentional dependency change. A separate project per feature is unnecessary 
 
 ## Privacy and consistency
 
+Profile coordinates retain a separate precise-location opt-in flag. Without opt-in,
+the server stores a matching city-center coordinate from the pinned location catalog;
+unknown or ambiguous cities have no fallback. A precise opt-in replaces the fallback,
+and removing it restores the city center. Nearby discovery and distance sorting use
+these coordinates without returning them in member-facing projections.
+The server-only city catalog uses the same pinned ODbL source and attribution as
+`src/VeganAdda.UI/wwwroot/data/locations/README.md`; regenerate it with
+`scripts/update-city-centers.py`. Keep the catalog used by the migration available
+for historical migrations.
+
 `ProfileVisibility.Query` governs listing/profile eligibility. Its photo policy
 retains the additional owner/reviewer rules; a related pending profile does not
 automatically make its photo public. `PeopleProjection` is the member-facing

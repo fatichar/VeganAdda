@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Data\city-centers.json.gz" LogicalName="VeganAdda.city-centers.json.gz" />
     <PackageReference Include="FirebaseAdmin" Version="3.7.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.13" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" PrivateAssets="all" />

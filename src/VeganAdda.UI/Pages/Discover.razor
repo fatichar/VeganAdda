@@ -59,7 +59,7 @@
             </div>
         }
     }
-    @if (nearby) { <p class="small discovery-scope">Within @radius km of your current location. Only members with a saved precise location appear.</p> }
+    @if (nearby) { <p class="small discovery-scope">Within @radius km of your current location. Members without precise coordinates use their city center when available.</p> }
     @if (selectedEvent != null) { <p class="small discovery-scope"><a href="/events/@selectedEvent.Id">@selectedEvent.Title</a> · @(checkedIn ? "Self-reported check-ins. Refresh to update." : "Members who opted into the attendee list.") <button class="text-button" disabled="@Busy" @onclick="Search">Refresh</button></p> }
     @if (Session?.Id != null && Session.IsVegan == null) { <div class="notice" role="status">Choose your vegan status to finish setting up your member profile. <a href="/settings/profile">Update your profile</a>.</div> }
     <Feedback Error="@Error" Success="@Success" />

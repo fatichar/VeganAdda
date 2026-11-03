@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using VeganAdda.Contracts;
 
 namespace VeganAdda.Tests;
@@ -7,6 +9,28 @@ namespace VeganAdda.Tests;
 [Collection("Postgres")]
 public class PreciseLocationTests(DatabaseFixture f)
 {
+    [Fact]
+    public async Task Migration_backfills_city_centers_and_preserves_existing_precise_locations()
+    {
+        var isolated = new DatabaseFixture();
+        await isolated.InitializeAsync();
+        try
+        {
+            var approximate = await isolated.Member(); var precise = await isolated.Member();
+            await using var db = isolated.Db(); var migrator = db.GetService<IMigrator>();
+            var previous = db.Database.GetMigrations().SkipLast(1).Last();
+            await migrator.MigrateAsync(previous);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Profiles\" SET \"Latitude\" = {18.1}, \"Longitude\" = {73.1} WHERE \"Id\" = {precise}");
+            await migrator.MigrateAsync();
+            db.ChangeTracker.Clear();
+            var a = (await db.Profiles.FindAsync(approximate))!;
+            var b = (await db.Profiles.FindAsync(precise))!;
+            var center = VeganAdda.Web.Features.Profiles.CityCenterCatalog.Find(a.Country, a.State, a.City)!;
+            Assert.False(a.HasPreciseLocation); Assert.Equal(center.Latitude, a.Latitude); Assert.Equal(center.Longitude, a.Longitude);
+            Assert.True(b.HasPreciseLocation); Assert.Equal(18.1, b.Latitude); Assert.Equal(73.1, b.Longitude);
+        }
+        finally { await isolated.DisposeAsync(); }
+    }
     [Fact]
     public async Task Coordinates_require_opt_in_remain_private_and_can_be_removed()
     {
@@ -48,7 +72,29 @@ public class PreciseLocationTests(DatabaseFixture f)
         await f.Call(id, "profile", saved, "POST");
         await using var stored = f.Db();
         var profile = await stored.Profiles.SingleAsync(p => p.Id == id);
-        Assert.Null(profile.Latitude); Assert.Null(profile.Longitude);
+        Assert.False(profile.HasPreciseLocation);
+        var center = VeganAdda.Web.Features.Profiles.CityCenterCatalog.Find(profile.Country, profile.State, profile.City);
+        Assert.NotNull(center);
+        Assert.Equal(center.Latitude, profile.Latitude); Assert.Equal(center.Longitude, profile.Longitude);
+    }
+
+    [Fact]
+    public async Task City_center_is_used_without_opt_in_and_follows_city_changes()
+    {
+        var id = await f.Member();
+        var input = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
+        input.Country = "India"; input.State = "Maharashtra"; input.City = "Pune";
+        await f.Call(id, "profile", input, "POST");
+        await using (var db = f.Db())
+        {
+            var p = (await db.Profiles.FindAsync(id))!;
+            var center = VeganAdda.Web.Features.Profiles.CityCenterCatalog.Find(input.Country, input.State, input.City)!;
+            Assert.False(p.HasPreciseLocation); Assert.Equal(center.Latitude, p.Latitude); Assert.Equal(center.Longitude, p.Longitude);
+        }
+        input.City = "Unknown custom city";
+        await f.Call(id, "profile", input, "POST");
+        await using var stored = f.Db(); var profile = (await stored.Profiles.FindAsync(id))!;
+        Assert.Null(profile.Latitude); Assert.Null(profile.Longitude); Assert.False(profile.HasPreciseLocation);
     }
 
     [Theory]

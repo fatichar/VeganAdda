@@ -37,8 +37,10 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         p.BirthDate = birthDate;
         p.Gender = gender;
         p.HasExactBirthDate = input.BirthDay.HasValue;
-        p.Latitude = input.SavePreciseLocation ? input.Latitude : null;
-        p.Longitude = input.SavePreciseLocation ? input.Longitude : null;
+        var center = input.SavePreciseLocation ? null : CityCenterCatalog.Find(country, state, city);
+        p.HasPreciseLocation = input.SavePreciseLocation;
+        p.Latitude = input.SavePreciseLocation ? input.Latitude : center?.Latitude;
+        p.Longitude = input.SavePreciseLocation ? input.Longitude : center?.Longitude;
         p.Instagram = instagram; p.LinkedIn = linkedIn; p.Website = website;
         // A photo must belong to this account (or be its existing development fixture).
         if (photo != "" && photo != p.Photo && !System.IO.File.Exists(System.IO.Path.Combine(config["Storage:MediaPath"] ?? "uploads", photo[7..] + ".owner-" + me.Id.ToString("N")))) throw Denied();
@@ -78,7 +80,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
     {
         var me = await User(allowIncomplete: true); var own = await db.Profiles.FindAsync(me.Id);
                     var canRefer = await trust.CanCreateReferral(me.Id);
-                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, BirthYear = own.BirthDate?.Year, BirthMonth = own.BirthDate?.Month, BirthDay = own.HasExactBirthDate ? own.BirthDate?.Day : null, City = own.City, Country = own.Country, State = own.State, SavePreciseLocation = own.Latitude.HasValue && own.Longitude.HasValue, Latitude = own.Latitude, Longitude = own.Longitude, Bio = own.Bio, Profession = own.Profession, Gender = own.Gender, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, DefaultAttendeeVisible = own.DefaultAttendeeVisible, VeganVerified = own.VeganVerified, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, HasReferrer = await db.Referrals.AnyAsync(r => r.ReferredId == me.Id) };
+                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, BirthYear = own.BirthDate?.Year, BirthMonth = own.BirthDate?.Month, BirthDay = own.HasExactBirthDate ? own.BirthDate?.Day : null, City = own.City, Country = own.Country, State = own.State, SavePreciseLocation = own.HasPreciseLocation, Latitude = own.HasPreciseLocation ? own.Latitude : null, Longitude = own.HasPreciseLocation ? own.Longitude : null, Bio = own.Bio, Profession = own.Profession, Gender = own.Gender, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, DefaultAttendeeVisible = own.DefaultAttendeeVisible, VeganVerified = own.VeganVerified, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, HasReferrer = await db.Referrals.AnyAsync(r => r.ReferredId == me.Id) };
     }
     public async Task<Person> GetPerson(Guid id)
     {

@@ -13,7 +13,7 @@ public class DiscoveryTests(DatabaseFixture f)
     {
         var id = await f.Member();
         await using var db = f.Db(); var p = (await db.Profiles.FindAsync(id))!;
-        p.Country = country; p.State = state; p.City = city; p.Latitude = latitude; p.Longitude = longitude; p.Bio = marker;
+        p.Country = country; p.State = state; p.City = city; p.Latitude = latitude; p.Longitude = longitude; p.HasPreciseLocation = latitude.HasValue && longitude.HasValue; p.Bio = marker;
         if (age.HasValue) p.BirthDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-age.Value);
         await db.SaveChangesAsync(); return id;
     }

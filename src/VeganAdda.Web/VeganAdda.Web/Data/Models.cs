@@ -23,6 +23,7 @@ public class Profile
     // Private coordinates: never include in member-facing or moderation projections.
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
+    public bool HasPreciseLocation { get; set; }
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
     public string City { get; set; } = "";

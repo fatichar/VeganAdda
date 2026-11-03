@@ -42,8 +42,7 @@ public class ProfileGenderTests(DatabaseFixture f)
             {
                 var migrator = db.GetService<IMigrator>();
                 await migrator.MigrateAsync("20261021170000_NormalizeProfileGender");
-                (await db.Profiles.FindAsync(missing))!.Gender = "";
-                await db.SaveChangesAsync();
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Profiles\" SET \"Gender\" = '' WHERE \"Id\" = {missing}");
                 await migrator.MigrateAsync();
                 await migrator.MigrateAsync();
                 var notice = Assert.Single(await db.Notifications.Where(n => n.UserId == missing && n.Kind == "profile-gender-required").ToListAsync());

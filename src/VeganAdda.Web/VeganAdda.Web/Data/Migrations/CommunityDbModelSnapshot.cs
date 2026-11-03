@@ -332,6 +332,9 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<bool>("HasExactBirthDate")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("HasPreciseLocation")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Instagram")
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
