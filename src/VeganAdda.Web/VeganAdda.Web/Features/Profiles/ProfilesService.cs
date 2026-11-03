@@ -17,7 +17,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         var birthDate = ReadBirthDetails(input);
         var gender = Text(input.Gender, 40, true);
         if (!Wire.Genders.Contains(gender)) throw new ApiException(400, "Choose a supported gender.");
-        var name = Text(input.Name, 80, true); var city = Text(input.City, 80, true); var bio = Text(input.Bio, 1000); var profession = Text(input.Profession, 80);
+        var name = ValidateName(input.Name);
+        var city = Text(input.City, 80, true); var bio = Text(input.Bio, 1000); var profession = Text(input.Profession, 80);
         var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
         if (input.SavePreciseLocation && (input.Latitude is not double latitude || !double.IsFinite(latitude) || latitude < -90 || latitude > 90
             || input.Longitude is not double longitude || !double.IsFinite(longitude) || longitude < -180 || longitude > 180))
@@ -85,4 +86,13 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         var person = await visibility.Query(true).SingleOrDefaultAsync(p => p.Id == id) ?? throw Missing();
         return await people.One(person);
     }
+
+    public static string ValidateName(string? value)
+    {
+        var name = Text(value, 80, true);
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^(?=.*\p{L})[\p{L}\p{M}\p{Zs}.'’,-]+$"))
+            throw new ApiException(400, "Enter a name using letters, spaces, apostrophes, hyphens, periods or commas.");
+        return name;
+    }
+
 }
