@@ -20,15 +20,27 @@
             <button type="button" aria-pressed="@(connectionsOnly.ToString().ToLowerInvariant())" disabled="@Busy" @onclick="() => ChangeView(true)">My connections</button>
         </div>
     }
-    <div class="discovery-toolbar"><div class="discovery-heading">
+    <div class="discovery-toolbar @(searchOpen ? "search-open" : "")"><div class="discovery-heading">
         <LocationFilter Country="@country" State="@state" City="@city" OverrideLabel="@(nearby ? $"Near me · {radius} km" : null)" Profile="profile" Selected="PlaceSelected" NearbyRequested="OpenNearby" />
     </div>
     @if (Session?.Id != null)
     {
-        <form class="filter-bar" @onsubmit="Search" @onsubmit:preventDefault>
-            <div class="search-field"><label class="sr-only" for="people-search">Search people and interests</label><input id="people-search" type="search" enterkeyhint="search" placeholder="Search people or interests" maxlength="200" @bind="search" @bind:event="oninput" /><button type="submit" class="icon-button search-submit" aria-label="Search"><Icon Name="search" /></button></div>
+        <div class="discovery-controls">
+            @if (searchOpen)
+            {
+                <form id="discovery-search" class="discovery-search" role="search" @onsubmit="Search" @onsubmit:preventDefault @onkeydown="SearchKeyDown">
+                    <label class="sr-only" for="people-search">Search people and interests</label>
+                    <input @ref="searchInput" id="people-search" type="search" enterkeyhint="search" placeholder="Search" maxlength="200" @bind="search" @bind:event="oninput" />
+                    <button type="button" class="icon-button" aria-label="Collapse search" @onclick="ToggleSearch"><Icon Name="close" /></button>
+                </form>
+            }
+            else
+            {
+                <button @ref="searchToggle" type="button" class="icon-button secondary search-toggle" aria-label="Search people" aria-expanded="false" aria-controls="discovery-search" @onclick="ToggleSearch"><Icon Name="search" />@if (search != "") { <span class="filter-dot"></span> }</button>
+            }
+            <button type="button" class="icon-button secondary sort-toggle" aria-label="Sort: @SortLabel(sort)" title="Sort: @SortLabel(sort)" aria-haspopup="dialog" @onclick='() => OpenPanel("sort")'><Icon Name="sort" />@if (sort != DiscoverySort.Age) { <span class="filter-dot"></span> }</button>
             <button type="button" class="icon-button secondary filter-toggle" aria-label="Filters" aria-haspopup="dialog" @onclick="OpenFilters"><Icon Name="tune" />@if (HasFilters) { <span class="filter-dot"></span> }</button>
-        </form>
+        </div>
     }
     </div>
     @if (Session?.Id != null)
@@ -67,7 +79,22 @@
     <ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
 </div>
 <DiscoveryPanel Open='@(panel != "")' Title="@PanelTitle" Closed="ClosePanel">
-    @if (panel == "nearby")
+    @if (panel == "sort")
+    {
+        <div class="discovery-sort-options" role="group" aria-label="Sort people">
+            @foreach (var field in new[] { "name", "age", "distance" })
+            {
+                var selected = SortField == field;
+                var label = field == "name" ? "Name" : field == "age" ? "Age" : "Distance";
+                var accessibleLabel = label + (selected ? $": {SortLabel(sort)}. Click to reverse order" : ": Click to sort");
+                <button type="button" class="discovery-sort-option" aria-pressed="@(selected.ToString().ToLowerInvariant())" aria-label="@accessibleLabel" disabled="@(Busy || locating)" @onclick="() => ChangeSortField(field)"><span>@label</span>@if (selected) { <Icon Name="@(sort is DiscoverySort.NameDescending or DiscoverySort.AgeDescending or DiscoverySort.DistanceDescending ? "arrow_downward" : "arrow_upward")" /> } else { <Icon Name="chevron_right" /> }</button>
+            }
+        </div>
+        <p class="small">Tap a field to sort. Tap it again to reverse the order. Distance uses your current location.</p>
+        @if (locating) { <p role="status" class="small">Finding your location…</p> }
+        <Feedback Error="@panelError" />
+    }
+    else if (panel == "nearby")
     {
         <form @onsubmit="UseNearby" @onsubmit:preventDefault>
             <label for="discovery-radius">Distance: @draftRadius km</label>
@@ -113,6 +140,9 @@
     string[] genders = [], draftGenders = [];
     bool verifiedVegansOnly, draftVerifiedVegansOnly;
     bool connectionsOnly;
+    string sort = DiscoverySort.Age;
+    bool searchOpen, focusSearch, focusSearchToggle;
+    ElementReference searchInput, searchToggle;
     bool dating, includeNonVegan, draftNonVegan, nearby, locating; int page = 1, total, radius = 25, draftRadius = 25;
     int? minAge, maxAge, draftMinAge, draftMaxAge;
     double? latitude, longitude;
@@ -125,7 +155,9 @@
     DotNetObjectReference<Discover>? scrollReference;
     List<Person> people = []; Person? connecting;
     bool HasFilters => genders.Length > 0 || eventId != "" || interest != "" || intent != "" || includeNonVegan || verifiedVegansOnly || minAge.HasValue || maxAge.HasValue;
-    string PanelTitle => panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
+    string PanelTitle => panel == "sort" ? "Sort people" : panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
+    string SortField => sort is DiscoverySort.Name or DiscoverySort.NameDescending ? "name" : DiscoverySort.IsDistance(sort) ? "distance" : "age";
+    static string SortLabel(string value) => value switch { DiscoverySort.Name => "Name: A–Z", DiscoverySort.NameDescending => "Name: Z–A", DiscoverySort.AgeDescending => "Age: oldest first", DiscoverySort.Distance => "Distance: nearest first", DiscoverySort.DistanceDescending => "Distance: farthest first", _ => "Age: youngest first" };
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
@@ -142,13 +174,15 @@
         if (Event != lastEvent || CheckedIn != lastCheckedIn)
         {
             lastEvent = Event; lastCheckedIn = CheckedIn; eventId = Event ?? ""; checkedIn = eventId != "" && CheckedIn; selectedEvent = null; page = 1;
-            if (eventId != "") { country = state = city = ""; nearby = false; latitude = longitude = null; }
+            if (eventId != "") { country = state = city = ""; nearby = false; if (!DiscoverySort.IsDistance(sort)) latitude = longitude = null; }
         }
         if (locationReady && parametersChanged) await Run(Refresh);
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!initialized || disposed) return;
+        if (focusSearch) { focusSearch = false; await searchInput.FocusAsync(); }
+        if (focusSearchToggle) { focusSearchToggle = false; await searchToggle.FocusAsync(); }
         if (restoring) return;
         if (locationReady)
         {
@@ -167,6 +201,8 @@
             {
                 connectionsOnly = Session?.Id != null && filters.ConnectionsOnly;
                 search = filters.Search; interest = filters.Interest; intent = filters.Intent;
+                searchOpen = search != "";
+                sort = DiscoverySort.IsValid(filters.Sort) && !DiscoverySort.IsDistance(filters.Sort) ? filters.Sort : DiscoverySort.Age;
                 genders = filters.Genders; verifiedVegansOnly = filters.VerifiedVegansOnly;
                 includeNonVegan = filters.IncludeNonVegan; minAge = filters.MinAge; maxAge = filters.MaxAge;
             }
@@ -201,7 +237,7 @@
             await discoveryModule.InvokeVoidAsync("saveViewState", "discover", Session?.Id, new DiscoveryInput
             {
                 Event = eventId, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent,
-                ConnectionsOnly = connectionsOnly,
+                ConnectionsOnly = connectionsOnly, Sort = sort,
                 Genders = genders, VerifiedVegansOnly = verifiedVegansOnly, IncludeNonVegan = includeNonVegan,
                 MinAge = minAge, MaxAge = maxAge, RadiusKm = nearby ? radius : null
             });
@@ -220,9 +256,9 @@
     {
         Page<Person> result;
         if (nearby)
-            result = await Profiles.SearchPeople( new DiscoveryInput { ConnectionsOnly = connectionsOnly, Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = requestedPage });
+            result = await Profiles.SearchPeople( new DiscoveryInput { Sort = sort, ConnectionsOnly = connectionsOnly, Event = eventId, CheckedIn = checkedIn, Latitude = latitude, Longitude = longitude, RadiusKm = radius, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = requestedPage });
         else
-            result = await Profiles.SearchPeople(new DiscoveryInput { ConnectionsOnly = connectionsOnly, Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = requestedPage });
+            result = await Profiles.SearchPeople(new DiscoveryInput { Sort = sort, ConnectionsOnly = connectionsOnly, Event = eventId, CheckedIn = checkedIn, Country = country, State = state, City = city, Latitude = DiscoverySort.IsDistance(sort) ? latitude : null, Longitude = DiscoverySort.IsDistance(sort) ? longitude : null, Search = search, Interest = interest, Intent = intent, Genders = genders, IncludeNonVegan = includeNonVegan, VerifiedVegansOnly = verifiedVegansOnly, MinAge = minAge, MaxAge = maxAge, Page = requestedPage });
         return result;
     }
     [JSInvokable]
@@ -255,6 +291,32 @@
         finally { loadingMore = false; }
     }
     void OpenPanel(string value) { panelError = ""; panel = value; }
+    void ToggleSearch() { searchOpen = !searchOpen; focusSearch = searchOpen; focusSearchToggle = !searchOpen; }
+    void SearchKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") ToggleSearch(); }
+    async Task ChangeSortField(string field)
+    {
+        if (field == "distance" && !DiscoverySort.IsDistance(sort) && (!latitude.HasValue || !longitude.HasValue))
+        {
+            if (locating) return;
+            locating = true; panelError = ""; var request = ++locationRequest;
+            try
+            {
+                var position = await discoveryModule!.InvokeAsync<CurrentPosition>("currentPosition");
+                if (request != locationRequest || panel != "sort") return;
+                if (!position.Latitude.HasValue || !position.Longitude.HasValue) { panelError = position.Error != "" ? position.Error : "Location couldn't be found. Try again."; return; }
+                latitude = position.Latitude; longitude = position.Longitude;
+            }
+            catch (JSException) { if (request == locationRequest && panel == "sort") panelError = "Location couldn't be found. Try again."; return; }
+            finally { if (request == locationRequest) locating = false; }
+        }
+        panelError = "";
+        sort = field == "name"
+            ? sort == DiscoverySort.Name ? DiscoverySort.NameDescending : DiscoverySort.Name
+            : field == "distance"
+            ? sort == DiscoverySort.Distance ? DiscoverySort.DistanceDescending : DiscoverySort.Distance
+            : sort == DiscoverySort.Age ? DiscoverySort.AgeDescending : DiscoverySort.Age;
+        await Search();
+    }
     void ClosePanel() { panel = ""; panelError = ""; locating = false; locationRequest++; }
     void OpenNearby()
     {
@@ -270,7 +332,7 @@
             await module.InvokeVoidAsync("savePlace", new DiscoveryInput { Country = country, State = state, City = city });
         }
         catch (JSException) { }
-        nearby = false; latitude = longitude = null; ClosePanel(); await Search();
+        nearby = false; if (!DiscoverySort.IsDistance(sort)) latitude = longitude = null; ClosePanel(); await Search();
     }
     public record CurrentPosition(double? Latitude, double? Longitude, string Error = "");
     async Task UseNearby()

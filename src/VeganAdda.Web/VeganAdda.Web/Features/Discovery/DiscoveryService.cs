@@ -11,15 +11,19 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
     public async Task<Page<Person>> SearchPeople(DiscoveryInput input)
     {
         await ActiveViewer();
+        if (!DiscoverySort.IsValid(input.Sort)) throw new ApiException(400, "Choose a supported sort order.");
         var genders = input.Genders ?? throw new ApiException(400, "Choose supported genders.");
-        var nearby = input.Latitude.HasValue || input.Longitude.HasValue || input.RadiusKm.HasValue;
-        if (!Viewer.HasValue && (input.ConnectionsOnly || nearby || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan || genders.Length > 0
+        var distanceSort = DiscoverySort.IsDistance(input.Sort);
+        var locationSupplied = input.Latitude.HasValue || input.Longitude.HasValue || input.RadiusKm.HasValue;
+        var nearby = input.RadiusKm.HasValue;
+        if (!Viewer.HasValue && (input.ConnectionsOnly || locationSupplied || distanceSort || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan || genders.Length > 0
             || !string.IsNullOrEmpty(input.Search) || !string.IsNullOrEmpty(input.Interest) || !string.IsNullOrEmpty(input.Intent) || !string.IsNullOrEmpty(input.Event) || input.CheckedIn))
             throw new ApiException(401, "Sign in to use member filters.");
         if (input.MinAge is < 18 or > 120 || input.MaxAge is < 18 or > 120 || input.MinAge > input.MaxAge)
             throw new ApiException(400, "Choose an age range between 18 and 120.");
-        if (nearby && (input.Latitude is not double lat || !double.IsFinite(lat) || lat < -90 || lat > 90
-            || input.Longitude is not double lon || !double.IsFinite(lon) || lon < -180 || lon > 180 || input.RadiusKm is not (>= 1 and <= 500)))
+        if ((locationSupplied || distanceSort) && (input.Latitude is not double lat || !double.IsFinite(lat) || lat < -90 || lat > 90
+            || input.Longitude is not double lon || !double.IsFinite(lon) || lon < -180 || lon > 180
+            || (input.RadiusKm is not (>= 1 and <= 500) && !(distanceSort && input.RadiusKm == null))))
             throw new ApiException(400, "Choose a valid current location and a radius between 1 and 500 km.");
         var people = visibility.Query().Where(p => p.Id != Viewer);
         if (Viewer is { } viewer)
@@ -85,7 +89,30 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
         }
         var page = Math.Clamp(input.Page, 1, 10000);
         var total = await people.CountAsync();
-        var rows = await people.OrderByDescending(p => p.Featured && p.Public && p.FeatureConsent).ThenBy(p => p.Name).ThenBy(p => p.Id)
+        IQueryable<Profile> ordered;
+        if (distanceSort)
+        {
+            const double radians = Math.PI / 180d;
+            var latitude = input.Latitude!.Value; var longitude = input.Longitude!.Value;
+            // The haversine term increases with great-circle distance. Order in SQL,
+            // retaining profiles without coordinates at the end in both directions.
+            var distances = people.Select(p => new { Profile = p, Distance = p.Latitude.HasValue && p.Longitude.HasValue
+                ? (double?)(Math.Pow(Math.Sin((p.Latitude.Value - latitude) * radians / 2), 2)
+                    + Math.Cos(latitude * radians) * Math.Cos(p.Latitude.Value * radians)
+                    * Math.Pow(Math.Sin((p.Longitude.Value - longitude) * radians / 2), 2)) : null });
+            ordered = (input.Sort == DiscoverySort.Distance
+                ? distances.OrderBy(p => p.Distance == null).ThenBy(p => p.Distance).ThenBy(p => p.Profile.Id)
+                : distances.OrderBy(p => p.Distance == null).ThenByDescending(p => p.Distance).ThenBy(p => p.Profile.Id)).Select(p => p.Profile);
+        }
+        else if (input.Sort is DiscoverySort.Name or DiscoverySort.NameDescending)
+            ordered = input.Sort == DiscoverySort.Name
+                ? people.OrderBy(p => p.Name).ThenBy(p => p.Id)
+                : people.OrderByDescending(p => p.Name).ThenBy(p => p.Id);
+        else
+            ordered = input.Sort == DiscoverySort.Age
+                ? people.OrderBy(p => p.BirthDate == null).ThenByDescending(p => p.BirthDate).ThenBy(p => p.Id)
+                : people.OrderBy(p => p.BirthDate == null).ThenBy(p => p.BirthDate).ThenBy(p => p.Id);
+        var rows = await ordered
             .Skip((page - 1) * 12).Take(12).ToListAsync();
         var dtos = await projection.Many(rows);
         return new(dtos, total, page);

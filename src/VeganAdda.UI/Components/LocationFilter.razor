@@ -1,4 +1,4 @@
-<button type="button" class="location-trigger" @onclick='() => panel = "menu"' aria-haspopup="dialog"><Icon Name="location_on" /><span>@Label</span><Icon Name="expand_more" /></button>
+<button type="button" class="location-trigger" @onclick='() => panel = "menu"' aria-label="Choose location: @Label" aria-haspopup="dialog"><Icon Name="location_on" /><span>@Label</span><Icon Name="expand_more" /></button>
 <DiscoveryPanel Open='@(panel != "")' Title="Choose location" Closed='() => panel = ""'>
     @if (panel == "menu")
     {

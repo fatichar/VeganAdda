@@ -19,6 +19,30 @@ public class DiscoveryTests(DatabaseFixture f)
     }
 
     [Fact]
+    public async Task Age_and_distance_sort_before_paging_in_both_directions()
+    {
+        var viewer = await f.Member();
+        var ids = new List<Guid>();
+        for (var i = 0; i < 15; i++) ids.Add(await Located("Test", "Test", "Test", 0, i, 20 + i));
+        await using (var db = f.Db())
+        {
+            for (var i = 0; i < ids.Count; i++) (await db.Profiles.FindAsync(ids[i]))!.Name = $"Member {i:D2}";
+            await db.SaveChangesAsync();
+        }
+        foreach (var sort in new[] { DiscoverySort.Name, DiscoverySort.NameDescending, DiscoverySort.Age, DiscoverySort.AgeDescending, DiscoverySort.Distance, DiscoverySort.DistanceDescending })
+        {
+            var input = new DiscoveryInput { Sort = sort };
+            if (DiscoverySort.IsDistance(sort)) { input.Latitude = 0; input.Longitude = 0; }
+            var first = Assert.IsType<Page<Person>>(await Search(viewer, input));
+            input.Page = 2;
+            var second = Assert.IsType<Page<Person>>(await Search(viewer, input));
+            var expected = sort is DiscoverySort.NameDescending or DiscoverySort.AgeDescending or DiscoverySort.DistanceDescending ? ids.AsEnumerable().Reverse() : ids;
+            Assert.Equal(expected, first.Items.Concat(second.Items).Select(p => p.Id));
+            Assert.Equal(15, first.Total); Assert.Equal(3, second.Items.Count);
+        }
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => Search(viewer, new() { Sort = DiscoverySort.Distance }))).Status);
+    }
+    [Fact]
     public async Task Connection_views_filter_before_paging_and_preserve_pending_requests_and_blocks()
     {
         var viewer = await f.Member();
