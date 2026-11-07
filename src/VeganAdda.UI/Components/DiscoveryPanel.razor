@@ -3,7 +3,7 @@
 @implements IAsyncDisposable
 @if (Open)
 {
-    <div class="modal-backdrop discovery-backdrop" @onclick="Closed" @onkeydown="KeyDown">
+    <div class="modal-backdrop discovery-backdrop @(LightBackdrop ? "discovery-backdrop-light" : "")" @onclick="Closed" @onkeydown="KeyDown">
         <section class="modal discovery-panel" role="dialog" aria-modal="true" aria-labelledby="discovery-panel-title" tabindex="-1" @ref="panel" @onclick:stopPropagation>
             <span tabindex="0" class="focus-guard" @onfocus='() => Focus("last")'></span>
             <div class="discovery-panel-heading"><h2 id="discovery-panel-title">@Title</h2><button class="icon-button" aria-label="Close panel" @onclick="Closed"><Icon Name="close" /></button></div>
@@ -15,6 +15,7 @@
 @code {
     [Parameter] public bool Open { get; set; }
     [Parameter] public string Title { get; set; } = "";
+    [Parameter] public bool LightBackdrop { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public EventCallback Closed { get; set; }
     ElementReference panel; bool wasOpen;

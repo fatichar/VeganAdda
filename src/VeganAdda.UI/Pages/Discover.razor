@@ -78,7 +78,7 @@
     </div>
     <ConnectDialog Person="connecting" Closed="() => connecting = null" Sent="Connected" />
 </div>
-<DiscoveryPanel Open='@(panel != "")' Title="@PanelTitle" Closed="ClosePanel">
+<DiscoveryPanel Open='@(panel != "")' Title="@PanelTitle" LightBackdrop='@(panel == "sort")' Closed="ClosePanel">
     @if (panel == "sort")
     {
         <div class="discovery-sort-options" role="group" aria-label="Sort people">
@@ -86,11 +86,18 @@
             {
                 var selected = SortField == field;
                 var label = field == "name" ? "Name" : field == "age" ? "Age" : "Distance";
-                var accessibleLabel = label + (selected ? $": {SortLabel(sort)}. Click to reverse order" : ": Click to sort");
-                <button type="button" class="discovery-sort-option" aria-pressed="@(selected.ToString().ToLowerInvariant())" aria-label="@accessibleLabel" disabled="@(Busy || locating)" @onclick="() => ChangeSortField(field)"><span>@label</span>@if (selected) { <Icon Name="@(sort is DiscoverySort.NameDescending or DiscoverySort.AgeDescending or DiscoverySort.DistanceDescending ? "arrow_downward" : "arrow_upward")" /> } else { <Icon Name="chevron_right" /> }</button>
+                <button type="button" class="discovery-sort-option" aria-pressed="@(selected.ToString().ToLowerInvariant())" disabled="@(Busy || locating)" @onclick="() => ChangeSortField(field)"><span>@label</span>@if (selected) { <Icon Name="check" /> }</button>
             }
         </div>
-        <p class="small">Tap a field to sort. Tap it again to reverse the order. Distance uses your current location.</p>
+        <div class="discovery-sort-order">
+            <span id="discovery-sort-order-label">Order</span>
+            <div class="discovery-sort-directions" role="group" aria-labelledby="discovery-sort-order-label">
+                <button type="button" aria-pressed="@((!SortDescending).ToString().ToLowerInvariant())" disabled="@(Busy || locating)" @onclick="() => ChangeSortOrder(false)">@SortOrderLabel(false)</button>
+                <button type="button" aria-pressed="@(SortDescending.ToString().ToLowerInvariant())" disabled="@(Busy || locating)" @onclick="() => ChangeSortOrder(true)">@SortOrderLabel(true)</button>
+            </div>
+        </div>
+        <p class="small discovery-sort-hint">Results update immediately.</p>
+        <p class="small discovery-sort-location">Distance uses your current location.</p>
         @if (locating) { <p role="status" class="small">Finding your location…</p> }
         <Feedback Error="@panelError" />
     }
@@ -157,6 +164,8 @@
     bool HasFilters => genders.Length > 0 || eventId != "" || interest != "" || intent != "" || includeNonVegan || verifiedVegansOnly || minAge.HasValue || maxAge.HasValue;
     string PanelTitle => panel == "sort" ? "Sort people" : panel == "filters" ? "Filters" : panel == "nearby" ? "Near me" : panel == "place" ? "Choose location" : "Discover where?";
     string SortField => sort is DiscoverySort.Name or DiscoverySort.NameDescending ? "name" : DiscoverySort.IsDistance(sort) ? "distance" : "age";
+    bool SortDescending => sort is DiscoverySort.NameDescending or DiscoverySort.AgeDescending or DiscoverySort.DistanceDescending;
+    string SortOrderLabel(bool descending) => SortField switch { "name" => descending ? "Z–A" : "A–Z", "distance" => descending ? "Farthest first" : "Nearest first", _ => descending ? "Oldest first" : "Youngest first" };
     static string SortLabel(string value) => value switch { DiscoverySort.Name => "Name: A–Z", DiscoverySort.NameDescending => "Name: Z–A", DiscoverySort.AgeDescending => "Age: oldest first", DiscoverySort.Distance => "Distance: nearest first", DiscoverySort.DistanceDescending => "Distance: farthest first", _ => "Age: youngest first" };
     protected override async Task OnInitializedAsync()
     {
@@ -295,6 +304,7 @@
     void SearchKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") ToggleSearch(); }
     async Task ChangeSortField(string field)
     {
+        if (Busy || locating || field == SortField) return;
         if (field == "distance" && !DiscoverySort.IsDistance(sort) && (!latitude.HasValue || !longitude.HasValue))
         {
             if (locating) return;
@@ -310,11 +320,19 @@
             finally { if (request == locationRequest) locating = false; }
         }
         panelError = "";
-        sort = field == "name"
-            ? sort == DiscoverySort.Name ? DiscoverySort.NameDescending : DiscoverySort.Name
-            : field == "distance"
-            ? sort == DiscoverySort.Distance ? DiscoverySort.DistanceDescending : DiscoverySort.Distance
-            : sort == DiscoverySort.Age ? DiscoverySort.AgeDescending : DiscoverySort.Age;
+        sort = field == "name" ? DiscoverySort.Name : field == "distance" ? DiscoverySort.Distance : DiscoverySort.Age;
+        await Search();
+    }
+    async Task ChangeSortOrder(bool descending)
+    {
+        if (Busy || locating || descending == SortDescending) return;
+        panelError = "";
+        sort = SortField switch
+        {
+            "name" => descending ? DiscoverySort.NameDescending : DiscoverySort.Name,
+            "distance" => descending ? DiscoverySort.DistanceDescending : DiscoverySort.Distance,
+            _ => descending ? DiscoverySort.AgeDescending : DiscoverySort.Age
+        };
         await Search();
     }
     void ClosePanel() { panel = ""; panelError = ""; locating = false; locationRequest++; }
