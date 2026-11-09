@@ -13,6 +13,7 @@ public record ProfileFeedbackInput(Guid Id, string Note);
 public interface IModerationApi
 {
     Task<Ok> RequestProfileChanges(ProfileFeedbackInput input);
+    Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input);
 }
 public record ModerateInput(Guid Id, string Action);
 public record BulkMemberActionInput(List<Guid> MemberIds, string Action);

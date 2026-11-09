@@ -71,17 +71,39 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
     public async Task<Ok> DeleteAccount()
     {
         var me = await User(allowIncomplete: true);
-        if (me.Admin) throw new ApiException(409, "Transfer administrator access before deleting this account.");
-        await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
-        var peers = await db.Relationships.Where(r => r.A == me.Id || r.B == me.Id).Select(r => r.A == me.Id ? r.B : r.A).ToArrayAsync();
-        await db.Saved.Where(s => s.TargetId == me.Id && s.Kind == "person").ExecuteDeleteAsync();
+        return await DeleteAccountData(me.Id, me.Id, requireProfile: false, CancellationToken.None);
+    }
+
+    public async Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input, CancellationToken cancellationToken = default)
+    {
+        var admin = await User(admin: true);
+        if (input.Confirm != "DELETE") throw new ApiException(400, "Confirm permanent deletion by typing DELETE.");
+        return await DeleteAccountData(id, admin.Id, requireProfile: true, cancellationToken);
+    }
+
+    private async Task<Ok> DeleteAccountData(Guid id, Guid actorId, bool requireProfile, CancellationToken cancellationToken)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        await UserLock(id);
+        var target = db.Accounts.Where(a => a.Id == id);
+        if (requireProfile && !await db.Profiles.AnyAsync(p => p.Id == id, cancellationToken)) throw Missing();
+        var peers = await db.Relationships.Where(r => r.A == id || r.B == id)
+            .Select(r => r.A == id ? r.B : r.A).ToArrayAsync(cancellationToken);
+        await db.Saved.Where(s => s.TargetId == id && s.Kind == "person").ExecuteDeleteAsync(cancellationToken);
         // Cascade removes all conversations and both participants' messages in those conversations.
-        db.Accounts.Remove(me); await db.SaveChangesAsync(); await tx.CommitAsync();
-        lifecycle.Record(LifecycleEvent.AccountDeleted, me.Id);
+        if (await target.Where(a => !a.Admin).ExecuteDeleteAsync(cancellationToken) == 0)
+        {
+            if (await target.AnyAsync(cancellationToken))
+                throw new ApiException(409, "Transfer administrator access before deleting this account.");
+            throw Missing();
+        }
+        await tx.CommitAsync(cancellationToken);
+        lifecycle.Record(LifecycleEvent.AccountDeleted, id, actorId);
         var media = config["Storage:MediaPath"] ?? "uploads";
-        if (Directory.Exists(media)) foreach (var marker in Directory.EnumerateFiles(media, "*.owner-" + me.Id.ToString("N")))
+        if (Directory.Exists(media)) foreach (var marker in Directory.EnumerateFiles(media, "*.owner-" + id.ToString("N")))
         { File.Delete(marker[..marker.LastIndexOf(".owner-", StringComparison.Ordinal)]); File.Delete(marker); }
-        await changes.Changed(peers); return new Ok();
+        await changes.Changed([.. peers, id, actorId]);
+        return new Ok();
     }
     public async Task<ProfileInput> GetProfile()
     {

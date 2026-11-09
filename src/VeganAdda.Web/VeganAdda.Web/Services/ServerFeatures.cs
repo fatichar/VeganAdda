@@ -13,6 +13,7 @@ namespace VeganAdda.Web.Services;
 public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi
 {
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => Call<ModerationService, Ok>(service => service.RequestProfileChanges(input));
+    public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => Call<ProfilesService, Ok>(service => service.DeleteMemberProfile(id, input));
     private async Task<T> Call<TService, T>(Func<TService, Task<T>> operation) where TService : notnull
     {
         await using var scope = scopes.CreateAsyncScope();

@@ -13,5 +13,8 @@ public static class ProfilesEndpoints
         api.MapGet("/profile", (ProfilesService service) => Json(service.GetProfile())).WithName("Profiles_Get_1").RequireAuthorization();
         api.MapPost("/profile", (HttpContext ctx, ProfilesService service) => Json(service.SaveProfile(Body<ProfileInput>(ctx)))).WithName("Profiles_Post_2").RequireAuthorization();
         api.MapDelete("/account", async (HttpContext ctx, ProfilesService service) => { if (Body<DeleteInput>(ctx).Confirm != "DELETE") throw new ApiException(400, "Confirm permanent deletion by typing DELETE."); var result = await service.DeleteAccount(); await ctx.SignOutAsync(); return Results.Json(result, Wire.Json); }).WithName("Profiles_Delete_3").RequireAuthorization();
+        api.MapDelete("/admin/members/{id:guid}", (Guid id, HttpContext ctx, ProfilesService service) =>
+            Json(service.DeleteMemberProfile(id, Body<DeleteInput>(ctx), ctx.RequestAborted)))
+            .WithName("Profiles_AdminDeleteMember").RequireAuthorization();
     }
 }

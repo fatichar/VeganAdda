@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -91,6 +92,103 @@ public class HttpTests : IDisposable
         Assert.DoesNotContain(input.Note, await outsider.GetStringAsync($"/api/people/{member}"));
         Assert.DoesNotContain(input.Note, await anonymous.GetStringAsync($"/api/people/{member}"));
         Assert.True((await owner.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+    }
+
+    [Fact]
+    public async Task Deleting_a_member_profile_requires_admin_csrf_and_confirmation_and_removes_account_data()
+    {
+        var admin = await f.Member(admin: true);
+        var member = await f.Member();
+        var peer = await f.Member();
+        var moderator = await f.Member();
+        var suspendedAdmin = await f.Member(admin: true);
+        var conversation = VeganAdda.Web.Features.Shared.FeatureService.Pair(member, peer);
+        await using (var db = f.Db())
+        {
+            (await db.Accounts.FindAsync(moderator))!.Moderator = true;
+            (await db.Accounts.FindAsync(suspendedAdmin))!.Suspended = true;
+            db.Relationships.Add(new() { Key = conversation, A = member, B = peer, State = "accepted", RequestedBy = member });
+            db.Messages.Add(new() { Conversation = conversation, SenderId = peer, Text = "Test conversation" });
+            db.Saved.Add(new() { UserId = peer, TargetId = member, Kind = "person" });
+            await db.SaveChangesAsync();
+        }
+        Directory.CreateDirectory(storage);
+        var photo = Path.Combine(storage, Guid.NewGuid().ToString("N") + ".jpg");
+        var marker = photo + ".owner-" + member.ToString("N");
+        await File.WriteAllTextAsync(photo, "fixture");
+        await File.WriteAllTextAsync(marker, "");
+        using var anonymous = Client();
+        using var reviewer = Client(admin);
+        using var suspended = Client(suspendedAdmin);
+        using var owner = Client(member);
+        using var communityModerator = Client(moderator);
+        var path = $"/api/admin/members/{member}";
+        var confirm = new DeleteInput("DELETE");
+
+        async Task<HttpStatusCode> Delete(HttpClient client, string url, DeleteInput input, bool csrf = true)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Delete, url) { Content = JsonContent.Create(input) };
+            if (csrf)
+                request.Headers.Add("X-CSRF-TOKEN", (await client.GetFromJsonAsync<Csrf>("/api/csrf"))!.Token);
+            using var response = await client.SendAsync(request);
+            return response.StatusCode;
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, await Delete(anonymous, path, confirm, csrf: false));
+        Assert.Equal(HttpStatusCode.BadRequest, await Delete(reviewer, path, confirm, csrf: false));
+        Assert.Equal(HttpStatusCode.Forbidden, await Delete(owner, path, confirm));
+        Assert.Equal(HttpStatusCode.Forbidden, await Delete(communityModerator, path, confirm));
+        Assert.Equal(HttpStatusCode.Forbidden, await Delete(suspended, path, confirm));
+        Assert.Equal(HttpStatusCode.BadRequest, await Delete(reviewer, path, new DeleteInput("delete")));
+        Assert.Equal(HttpStatusCode.Conflict, await Delete(reviewer, $"/api/admin/members/{admin}", confirm));
+        Assert.Equal(HttpStatusCode.Conflict, await Delete(reviewer, $"/api/admin/members/{suspendedAdmin}", confirm));
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/api/people/{member}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, await Delete(reviewer, path, confirm));
+        Assert.Equal(HttpStatusCode.NotFound, await Delete(reviewer, path, confirm));
+        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/api/people/{member}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await reviewer.GetAsync($"/api/admin/members/{admin}")).StatusCode);
+        await using var verify = f.Db();
+        Assert.Null(await verify.Accounts.FindAsync(member));
+        Assert.False(await verify.Messages.AnyAsync(m => m.Conversation == conversation));
+        Assert.Null(await verify.Saved.FindAsync(peer, member, "person"));
+        Assert.False(File.Exists(photo));
+        Assert.False(File.Exists(marker));
+        AssertLifecycle("AccountDeleted", member, admin);
+    }
+
+    [Fact]
+    public async Task A_member_can_delete_their_own_account_before_finishing_onboarding()
+    {
+        var member = await f.Member();
+        await using (var db = f.Db())
+        {
+            db.Profiles.Remove((await db.Profiles.FindAsync(member))!);
+            await db.SaveChangesAsync();
+        }
+        using var client = Client(member);
+        var settings = await client.GetStringAsync("/settings");
+        Assert.Contains("href=\"/settings#delete-account\"", settings);
+        Assert.Contains("Delete my account", settings);
+        var csrf = (await client.GetFromJsonAsync<Csrf>("/api/csrf"))!.Token;
+
+        async Task<HttpResponseMessage> Delete(string confirmation)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/account")
+            {
+                Content = JsonContent.Create(new DeleteInput(confirmation))
+            };
+            request.Headers.Add("X-CSRF-TOKEN", csrf);
+            return await client.SendAsync(request);
+        }
+
+        using var rejected = await Delete("delete");
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        using var deleted = await Delete("DELETE");
+        Assert.Equal(HttpStatusCode.OK, deleted.StatusCode);
+        Assert.True(deleted.Headers.Contains("Set-Cookie"));
+        await using var verify = f.Db();
+        Assert.Null(await verify.Accounts.FindAsync(member));
+        AssertLifecycle("AccountDeleted", member, member);
     }
 
     [Fact]

@@ -55,6 +55,12 @@ member in-app, including members without a verification request and non-vegans.
 It preserves verification, request/referrer status and moderator access. Verification
 decisions remain in Community review and the explicit verification actions.
 
+Admin member deletion requires an active administrator and explicit confirmation.
+It uses the same VeganAdda account cleanup as self-service deletion, including
+entire conversations. Administrator accounts are protected, and the committed
+deletion records both the member and the acting administrator in lifecycle logs.
+It does not delete the Firebase identity or prevent a new registration.
+
 Requests may be withdrawn or resubmitted after feedback. Account locks, a filtered
 unique index and client request IDs prevent duplicate active requests and repeated
 notifications. In-app notices link reviewers to `/moderation`, referrers to the

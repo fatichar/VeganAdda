@@ -5,6 +5,7 @@ namespace VeganAdda.Web.Client;
 public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi
 {
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => transport.Send<Ok>("admin/profile-feedback", input);
+    public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => transport.Send<Ok>($"admin/members/{id}", input, "DELETE");
     public Task<VerificationStatus> GetVerification() => transport.Get<VerificationStatus>("verification");
     public Task<Ok> SubmitVerification(VerificationSubmission input) => transport.Send<Ok>("verification", input);
     public Task<Ok> WithdrawVerification(Guid id) => transport.Send<Ok>("verification/withdraw", new VerificationRequestAction(id));

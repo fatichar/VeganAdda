@@ -106,10 +106,26 @@ else {
                                 <button class="secondary small-button" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, p.TestProfile ? "normal-profile" : "test-profile")'>@(p.TestProfile ? "Mark real" : "Mark test")</button>
                                 <button class="secondary small-button" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, p.Featured ? "unfeature" : "feature")'>@(p.Featured ? "Unfeature" : "Feature")</button>
                                 <button class="secondary small-button danger" disabled="@Busy" @onclick='() => ModerateFromMenu(p.Id, p.Suspended ? "restore" : "suspend")'>@(p.Suspended ? "Restore access" : "Suspend")</button>
+                                @if (p.HasProfile && !p.Admin) {
+                                    <button class="secondary small-button danger" disabled="@Busy" @onclick="() => BeginProfileDeletion(p.Id)">Delete profile and account</button>
+                                }
                             </div>
                         }
                     </div>
                 </div></div>
+                @if (deletingMember == p.Id && p.HasProfile && !p.Admin) {
+                    <section class="delete-section" aria-labelledby="delete-title-@p.Id">
+                        <h3 id="delete-title-@p.Id">Delete @(p.Name)’s profile and account?</h3>
+                        <p class="small muted">This permanently removes their VeganAdda profile, photos, connections, saves, attendance and entire conversations, including the other participants’ copies. This cannot be undone.</p>
+                        <label for="delete-confirm-@p.Id">Type DELETE to confirm</label>
+                        <input id="delete-confirm-@p.Id" @ref="deleteInput" @bind="deleteConfirmation" @bind:event="oninput" maxlength="6" autocomplete="off" disabled="@Busy" />
+                        <div class="actions">
+                            <button class="danger-button" disabled="@(Busy || deleteConfirmation != "DELETE")" @onclick="() => DeleteMemberProfile(p)">Permanently delete</button>
+                            <button class="secondary" disabled="@Busy" @onclick="CancelProfileDeletion">Cancel</button>
+                        </div>
+                        <Feedback Error="@deleteError" />
+                    </section>
+                }
                 @if (expandedMember == p.Id && memberProfile != null) {
                     var profile = memberProfile;
                     <div id="member-profile-@p.Id" class="admin-member-details">
@@ -149,10 +165,18 @@ else {
     Guid? reviewFeedbackMember;
     bool reviewSending;
     string reviewError = "", reviewSuccess = "";
+    Guid? deletingMember;
+    string deleteConfirmation = "", deleteError = "";
+    ElementReference deleteInput;
+    bool focusDeleteInput;
     public record AdminViewState(string Tab, string Verification, string Country, string State, string City, int EventsPage, int MembersPage, int ReportsPage);
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); initialized = true; }
     protected override async Task OnAfterRenderAsync(bool firstRender) {
         if (!initialized || restoring) return;
+        if (focusDeleteInput && deletingMember.HasValue) {
+            focusDeleteInput = false;
+            await deleteInput.FocusAsync();
+        }
         if (!viewStateReady && Session?.IsAdmin == true) {
             restoring = true;
             memberActionsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/admin-actions.js");
@@ -186,6 +210,7 @@ else {
             await memberActionsModule.InvokeVoidAsync("saveViewState", "admin", Session.Id,
                 new AdminViewState(tab, memberVerification, country, state, city, eventsPage, membersPage, reportsPage));
         data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}&country={E(country)}&state={E(state)}&city={E(city)}");
+        if (deletingMember is { } deleting && !data.People.Any(p => p.Id == deleting && p.HasProfile && !p.Admin)) CancelProfileDeletion();
         foreach (var person in data.People) if (selectedMembers.ContainsKey(person.Id)) selectedMembers[person.Id] = person;
         if (tab == "Events") eventsPage = data.PageNumber; else if (tab == "Reports") reportsPage = data.PageNumber; else membersPage = data.PageNumber;
         if (expandedMember is { } id && data.People.Any(p => p.Id == id && p.HasProfile)) memberProfile = await Api.Get<ProfileReview>($"admin/members/{id}");
@@ -193,15 +218,15 @@ else {
         if (tab == "Events" && adminProfile == null) adminProfile = await Api.Get<ProfileInput>("profile");
     }
     int CurrentPage => tab == "Events" ? eventsPage : tab == "Reports" ? reportsPage : membersPage;
-    Task SwitchTab(string value) { tab = value; return Run(Refresh); }
-    Task SetPage(int value) { if (tab == "Events") eventsPage = value; else if (tab == "Reports") reportsPage = value; else membersPage = value; return Run(Refresh); }
+    Task SwitchTab(string value) { CancelProfileDeletion(); tab = value; return Run(Refresh); }
+    Task SetPage(int value) { CancelProfileDeletion(); if (tab == "Events") eventsPage = value; else if (tab == "Reports") reportsPage = value; else membersPage = value; return Run(Refresh); }
     int BulkVerifyCount => selectedMembers.Values.Count(p => !p.Suspended && p.BasicProfileComplete && p.IsVegan == true && !p.VeganVerified);
     int BulkVerifyIncompleteCount => selectedMembers.Values.Count(p => !p.Suspended && !p.BasicProfileComplete && p.IsVegan == true && !p.VeganVerified);
     int BulkReminderCount => selectedMembers.Values.Count(p => !p.Suspended && !p.BasicProfileComplete);
     bool CanBulkVerify => BulkVerifyCount > 0;
     bool CanBulkSendReminder => data?.CanSendProfileReminders == true && BulkReminderCount > 0;
     int PendingBulkActionCount => pendingBulkAction == "verify-vegan" ? BulkVerifyCount : BulkReminderCount;
-    Task FilterMembers() { membersPage = 1; selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; return Run(Refresh); }
+    Task FilterMembers() { CancelProfileDeletion(); membersPage = 1; selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; return Run(Refresh); }
     void SelectMember(AdminPerson person, bool selected) {
         if (selected && selectedMembers.Count >= 100) { Error = "Select no more than 100 members at a time."; return; }
         if (selected) selectedMembers[person.Id] = person; else selectedMembers.Remove(person.Id);
@@ -223,6 +248,38 @@ else {
     void ToggleBulkActions() { openMemberActions = null; bulkActionsOpen = !bulkActionsOpen; }
     void ChooseBulkAction(string action) { pendingBulkAction = action; bulkActionsOpen = false; }
     Task ModerateFromMenu(Guid id, string action) { openMemberActions = null; return Moderate(id, action); }
+    void BeginProfileDeletion(Guid id) {
+        openMemberActions = null;
+        deletingMember = id;
+        deleteConfirmation = deleteError = Success = "";
+        focusDeleteInput = true;
+    }
+    void CancelProfileDeletion() {
+        deletingMember = null;
+        deleteConfirmation = deleteError = "";
+        focusDeleteInput = false;
+    }
+    async Task DeleteMemberProfile(AdminPerson person) {
+        if (Busy || deletingMember != person.Id || deleteConfirmation != "DELETE") return;
+        deleteError = "";
+        await Run(async () => {
+            await Moderation.DeleteMemberProfile(person.Id, new DeleteInput(deleteConfirmation));
+            CancelProfileDeletion();
+            selectedMembers.Remove(person.Id);
+            pendingBulkAction = null;
+            reviewNotes.Remove(person.Id);
+            data?.People.RemoveAll(p => p.Id == person.Id);
+            Success = $"Deleted {person.Name}’s profile and account.";
+            try { await Refresh(); }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException) {
+                Error = "The account was deleted, but the member list couldn’t refresh. Reload the page to see the latest list.";
+            }
+        });
+        if (deletingMember == person.Id) {
+            deleteError = Error;
+            Error = "";
+        }
+    }
     Task RunBulkAction() => Run(async () => {
         var action = pendingBulkAction ?? throw new ApiException(400, "Choose a bulk action first.");
         var result = await Api.Send<BulkMemberActionResult>("admin/members/bulk-action", new BulkMemberActionInput(selectedMembers.Keys.ToList(), action));
