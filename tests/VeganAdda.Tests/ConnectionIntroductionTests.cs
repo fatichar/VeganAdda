@@ -26,21 +26,32 @@ public class ConnectionIntroductionTests(DatabaseFixture f)
         await using (var db = f.Db())
         {
             var row = await db.Messages.SingleAsync(m => m.Id == second.Id);
-            row.EncryptedBody = row.EncryptedBody.ToArray();
+            row.EncryptedBody = row.EncryptedBody!.ToArray();
             row.EncryptedBody[^1] ^= 1;
             await db.SaveChangesAsync();
         }
 
-        var history = (MessagePage)await f.Call(recipient, path);
-        Assert.Collection(history.Items,
-            message => { Assert.Equal(first.Id, message.Id); Assert.Equal(first.Text, message.Text); },
-            message => { Assert.Equal(second.Id, message.Id); Assert.Contains("unavailable", message.Text); });
-        var missed = (MessagePage)await f.Call(recipient, path + $"?after={first.Id}");
-        Assert.Equal(second.Id, Assert.Single(missed.Items).Id);
-        var failed = await Assert.ThrowsAsync<ApiException>(() => f.Call(sender, path, secondInput, "POST"));
-        Assert.Equal(503, failed.Status);
-        await using var finalDb = f.Db();
-        Assert.Equal(2, await finalDb.Messages.CountAsync(m => m.Conversation == key));
+        try
+        {
+            var history = (MessagePage)await f.Call(recipient, path);
+            Assert.Collection(history.Items,
+                message => { Assert.Equal(first.Id, message.Id); Assert.Equal(first.Text, message.Text); },
+                message => { Assert.Equal(second.Id, message.Id); Assert.Contains("unavailable", message.Text); });
+            var missed = (MessagePage)await f.Call(recipient, path + $"?after={first.Id}");
+            Assert.Equal(second.Id, Assert.Single(missed.Items).Id);
+            var failed = await Assert.ThrowsAsync<ApiException>(() => f.Call(sender, path, secondInput, "POST"));
+            Assert.Equal(503, failed.Status);
+            await using var finalDb = f.Db();
+            Assert.Equal(2, await finalDb.Messages.CountAsync(m => m.Conversation == key));
+        }
+        finally
+        {
+            await using var db = f.Db();
+            var row = await db.Messages.SingleAsync(m => m.Id == second.Id);
+            row.EncryptedBody = row.EncryptedBody!.ToArray();
+            row.EncryptedBody[^1] ^= 1;
+            await db.SaveChangesAsync();
+        }
     }
 
     [Theory]

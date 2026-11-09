@@ -220,9 +220,13 @@ if (args.Contains("--check-migrations"))
     if (applied.Any(id => !knownMigrations.Contains(id)))
         throw new InvalidOperationException("The database contains migrations unknown to this image.");
     var encryption = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
+    var pending = knownMigrations.Except(applied).Any();
     if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Expand))
+    {
         await ChatEncryptionMigration.VerifyKeys(db, encryption);
-    Environment.ExitCode = knownMigrations.Except(applied).Any() ? 10 : 0;
+        pending = pending || await ChatEncryptionMigration.HasLegacyWrites(db);
+    }
+    Environment.ExitCode = pending ? 10 : 0;
     return;
 }
 if (args.Contains("--migrate"))
@@ -252,7 +256,7 @@ else
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     _ = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
-    if (!ChatEncryptionMigration.Includes(await db.Database.GetAppliedMigrationsAsync(), ChatEncryptionMigration.Contract))
+    if (!ChatEncryptionMigration.Includes(await db.Database.GetAppliedMigrationsAsync(), ChatEncryptionMigration.Expand))
         throw new InvalidOperationException("Apply the chat encryption migration before starting the web server.");
     if (await db.Accounts.AnyAsync(a => a.Demo) || await db.Events.AnyAsync(e => e.Demo)) throw new InvalidOperationException("Production cannot use a database containing development fixtures.");
 }

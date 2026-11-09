@@ -1,6 +1,6 @@
 # Chat encryption operations
 
-The web process encrypts chat bodies and connection introductions with AES-GCM. PostgreSQL retains key IDs and conversation metadata. The key ring is separate from both the database and ASP.NET Data Protection keys.
+The web process encrypts chat bodies and connection introductions with AES-GCM. This first release also retains plaintext to support rollback to the previous image. Database dumps still contain readable chat content during this window. The key ring is separate from both the database and ASP.NET Data Protection keys.
 
 ## Provision before rollout
 
@@ -23,11 +23,13 @@ Local Development creates a persistent development ring in a separate `message-k
 
 ## Cutover and recovery
 
-Use the existing rollout script. It checks the candidate can read the secret before maintenance. The application's `--check-migrations` command loads the ring and authenticates representative data for each existing chat key ID. Then the normal maintenance backup stops both web slots. Keep any other database writers stopped for the cutover.
+GitHub Actions copies the rollout and backup scripts to the VPS as part of the release. The rollout checks the key ring and runs the maintenance backup automatically if it detects a pending migration or legacy chat writes to backfill. The backup stops the web slots and saves PostgreSQL, media and session keys before the migration. Keep any other database writers stopped for the cutover.
 
-Use the application's `--migrate` command for the upgrade. It applies the expansion migration, backfills and verifies the legacy text in bounded batches, then drops the old columns. A retry can resume without rewriting complete envelopes. Generic EF migration tooling cannot backfill chat content and the final migration refuses to drop the legacy columns while the backfill is incomplete.
+The application's `--migrate` command adds the nullable encrypted columns, backfills existing text in bounded batches and verifies that decrypted copies match their source. The new image writes both forms and reads the encrypted copy when present. Rows written by the previous image can still be read. If that image changes a connection introduction, the database clears the stale encrypted copy so the next backfill picks up the replacement.
 
-If migration fails before the drop, keep web stopped and correct the failure before retrying. The previous image can still read the legacy columns if you have verified that the final migration did not commit and that the schema is compatible. After the drop, use a compatible image with the matching key ring or restore an appropriate backup into an isolated Compose project. A pre-cutover backup will omit messages sent after it was taken.
+To roll back this release, keep the live database and restart the previous web image using the previous release configuration. Use the normal VPS slot and upstream checks. If the old container was replaced, recreate the web service from the previous immutable digest without running its migrator or starting Compose dependencies. The previous migration checker rejects migration IDs it does not recognize. If the rollout fails after migration starts, the script leaves web stopped for manual recovery.
+
+When returning to the new image after rollback, the release check detects plaintext-only rows and schedules the backfill. A separate release will remove plaintext after the encryption and key recovery checks pass. Before that later release, backfill writes made during any rollback and verify the copies again. Once plaintext columns are removed, restarting the original image will require a compatible database restore.
 
 Column removal does not erase historical plaintext in pre-cutover dumps, WAL, dead tuples, replicas or snapshots. Apply the relevant retention policy to each copy. Normal deployment backup and restore scripts intentionally leave the chat ring out of the bundle. Supply it separately when restoring encrypted data, then validate a known history read with the matching application image.
 

@@ -163,8 +163,6 @@ public class PushLeaseTests
                     VALUES ({key}, {a}, {clientId}, 'Queued', {now}, TRUE, 0)
                     """);
                 await migrator.MigrateAsync("20261021120000_ReportRetention");
-                await migrator.MigrateAsync(ChatEncryptionMigration.Expand);
-                await Assert.ThrowsAsync<Npgsql.PostgresException>(() => migrator.MigrateAsync());
                 await ChatEncryptionMigration.Migrate(db, fixture.ChatEncryption);
             }
             await using var upgraded = fixture.Db();
@@ -175,12 +173,34 @@ public class PushLeaseTests
             Assert.Equal("Queued", Assert.Single(history.Items).Text);
             var connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
             Assert.Equal("Legacy introduction", Assert.Single(connection).Introduction);
-            Assert.Equal(0, await upgraded.Database.SqlQueryRaw<int>("""
-                SELECT count(*)::integer AS "Value" FROM information_schema.columns
-                WHERE table_schema = current_schema() AND
-                    ((table_name = 'Messages' AND column_name = 'Text')
-                    OR (table_name = 'Relationships' AND column_name = 'Introduction'))
+            Assert.Equal("Queued", message.Text);
+            Assert.NotNull(message.EncryptedBody);
+
+            // The old image reads and writes only the plaintext columns.
+            var newMessage = (Message)await fixture.Call(a, $"conversations/{key}/messages",
+                new MessageInput(Guid.NewGuid(), "Sent before rollback"), "POST");
+            Assert.Equal("Sent before rollback", await upgraded.Database.SqlQuery<string>($"""
+                SELECT "Text" AS "Value" FROM "Messages" WHERE "Id" = {newMessage.Id}
                 """).SingleAsync());
+            var rollbackClientId = Guid.NewGuid();
+            await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "Messages" ("Conversation", "SenderId", "ClientId", "Text", "SentAt", "PushPending", "PushAttempts")
+                VALUES ({key}, {a}, {rollbackClientId}, 'Sent after rollback', {now}, FALSE, 0)
+                """);
+            await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "Relationships" SET "Introduction" = 'Replaced after rollback', "RequestedBy" = {b} WHERE "Key" = {key}
+                """);
+            Assert.True(await ChatEncryptionMigration.HasLegacyWrites(upgraded));
+            history = (MessagePage)await fixture.Call(b, $"conversations/{key}/messages");
+            Assert.Contains(history.Items, m => m.ClientId == rollbackClientId && m.Text == "Sent after rollback");
+            connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
+            Assert.Equal("Replaced after rollback", Assert.Single(connection).Introduction);
+            await ChatEncryptionMigration.Migrate(upgraded, fixture.ChatEncryption);
+            Assert.False(await ChatEncryptionMigration.HasLegacyWrites(upgraded));
+            Assert.NotNull((await upgraded.Messages.AsNoTracking().SingleAsync(m => m.ClientId == rollbackClientId)).EncryptedBody);
+            var relationship = await upgraded.Relationships.AsNoTracking().SingleAsync(r => r.Key == key);
+            Assert.Equal("Replaced after rollback", fixture.ChatEncryption.DecryptIntroduction(key, b,
+                relationship.IntroductionKeyId!, relationship.EncryptedIntroduction!));
         }
         finally { await fixture.DisposeAsync(); }
     }

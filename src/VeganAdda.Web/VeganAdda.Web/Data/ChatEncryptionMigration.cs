@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using VeganAdda.Web.Services;
 
 namespace VeganAdda.Web.Data;
@@ -8,7 +6,6 @@ namespace VeganAdda.Web.Data;
 public static class ChatEncryptionMigration
 {
     public const string Expand = "ExpandChatEncryption";
-    public const string Contract = "RequireChatEncryption";
     private const long MigrationLock = 8743651203778414;
     private const int BatchSize = 200;
 
@@ -18,15 +15,9 @@ public static class ChatEncryptionMigration
         try
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationLock})", ct);
-            var applied = await db.Database.GetAppliedMigrationsAsync(ct);
-            if (!Includes(applied, Contract))
-            {
-                if (!Includes(applied, Expand))
-                    await db.GetService<IMigrator>().MigrateAsync(Expand, ct);
-                await BackfillMessages(db, encryption, ct);
-                await BackfillIntroductions(db, encryption, ct);
-            }
             await db.Database.MigrateAsync(ct);
+            await BackfillMessages(db, encryption, ct);
+            await BackfillIntroductions(db, encryption, ct);
             await VerifyKeys(db, encryption, ct);
         }
         finally
@@ -38,6 +29,13 @@ public static class ChatEncryptionMigration
 
     public static bool Includes(IEnumerable<string> migrations, string name)
         => migrations.Any(id => id.EndsWith("_" + name, StringComparison.Ordinal));
+
+    public static Task<bool> HasLegacyWrites(CommunityDb db, CancellationToken ct = default)
+        => db.Database.SqlQueryRaw<bool>("""
+            SELECT (EXISTS (SELECT 1 FROM "Messages" WHERE "BodyKeyId" IS NULL AND "EncryptedBody" IS NULL)
+                OR EXISTS (SELECT 1 FROM "Relationships" WHERE "Introduction" <> ''
+                    AND "IntroductionKeyId" IS NULL AND "EncryptedIntroduction" IS NULL)) AS "Value"
+            """).SingleAsync(ct);
 
     public static async Task VerifyKeys(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
     {
@@ -68,7 +66,7 @@ public static class ChatEncryptionMigration
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var rows = await db.Database.SqlQuery<StoredMessage>($"""
                 SELECT "Id", "Conversation", "SenderId", "ClientId", "Text", "BodyKeyId", "EncryptedBody"
-                FROM "Messages" WHERE "Id" > {after} ORDER BY "Id" LIMIT {BatchSize}
+                FROM "Messages" WHERE "Id" > {after} ORDER BY "Id" LIMIT {BatchSize} FOR UPDATE
                 """).ToListAsync(ct);
             foreach (var row in rows)
             {
@@ -96,7 +94,7 @@ public static class ChatEncryptionMigration
             var rows = await db.Database.SqlQuery<StoredIntroduction>($"""
                 SELECT "Key", "RequestedBy", "Introduction", "IntroductionKeyId", "EncryptedIntroduction"
                 FROM "Relationships" WHERE "Key" > {after} AND "Introduction" <> ''
-                ORDER BY "Key" LIMIT {BatchSize}
+                ORDER BY "Key" LIMIT {BatchSize} FOR UPDATE
                 """).ToListAsync(ct);
             foreach (var row in rows)
             {

@@ -106,7 +106,6 @@ namespace VeganAdda.Web.Data.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("BodyKeyId")
-                        .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
@@ -119,7 +118,6 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasColumnType("character varying(600)");
 
                     b.Property<byte[]>("EncryptedBody")
-                        .IsRequired()
                         .HasColumnType("bytea");
 
                     b.Property<int>("PushAttempts")
@@ -140,6 +138,11 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<DateTimeOffset>("SentAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Id")
@@ -151,10 +154,7 @@ namespace VeganAdda.Web.Data.Migrations
                     b.HasIndex("SenderId", "ClientId")
                         .IsUnique();
 
-                    b.ToTable("Messages", t =>
-                        {
-                            t.HasCheckConstraint("CK_Messages_EncryptedBody", "length(\"BodyKeyId\") > 0 AND octet_length(\"EncryptedBody\") >= 29");
-                        });
+                    b.ToTable("Messages");
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.Gathering", b =>
@@ -529,6 +529,11 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<byte[]>("EncryptedIntroduction")
                         .HasColumnType("bytea");
 
+                    b.Property<string>("Introduction")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)");
+
                     b.Property<string>("IntroductionKeyId")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
@@ -557,10 +562,7 @@ namespace VeganAdda.Web.Data.Migrations
                     b.HasIndex("A", "B")
                         .IsUnique();
 
-                    b.ToTable("Relationships", t =>
-                        {
-                            t.HasCheckConstraint("CK_Relationships_EncryptedIntroduction", "(\"IntroductionKeyId\" IS NULL AND \"EncryptedIntroduction\" IS NULL) OR (\"IntroductionKeyId\" IS NOT NULL AND length(\"IntroductionKeyId\") > 0 AND \"EncryptedIntroduction\" IS NOT NULL AND octet_length(\"EncryptedIntroduction\") > 29)");
-                        });
+                    b.ToTable("Relationships");
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.Report", b =>

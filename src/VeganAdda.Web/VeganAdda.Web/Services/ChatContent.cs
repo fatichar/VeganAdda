@@ -12,6 +12,7 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
             Conversation = conversation,
             SenderId = sender,
             ClientId = clientId,
+            Text = text,
             BodyKeyId = encryption.CurrentKeyId,
             EncryptedBody = encryption.EncryptMessage(conversation, sender, clientId, text),
             PushPending = pushPending
@@ -22,13 +23,16 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         relationship.EncryptedIntroduction = text.Length == 0 ? null
             : encryption.EncryptIntroduction(relationship.Key, requester, text);
         relationship.IntroductionKeyId = text.Length == 0 ? null : encryption.CurrentKeyId;
+        relationship.Introduction = text;
         relationship.RequestedBy = requester;
     }
 
     public string MessageText(ChatMessage message, bool required = false)
     {
+        if (message.BodyKeyId == null && message.EncryptedBody == null) return message.Text;
         try
         {
+            if (message.BodyKeyId == null || message.EncryptedBody == null) throw new CryptographicException();
             return encryption.DecryptMessage(message.Conversation, message.SenderId, message.ClientId,
                 message.BodyKeyId, message.EncryptedBody);
         }
@@ -42,11 +46,12 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
 
     public string IntroductionText(Relationship relationship, bool required = false)
     {
-        if (relationship.EncryptedIntroduction == null) return "";
+        if (relationship.IntroductionKeyId == null && relationship.EncryptedIntroduction == null) return relationship.Introduction;
         try
         {
+            if (relationship.IntroductionKeyId == null || relationship.EncryptedIntroduction == null) throw new CryptographicException();
             return encryption.DecryptIntroduction(relationship.Key, relationship.RequestedBy,
-                relationship.IntroductionKeyId!, relationship.EncryptedIntroduction);
+                relationship.IntroductionKeyId, relationship.EncryptedIntroduction);
         }
         catch (CryptographicException)
         {
