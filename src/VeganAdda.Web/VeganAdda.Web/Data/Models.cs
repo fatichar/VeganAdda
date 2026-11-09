@@ -33,6 +33,8 @@ public class Profile
     public string Profession { get; set; } = "";
     public string Gender { get; set; } = "";
     public string Photo { get; set; } = "";
+    public int? PhotoFocusX { get; set; }
+    public int? PhotoFocusY { get; set; }
     public string[] Interests { get; set; } = [];
     public string[] LookingFor { get; set; } = [];
     public string? Instagram { get; set; }

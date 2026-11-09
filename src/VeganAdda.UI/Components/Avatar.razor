@@ -1,5 +1,5 @@
 <span class="avatar-frame @Size">
-@if (!string.IsNullOrEmpty(Photo)) { <img class="avatar @Size" src="@Photo" alt="" loading="lazy" /> }
+@if (!string.IsNullOrEmpty(Photo)) { <img class="avatar @Size" src="@Photo" data-photo-x="@Focus?.X" data-photo-y="@Focus?.Y" alt="" loading="lazy" /> }
 else { <span class="avatar initials @Size" aria-hidden="true">@Initials</span> }
 @if (VeganVerified) { <span class="vegan-tick" role="img" aria-label="Verified vegan" title="Verified vegan"><Icon Name="check" /></span> }
 </span>
@@ -7,6 +7,7 @@ else { <span class="avatar initials @Size" aria-hidden="true">@Initials</span> }
     [Parameter] public bool VeganVerified { get; set; }
     [Parameter] public string Name { get; set; } = "Member";
     [Parameter] public string Photo { get; set; } = "";
+    [Parameter] public PhotoFocus? Focus { get; set; }
     [Parameter] public string Size { get; set; } = "";
     string Initials => string.Concat(Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(x => x[0]));
 }

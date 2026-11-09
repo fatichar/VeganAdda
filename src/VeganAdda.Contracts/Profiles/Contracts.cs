@@ -1,9 +1,14 @@
 namespace VeganAdda.Contracts;
 
+public record PhotoFocus(int X, int Y)
+{
+    public static PhotoFocus Center { get; } = new(50, 50);
+}
+
 // Public/member projection: never include private birth details, coordinates, or identity credentials.
 public record Person(Guid Id, string Name, string City, string Bio, string Photo, string[] Interests,
     string[] LookingFor, string? Instagram, string? LinkedIn, string? Website, bool Featured,
-    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerified = false, int? Age = null, bool IsBirthday = false, string Profession = "")
+    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerified = false, int? Age = null, bool IsBirthday = false, string Profession = "", PhotoFocus? PhotoFocus = null)
 {
     public bool VeganStatusUnverified => IsVegan == true && !VeganVerified;
 }
@@ -23,6 +28,7 @@ public class ProfileInput
     public string Profession { get; set; } = "";
     public string Gender { get; set; } = "";
     public string Photo { get; set; } = "";
+    public PhotoFocus? PhotoFocus { get; set; }
     public string[] Interests { get; set; } = [];
     public string[] LookingFor { get; set; } = ["Friendship"];
     public string? Instagram { get; set; }

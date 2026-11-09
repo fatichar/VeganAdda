@@ -370,6 +370,12 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
+                    b.Property<int?>("PhotoFocusX")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PhotoFocusY")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Profession")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

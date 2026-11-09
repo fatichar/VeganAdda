@@ -23,7 +23,26 @@ else if (model != null) {
 <h2 class="sr-only">Basic info</h2>
 <p class="small muted">Fields marked <RequiredMark /> are required.</p>
 <fieldset class="profile-section"><legend>Personal details</legend>
-<div class="profile-photo-field"><Avatar Name="@model.Name" Photo="@model.Photo" VeganVerified="@(model.IsVegan == true && model.VeganVerified)" /><div class="profile-photo-controls"><div class="profile-photo-actions"><label for="photo" class="button secondary photo-upload">Change photo<span class="sr-only"> (optional)</span></label><InputFile id="photo" class="sr-only" OnChange="Upload" accept="image/jpeg,image/png,image/webp" aria-describedby="photo-help" />@if (model.Photo != "") { <button type="button" class="text-button" @onclick="() => model.Photo = string.Empty">Remove<span class="sr-only"> photo</span></button> }</div><small id="photo-help">Optional · JPG, PNG or WebP · up to 10 MB</small></div></div>
+<div class="profile-photo-field">
+    <Avatar Name="@model.Name" Photo="@model.Photo" Focus="@model.PhotoFocus" VeganVerified="@(model.IsVegan == true && model.VeganVerified)" />
+    <div class="profile-photo-controls">
+        <div class="profile-photo-actions">
+            <label for="photo" class="button secondary photo-upload">Change photo<span class="sr-only"> (optional)</span></label>
+            <InputFile id="photo" class="sr-only" OnChange="Upload" disabled="@Busy" accept="image/jpeg,image/png,image/webp" aria-describedby="photo-help" />
+            @if (model.Photo != "")
+            {
+                <button type="button" class="text-button" disabled="@Busy" aria-expanded="@(adjustPhoto ? "true" : "false")"
+                        @onclick="() => adjustPhoto = !adjustPhoto">@(adjustPhoto ? "Hide adjustment" : "Adjust photo")</button>
+                <button type="button" class="text-button" disabled="@Busy" @onclick="RemovePhoto">Remove<span class="sr-only"> photo</span></button>
+            }
+        </div>
+        <small id="photo-help">Optional · JPG, PNG or WebP · up to 10 MB</small>
+    </div>
+</div>
+@if (adjustPhoto && model.Photo != "")
+{
+    <PhotoPositionEditor Photo="@model.Photo" Focus="@(model.PhotoFocus ?? PhotoFocus.Center)" FocusChanged="SetPhotoFocus" Disabled="@Busy" />
+}
 <label for="name">Your name <RequiredMark /></label><input id="name" required maxlength="80" autocomplete="name" @bind="model.Name" @bind:event="oninput" placeholder="Name" />
 <label for="gender">Gender <RequiredMark /></label><select id="gender" required @bind="model.Gender"><option value="" disabled>Select gender</option>@foreach (var gender in Wire.Genders) { <option>@gender</option> }</select><small>Used to match gender filters in Discover.</small>
 </fieldset>
@@ -78,6 +97,7 @@ else if (model != null) {
     [SupplyParameterFromQuery(Name = "ref")] public string? ReferralCode { get; set; }
     ProfileInput? model; string interests = ""; bool onboarding => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("onboarding");
     bool locationBusy, reportValidation, tabsInitialized;
+    bool adjustPhoto;
     string savedProfile = "", savedInterests = "";
     bool HasChanges => model != null && (Session?.BasicProfileComplete != true || savedProfile != System.Text.Json.JsonSerializer.Serialize(model, Wire.Json) || savedInterests != interests);
     void RememberSaved() { savedProfile = System.Text.Json.JsonSerializer.Serialize(model, Wire.Json); savedInterests = interests; }
@@ -108,5 +128,25 @@ else if (model != null) {
         await SaveProfile();
     }
     Task SaveProfile() => Run(async () => { model!.Interests = interests.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries); await Profiles.SaveProfile(model!); if (onboarding) Nav.NavigateTo(ProfileSetup.SafeReturnUrl(ReturnUrl), true); else { model = await Profiles.GetProfile(); Session = await Api.Get<Session>("session"); interests = string.Join(", ", model.Interests); RememberSaved(); Success = "Changes have been saved."; } });
-    Task Upload(InputFileChangeEventArgs e) => Run(async () => { if (e.File.Size > 10 * 1024 * 1024) { Error = "Please choose an image smaller than 10 MB."; return; } var (stream, name, contentType) = await ImageResizer.ProcessUpload(JS, e, "photo"); await using (stream) { model!.Photo = await Platform.Upload(stream, name, contentType); } Success = "Photo ready. Save your profile to keep it."; });
+    void RemovePhoto()
+    {
+        model!.Photo = "";
+        model.PhotoFocus = null;
+        adjustPhoto = false;
+        Success = "";
+    }
+    void SetPhotoFocus(PhotoFocus focus)
+    {
+        if (Busy) return;
+        model!.PhotoFocus = focus;
+        ProfileEdited();
+    }
+    Task Upload(InputFileChangeEventArgs e) => Run(async () =>
+    {
+        var (stream, name, contentType) = await ImageResizer.ProcessUpload(JS, e, "photo");
+        await using (stream) { model!.Photo = await Platform.Upload(stream, name, contentType); }
+        model!.PhotoFocus = null;
+        adjustPhoto = true;
+        Success = "Photo ready. Adjust it if you like, then save your profile.";
+    });
 }

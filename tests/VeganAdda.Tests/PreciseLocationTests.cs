@@ -18,8 +18,7 @@ public class PreciseLocationTests(DatabaseFixture f)
         {
             var approximate = await isolated.Member(); var precise = await isolated.Member();
             await using var db = isolated.Db(); var migrator = db.GetService<IMigrator>();
-            var previous = db.Database.GetMigrations().SkipLast(1).Last();
-            await migrator.MigrateAsync(previous);
+            await migrator.MigrateAsync("20261022104118_MultipleVerificationReferrers");
             await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Profiles\" SET \"Latitude\" = {18.1}, \"Longitude\" = {73.1} WHERE \"Id\" = {precise}");
             await migrator.MigrateAsync();
             db.ChangeTracker.Clear();

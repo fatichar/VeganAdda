@@ -350,12 +350,29 @@ public class HttpTests : IDisposable
         Assert.Equal("image/jpeg", (await c.GetAsync(path)).Content.Headers.ContentType!.MediaType);
         using var other = Client(await f.Member()); Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync(path)).StatusCode);
         var profile = await c.GetFromJsonAsync<ProfileInput>("/api/profile"); profile!.Photo = path;
+        Assert.Null(profile.PhotoFocus);
+        profile.PhotoFocus = new PhotoFocus(101, 20);
+        var csrf = await c.GetFromJsonAsync<Csrf>("/api/csrf");
+        using var invalidFocus = new HttpRequestMessage(HttpMethod.Post, "/api/profile") { Content = JsonContent.Create(profile) };
+        invalidFocus.Headers.Add("X-CSRF-TOKEN", csrf!.Token);
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.SendAsync(invalidFocus)).StatusCode);
+        profile.PhotoFocus = new PhotoFocus(75, 20);
         Assert.Equal(HttpStatusCode.OK,(await Post(c,"/api/profile",profile)).StatusCode);
-        Assert.True((await c.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
+        var saved = (await c.GetFromJsonAsync<ProfileInput>("/api/profile"))!;
+        Assert.True(saved.VeganVerified);
+        Assert.Equal(profile.PhotoFocus, saved.PhotoFocus);
         using var anon = Client(); Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
+        Assert.Equal(profile.PhotoFocus, (await anon.GetFromJsonAsync<Person>($"/api/people/{user}"))!.PhotoFocus);
         using var admin = Client(await f.Member(admin: true));
         Assert.Equal(HttpStatusCode.OK, (await Post(admin, "/api/admin/profile-review", new VeganVerificationInput(user, true))).StatusCode);
         Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
+
+        saved.PhotoFocus = null;
+        Assert.Equal(HttpStatusCode.OK, (await Post(c, "/api/profile", saved)).StatusCode);
+        Assert.Equal(profile.PhotoFocus, (await c.GetFromJsonAsync<ProfileInput>("/api/profile"))!.PhotoFocus);
+        saved.Photo = "";
+        Assert.Equal(HttpStatusCode.OK, (await Post(c, "/api/profile", saved)).StatusCode);
+        Assert.Null((await c.GetFromJsonAsync<ProfileInput>("/api/profile"))!.PhotoFocus);
     }
     [Fact] public async Task Reports_validate_reasons_and_keep_screenshots_private_and_owned()
     {

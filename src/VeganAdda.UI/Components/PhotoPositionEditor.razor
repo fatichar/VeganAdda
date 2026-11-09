@@ -1,0 +1,55 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<div class="photo-position-editor" role="group" aria-label="Adjust photo">
+    <p id="photo-position-help" class="small">Click or tap the part of the photo you want to keep in view. You can also focus the photo and use the arrow keys.</p>
+    <div class="photo-source">
+        <div class="photo-target" @ref="target" role="group" tabindex="@(Disabled ? -1 : 0)"
+             aria-label="Photo position" aria-describedby="photo-position-help" aria-disabled="@(Disabled ? "true" : null)">
+            <img src="@Photo" alt="" draggable="false" />
+            <span class="photo-marker" data-photo-x="@Focus.X" data-photo-y="@Focus.Y"></span>
+        </div>
+    </div>
+    <span class="sr-only" role="status">Photo position: @Focus.X% from the left, @Focus.Y% from the top.</span>
+    <input type="hidden" disabled="@Disabled" @ref="positionInput" @oninput="SetPosition" />
+    <button type="button" class="secondary photo-center" disabled="@(Disabled || Focus == PhotoFocus.Center)"
+            @onclick="() => FocusChanged.InvokeAsync(PhotoFocus.Center)">Center photo</button>
+    <div class="photo-previews">
+        <figure>
+            <figcaption>Discover thumbnail</figcaption>
+            <div class="discovery-person-media">
+                <img class="discovery-person-photo" src="@Photo" data-photo-x="@Focus.X" data-photo-y="@Focus.Y" alt="" />
+            </div>
+        </figure>
+        <figure>
+            <figcaption>Profile banner</figcaption>
+            <div class="photo-banner-preview">
+                <img class="profile-photo-image" src="@Photo" data-photo-x="@Focus.X" data-photo-y="@Focus.Y" alt="" />
+            </div>
+        </figure>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Photo { get; set; } = "";
+    [Parameter, EditorRequired] public PhotoFocus Focus { get; set; } = PhotoFocus.Center;
+    [Parameter] public EventCallback<PhotoFocus> FocusChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private ElementReference target, positionInput;
+
+    private Task SetPosition(ChangeEventArgs args)
+    {
+        var coordinates = (args.Value as string)?.Split(',');
+        return coordinates is [var x, var y] && int.TryParse(x, out var left) && int.TryParse(y, out var top)
+            ? FocusChanged.InvokeAsync(new PhotoFocus(left, top))
+            : Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/photo-position.js");
+        await module.InvokeVoidAsync("enablePhotoPositioning", target, positionInput);
+    }
+}

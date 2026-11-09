@@ -1,0 +1,44 @@
+.photo-position-editor {
+    padding: 14px;
+    margin-bottom: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--soft);
+}
+
+.photo-position-editor p { margin-bottom: 10px; }
+.photo-source { display: flex; justify-content: center; padding: 12px; }
+.photo-target { position: relative; max-width: 100%; user-select: none; }
+.photo-target img { display: block; max-width: 100%; max-height: 220px; cursor: crosshair; }
+
+.photo-marker {
+    position: absolute;
+    left: var(--photo-x, 50%);
+    top: var(--photo-y, 50%);
+    width: 24px;
+    height: 24px;
+    border: 2px solid white;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--forest);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.photo-previews {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 14px;
+}
+
+.photo-center {
+    display: flex;
+    width: fit-content;
+    min-height: 40px;
+    margin: 4px auto 12px;
+    padding-block: .35rem;
+    border-color: var(--control);
+}
+.photo-previews figure { min-width: 0; margin: 0; }
+.photo-previews figcaption { margin-bottom: 6px; font-size: .78rem; font-weight: 600; }
+.photo-previews .discovery-person-media, .photo-banner-preview { border-radius: 10px; overflow: hidden; }
+.photo-banner-preview { aspect-ratio: 8 / 5; background: #d7e9db; }

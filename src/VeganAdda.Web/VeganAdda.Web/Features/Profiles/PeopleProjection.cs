@@ -10,6 +10,9 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
 {
     public async Task<Person> One(Profile profile) => (await Many([profile])).Single();
 
+    internal static PhotoFocus? GetPhotoFocus(Profile profile) =>
+        profile.PhotoFocusX is int x && profile.PhotoFocusY is int y ? new(x, y) : null;
+
     // A fixed number of queries per page, never one query per card.
     public async Task<List<Person>> Many(List<Profile> profiles)
     {
@@ -30,7 +33,7 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
             return new Person(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
                 p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), Viewer.HasValue ? p.Instagram : null, Viewer.HasValue ? p.LinkedIn : null, Viewer.HasValue ? p.Website : null,
                 p.Featured && p.Public && p.FeatureConsent, saved.Contains(p.Id), p.Id == Viewer ? "self" : state,
-                demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), p.Profession);
+                demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), p.Profession, GetPhotoFocus(p));
         }).ToList();
     }
 }

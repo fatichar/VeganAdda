@@ -27,6 +27,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         if (input.Interests == null || input.Interests.Length > 10) throw new ApiException(400, "Choose up to 10 interests.");
         var interests = input.Interests.Select(x => Text(x, 40, true)).Distinct().ToArray();
         var instagram = Url(input.Instagram, "instagram.com"); var linkedIn = Url(input.LinkedIn, "linkedin.com"); var website = Url(input.Website); var photo = Photo(input.Photo);
+        if (input.PhotoFocus is { } focus && (focus.X is < 0 or > 100 || focus.Y is < 0 or > 100))
+            throw new ApiException(400, "Choose a photo position within the image.");
         await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
         var p = await db.Profiles.FindAsync(me.Id);
         var isNewProfile = p == null;
@@ -44,6 +46,11 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         p.Instagram = instagram; p.LinkedIn = linkedIn; p.Website = website;
         // A photo must belong to this account (or be its existing development fixture).
         if (photo != "" && photo != p.Photo && !System.IO.File.Exists(System.IO.Path.Combine(config["Storage:MediaPath"] ?? "uploads", photo[7..] + ".owner-" + me.Id.ToString("N")))) throw Denied();
+        if (photo == "" || photo != p.Photo || input.PhotoFocus != null)
+        {
+            p.PhotoFocusX = photo == "" ? null : input.PhotoFocus?.X;
+            p.PhotoFocusY = photo == "" ? null : input.PhotoFocus?.Y;
+        }
         p.Photo = photo; p.Public = input.Public; p.FeatureConsent = true; p.DefaultAttendeeVisible = input.DefaultAttendeeVisible; p.IsVegan = input.IsVegan;
         if (input.IsVegan == false)
         {
@@ -80,7 +87,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
     {
         var me = await User(allowIncomplete: true); var own = await db.Profiles.FindAsync(me.Id);
                     var canRefer = await trust.CanCreateReferral(me.Id);
-                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, BirthYear = own.BirthDate?.Year, BirthMonth = own.BirthDate?.Month, BirthDay = own.HasExactBirthDate ? own.BirthDate?.Day : null, City = own.City, Country = own.Country, State = own.State, SavePreciseLocation = own.HasPreciseLocation, Latitude = own.HasPreciseLocation ? own.Latitude : null, Longitude = own.HasPreciseLocation ? own.Longitude : null, Bio = own.Bio, Profession = own.Profession, Gender = own.Gender, Photo = own.Photo, Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, DefaultAttendeeVisible = own.DefaultAttendeeVisible, VeganVerified = own.VeganVerified, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, HasReferrer = await db.Referrals.AnyAsync(r => r.ReferredId == me.Id) };
+                    return own == null ? new ProfileInput { Name = me.Name, CanRefer = canRefer } : new ProfileInput { Name = own.Name, BirthYear = own.BirthDate?.Year, BirthMonth = own.BirthDate?.Month, BirthDay = own.HasExactBirthDate ? own.BirthDate?.Day : null, City = own.City, Country = own.Country, State = own.State, SavePreciseLocation = own.HasPreciseLocation, Latitude = own.HasPreciseLocation ? own.Latitude : null, Longitude = own.HasPreciseLocation ? own.Longitude : null, Bio = own.Bio, Profession = own.Profession, Gender = own.Gender, Photo = own.Photo, PhotoFocus = PeopleProjection.GetPhotoFocus(own), Interests = own.Interests, LookingFor = own.LookingFor, Instagram = own.Instagram, LinkedIn = own.LinkedIn, Website = own.Website, Public = own.Public, DefaultAttendeeVisible = own.DefaultAttendeeVisible, VeganVerified = own.VeganVerified, ReviewNote = own.ReviewNote, CanRefer = canRefer, IsVegan = own.IsVegan, HasReferrer = await db.Referrals.AnyAsync(r => r.ReferredId == me.Id) };
     }
     public async Task<Person> GetPerson(Guid id)
     {
