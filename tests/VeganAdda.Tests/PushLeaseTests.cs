@@ -142,20 +142,45 @@ public class PushLeaseTests
     [Fact]
     public async Task Push_migration_can_be_reversed_and_reapplied_without_losing_chat_history()
     {
-        var fixture = new DatabaseFixture(); await fixture.InitializeAsync();
+        var fixture = new DatabaseFixture(); await fixture.InitializeAt("ProfilePhotoFocus");
         try
         {
-            var queued = await Queue(fixture, "device");
+            var a = await fixture.Member();
+            var b = await fixture.Member();
+            var key = CommunityService.Pair(a, b);
+            var (first, second) = string.CompareOrdinal(a.ToString(), b.ToString()) < 0 ? (a, b) : (b, a);
+            var clientId = Guid.NewGuid();
+            var now = DateTimeOffset.UtcNow;
             await using (var db = fixture.Db())
             {
                 var migrator = db.GetService<IMigrator>();
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "Relationships" ("Key", "A", "B", "RequestedBy", "State", "Introduction", "Updated", "ReadA", "ReadB")
+                    VALUES ({key}, {first}, {second}, {a}, 'accepted', 'Legacy introduction', {now}, 0, 0)
+                    """);
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "Messages" ("Conversation", "SenderId", "ClientId", "Text", "SentAt", "PushPending", "PushAttempts")
+                    VALUES ({key}, {a}, {clientId}, 'Queued', {now}, TRUE, 0)
+                    """);
                 await migrator.MigrateAsync("20261021120000_ReportRetention");
-                await migrator.MigrateAsync();
+                await migrator.MigrateAsync(ChatEncryptionMigration.Expand);
+                await Assert.ThrowsAsync<Npgsql.PostgresException>(() => migrator.MigrateAsync());
+                await ChatEncryptionMigration.Migrate(db, fixture.ChatEncryption);
             }
             await using var upgraded = fixture.Db();
-            var message = await upgraded.Messages.FindAsync(queued.Message);
-            Assert.Equal("Queued", message!.Text); Assert.True(message.PushPending);
+            var message = await upgraded.Messages.SingleAsync(m => m.ClientId == clientId);
+            Assert.True(message.PushPending);
             Assert.Null(message.PushLeaseId); Assert.Null(message.PushLeaseUntil);
+            var history = (MessagePage)await fixture.Call(b, $"conversations/{key}/messages");
+            Assert.Equal("Queued", Assert.Single(history.Items).Text);
+            var connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
+            Assert.Equal("Legacy introduction", Assert.Single(connection).Introduction);
+            Assert.Equal(0, await upgraded.Database.SqlQueryRaw<int>("""
+                SELECT count(*)::integer AS "Value" FROM information_schema.columns
+                WHERE table_schema = current_schema() AND
+                    ((table_name = 'Messages' AND column_name = 'Text')
+                    OR (table_name = 'Relationships' AND column_name = 'Introduction'))
+                """).SingleAsync());
         }
         finally { await fixture.DisposeAsync(); }
     }

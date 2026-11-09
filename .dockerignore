@@ -7,5 +7,6 @@ tests
 **/obj
 **/uploads
 **/keys
+**/message-keys
 .env*
 node_modules

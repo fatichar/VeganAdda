@@ -20,6 +20,7 @@ services:
     image: ${IMAGE_REF:-veganadda:local}
     command: [--migrate]
     restart: 'no'
+    secrets: [chat_message_keys]
     environment: &app_environment
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Database: Host=db;Database=veganadda;Username=veganadda;Password=${POSTGRES_PASSWORD}
@@ -34,6 +35,7 @@ services:
       AllowedHosts: veganadda.com;www.veganadda.com;localhost
       Storage__MediaPath: /data/media
       Storage__KeysPath: /data/keys
+      Storage__MessageKeysPath: /run/secrets/chat_message_keys
       Development__Enabled: 'false'
       Development__Seed: 'false'
     volumes: [media:/data/media, keys:/data/keys]
@@ -44,7 +46,7 @@ services:
     build: .
     image: ${IMAGE_REF:-veganadda:local}
     restart: unless-stopped
-    secrets: [firebase_admin]
+    secrets: [firebase_admin, chat_message_keys]
     environment:
       <<: *app_environment
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_admin
@@ -73,7 +75,7 @@ services:
     build: .
     image: ${IMAGE_REF:-veganadda:local}
     restart: unless-stopped
-    secrets: [firebase_admin]
+    secrets: [firebase_admin, chat_message_keys]
     environment:
       <<: *app_environment
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase_admin
@@ -109,4 +111,6 @@ volumes:
 secrets:
   firebase_admin:
     file: ${FIREBASE_ADMIN_CREDENTIALS:?Set FIREBASE_ADMIN_CREDENTIALS to a Firebase service-account JSON file path}
+  chat_message_keys:
+    file: ${CHAT_MESSAGE_KEYS_FILE:?Set CHAT_MESSAGE_KEYS_FILE to the chat encryption key-ring JSON path}
 

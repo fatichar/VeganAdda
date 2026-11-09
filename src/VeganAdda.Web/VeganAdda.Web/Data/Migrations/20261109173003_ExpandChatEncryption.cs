@@ -1,0 +1,60 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace VeganAdda.Web.Data.Migrations
+{
+    /// <inheritdoc />
+    public partial class ExpandChatEncryption : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<byte[]>(
+                name: "EncryptedIntroduction",
+                table: "Relationships",
+                type: "bytea",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "IntroductionKeyId",
+                table: "Relationships",
+                type: "character varying(32)",
+                maxLength: 32,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "BodyKeyId",
+                table: "Messages",
+                type: "character varying(32)",
+                maxLength: 32,
+                nullable: true);
+
+            migrationBuilder.AddColumn<byte[]>(
+                name: "EncryptedBody",
+                table: "Messages",
+                type: "bytea",
+                nullable: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "EncryptedIntroduction",
+                table: "Relationships");
+
+            migrationBuilder.DropColumn(
+                name: "IntroductionKeyId",
+                table: "Relationships");
+
+            migrationBuilder.DropColumn(
+                name: "BodyKeyId",
+                table: "Messages");
+
+            migrationBuilder.DropColumn(
+                name: "EncryptedBody",
+                table: "Messages");
+        }
+    }
+}

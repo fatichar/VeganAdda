@@ -118,31 +118,35 @@ public sealed class ChatPushWorker(IServiceScopeFactory scopes, IConfiguration c
         var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var now = Clock.GetUtcNow();
-        var message = (await db.Messages.FromSqlInterpolated($"""
-            SELECT * FROM "Messages"
+        var message = (await db.Database.SqlQuery<PendingPush>($"""
+            SELECT "Id", "Conversation", "SenderId", "SentAt", "PushAttempts" FROM "Messages"
             WHERE "PushPending" = TRUE AND ("PushLeaseUntil" IS NULL OR "PushLeaseUntil" <= {now})
             ORDER BY "Id" LIMIT 1 FOR UPDATE SKIP LOCKED
             """).ToListAsync(ct)).SingleOrDefault();
         if (message == null) return null;
+        var row = db.Messages.Where(m => m.Id == message.Id);
         if (message.PushAttempts >= 4)
         {
             // A crash can leave the final attempt leased and pending. Recover it
             // without performing a fifth delivery after the lease expires.
-            message.PushPending = false;
-            message.PushLeaseId = null;
-            message.PushLeaseUntil = null;
-            await db.SaveChangesAsync(ct);
+            await row.ExecuteUpdateAsync(update => update
+                .SetProperty(m => m.PushPending, false)
+                .SetProperty(m => m.PushLeaseId, (Guid?)null)
+                .SetProperty(m => m.PushLeaseUntil, (DateTimeOffset?)null), ct);
             await transaction.CommitAsync(ct);
             return null;
         }
         var lease = Guid.NewGuid();
-        message.PushLeaseId = lease;
-        message.PushLeaseUntil = now.AddMinutes(2);
-        message.PushAttempts++;
-        await db.SaveChangesAsync(ct);
+        var attempt = message.PushAttempts + 1;
+        await row.ExecuteUpdateAsync(update => update
+            .SetProperty(m => m.PushLeaseId, lease)
+            .SetProperty(m => m.PushLeaseUntil, now.AddMinutes(2))
+            .SetProperty(m => m.PushAttempts, attempt), ct);
         await transaction.CommitAsync(ct);
-        return new(message.Id, message.Conversation, message.SenderId, message.SentAt, message.PushAttempts, lease);
+        return new(message.Id, message.Conversation, message.SenderId, message.SentAt, attempt, lease);
     }
+
+    private sealed record PendingPush(long Id, string Conversation, Guid SenderId, DateTimeOffset SentAt, int PushAttempts);
 
     private async Task Deliver(Claim claim, CancellationToken stoppingToken)
     {

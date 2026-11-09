@@ -22,16 +22,22 @@ public sealed class DatabaseFixture : IAsyncLifetime
 {
     private static readonly Lazy<Task<PostgreSqlContainer>> localPostgres = new(StartLocalPostgresAsync);
     public string Connection { get; private set; } = "";
+    public string ChatKeysPath { get; } = Path.Combine(Path.GetTempPath(), $"veganadda-chat-{Guid.NewGuid():N}.json");
+    public ChatEncryption ChatEncryption { get; private set; } = null!;
     private string name = "veganadda_test_" + Guid.NewGuid().ToString("N");
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => InitializeAt(null);
+
+    public async Task InitializeAt(string? migration)
     {
+        VeganAdda.Web.Services.ChatEncryption.CreateKeyFile(ChatKeysPath);
+        ChatEncryption = VeganAdda.Web.Services.ChatEncryption.Load(ChatKeysPath);
         var baseConnection = Environment.GetEnvironmentVariable("TEST_DATABASE");
         if (string.IsNullOrWhiteSpace(baseConnection))
             baseConnection = (await localPostgres.Value).GetConnectionString();
         await using var c = new NpgsqlConnection(baseConnection); await c.OpenAsync();
         await new NpgsqlCommand($"CREATE DATABASE {name}", c).ExecuteNonQueryAsync();
         var b = new NpgsqlConnectionStringBuilder(baseConnection) { Database = name }; Connection = b.ConnectionString;
-        await using var db = Db(); await db.Database.MigrateAsync();
+        await using var db = Db(); await db.Database.MigrateAsync(migration);
     }
     private static async Task<PostgreSqlContainer> StartLocalPostgresAsync()
     {
@@ -54,6 +60,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         using var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddSingleton<IWebHostEnvironment>(new TestEnvironment())
+            .AddSingleton(ChatEncryption)
             .AddSingleton<IFirebaseUserEmailLookup>(new NoVerifiedEmailLookup())
             .AddSingleton<IProfileReminderEmailSender>(new DisabledProfileReminderEmailSender())
             .AddScoped<IActor>(_ => new Actor(id)).AddScoped<IChangeBus, Bus>()
@@ -67,6 +74,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         using var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(new ConfigurationBuilder().Build())
             .AddSingleton<IWebHostEnvironment>(new TestEnvironment())
+            .AddSingleton(ChatEncryption)
             .AddSingleton<IFirebaseUserEmailLookup>(new NoVerifiedEmailLookup())
             .AddSingleton<IProfileReminderEmailSender>(new DisabledProfileReminderEmailSender())
             .AddScoped<IActor>(_ => new Actor(id)).AddScoped<IChangeBus, Bus>()
@@ -81,10 +89,14 @@ public sealed class DatabaseFixture : IAsyncLifetime
     }
     public async Task DisposeAsync()
     {
+        File.Delete(ChatKeysPath);
         if (string.IsNullOrEmpty(Connection)) return;
         NpgsqlConnection.ClearAllPools(); var b = new NpgsqlConnectionStringBuilder(Connection) { Database = "postgres" };
         await using var c = new NpgsqlConnection(b.ConnectionString); await c.OpenAsync(); await new NpgsqlCommand($"DROP DATABASE {name} WITH (FORCE)", c).ExecuteNonQueryAsync();
     }
+    public ChatMessage Message(string conversation, Guid sender, string text)
+        => new ChatContent(ChatEncryption, Microsoft.Extensions.Logging.Abstractions.NullLogger<ChatContent>.Instance)
+            .NewMessage(conversation, sender, Guid.NewGuid(), text);
     private sealed class Actor(Guid? id) : IActor { public Guid? Id => id; }
     private sealed class Bus : IChangeBus { public Task Changed(params Guid[] users) => Task.CompletedTask; }
     private sealed class NoVerifiedEmailLookup : IFirebaseUserEmailLookup
@@ -343,7 +355,7 @@ public class CommunityTests(DatabaseFixture f)
     [Fact] public async Task History_has_stable_older_pagination_and_removed_connection_cannot_send()
     {
         var (a,b,key)=await Connected();
-        await using(var db=f.Db()) { for(int i=0;i<45;i++) db.Messages.Add(new(){Conversation=key,SenderId=a,ClientId=Guid.NewGuid(),Text="History "+i}); await db.SaveChangesAsync(); }
+        await using(var db=f.Db()) { for(int i=0;i<45;i++) db.Messages.Add(f.Message(key, a, "History " + i)); await db.SaveChangesAsync(); }
         var first=Assert.IsType<MessagePage>(await f.Call(b,$"conversations/{key}/messages")); Assert.Equal(40,first.Items.Count); Assert.True(first.HasOlder);
         var older=Assert.IsType<MessagePage>(await f.Call(b,$"conversations/{key}/messages?before={first.Items[0].Id}")); Assert.Equal(5,older.Items.Count); Assert.False(older.HasOlder);
         Assert.Empty(first.Items.Select(m=>m.Id).Intersect(older.Items.Select(m=>m.Id)));

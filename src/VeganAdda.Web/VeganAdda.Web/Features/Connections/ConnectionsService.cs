@@ -4,10 +4,11 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Profiles;
+using VeganAdda.Web.Services;
 
 namespace VeganAdda.Web.Features.Connections;
 
-public sealed class ConnectionsService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people) : FeatureService(context)
+public sealed class ConnectionsService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ChatContent content) : FeatureService(context)
 {
     public async Task<List<ConnectionItem>> Connections() => (await ConnectionsPage(pageSize: 20)).Items;
 
@@ -27,7 +28,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var cards = (await people.Many(rows.Select(x => x.Profile).ToList())).ToDictionary(p => p.Id);
         return new(rows.Select(x => new ConnectionItem(x.Relationship.Key, cards[x.Profile.Id], x.Relationship.State,
-            x.Relationship.RequestedBy != me.Id, x.Relationship.Introduction, x.Relationship.Updated)).ToList(), total, page, pageSize);
+            x.Relationship.RequestedBy != me.Id, content.IntroductionText(x.Relationship), x.Relationship.Updated)).ToList(), total, page, pageSize);
     }
     public async Task<Ok> ConnectionAction(string action, JsonElement? body)
     {
@@ -50,17 +51,15 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
             {
                 // A reciprocal request is an explicit mutual connection.
                 r.State = "accepted";
-                if (!string.IsNullOrEmpty(r.Introduction))
-                {
-                    db.Messages.Add(new ChatMessage { Conversation = key, SenderId = r.RequestedBy, ClientId = Guid.NewGuid(), Text = r.Introduction, PushPending = false });
-                }
+                CopyIntroduction(r);
                 Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key);
             }
             else
             {
                 r ??= new Relationship { Key = key, A = string.CompareOrdinal(me.Id.ToString(), input.PersonId.ToString()) < 0 ? me.Id : input.PersonId, B = string.CompareOrdinal(me.Id.ToString(), input.PersonId.ToString()) < 0 ? input.PersonId : me.Id };
                 if (db.Entry(r).State == EntityState.Detached) db.Relationships.Add(r);
-                r.State = "pending"; r.RequestedBy = me.Id; r.Introduction = intro;
+                r.State = "pending";
+                content.SetIntroduction(r, me.Id, intro);
                 Notice(input.PersonId, "request", $"{me.Name} sent you a connection request.", "/messages/" + key);
             }
         }
@@ -71,10 +70,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
             if (action == "accept" && r.State == "pending" && incoming)
             {
                 r.State = "accepted";
-                if (!string.IsNullOrEmpty(r.Introduction))
-                {
-                    db.Messages.Add(new ChatMessage { Conversation = key, SenderId = r.RequestedBy, ClientId = Guid.NewGuid(), Text = r.Introduction, PushPending = false });
-                }
+                CopyIntroduction(r);
                 Notice(input.PersonId, "connection", $"{me.Name} accepted your connection request.", "/messages/" + key);
             }
             else if (action == "decline" && r.State == "pending" && incoming) { r.State = "declined"; Notice(input.PersonId, "declined", $"{me.Name} declined your connection request.", "/messages"); }
@@ -85,6 +81,13 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         r!.Updated = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(ChangeArea.Connections, me.Id, input.PersonId); return new Ok();
     }
+    private void CopyIntroduction(Relationship relationship)
+    {
+        var text = content.IntroductionText(relationship, required: true);
+        if (text.Length != 0)
+            db.Messages.Add(content.NewMessage(relationship.Key, relationship.RequestedBy, Guid.NewGuid(), text));
+    }
+
     public async Task<Ok> PersonAction(Guid id, string action, JsonElement? body)
     {
         var me = await User(allowIncomplete: action == "unblock");

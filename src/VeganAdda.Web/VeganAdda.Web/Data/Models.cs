@@ -60,7 +60,8 @@ public class Relationship
     public Guid B { get; set; }
     public Guid RequestedBy { get; set; }
     public string State { get; set; } = "pending";
-    public string Introduction { get; set; } = "";
+    public string? IntroductionKeyId { get; set; }
+    public byte[]? EncryptedIntroduction { get; set; }
     public DateTimeOffset Updated { get; set; } = DateTimeOffset.UtcNow;
     public long ReadA { get; set; }
     public long ReadB { get; set; }
@@ -80,7 +81,8 @@ public class ChatMessage
     public string Conversation { get; set; } = "";
     public Guid SenderId { get; set; }
     public Guid ClientId { get; set; }
-    public string Text { get; set; } = "";
+    public string BodyKeyId { get; set; } = "";
+    public byte[] EncryptedBody { get; set; } = [];
     public DateTimeOffset SentAt { get; set; } = DateTimeOffset.UtcNow;
 }
 public class Gathering
@@ -249,6 +251,12 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
         b.Entity<VerificationRequest>().Property(r => r.Explanation).HasMaxLength(4000);
+        b.Entity<Relationship>().Property(r => r.IntroductionKeyId).HasMaxLength(32);
+        b.Entity<ChatMessage>().Property(m => m.BodyKeyId).HasMaxLength(32);
+        b.Entity<ChatMessage>().ToTable(t => t.HasCheckConstraint("CK_Messages_EncryptedBody",
+            """length("BodyKeyId") > 0 AND octet_length("EncryptedBody") >= 29"""));
+        b.Entity<Relationship>().ToTable(t => t.HasCheckConstraint("CK_Relationships_EncryptedIntroduction",
+            """("IntroductionKeyId" IS NULL AND "EncryptedIntroduction" IS NULL) OR ("IntroductionKeyId" IS NOT NULL AND length("IntroductionKeyId") > 0 AND "EncryptedIntroduction" IS NOT NULL AND octet_length("EncryptedIntroduction") > 29)"""));
         b.Entity<Report>().Property(r => r.Details).HasMaxLength(1000).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");

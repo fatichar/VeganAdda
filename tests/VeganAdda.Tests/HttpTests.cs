@@ -43,6 +43,7 @@ public class HttpTests : IDisposable
             { ["ConnectionStrings:Database"] = f.Connection, ["Development:Enabled"] = "false", ["Development:Seed"] = "false", ["Storage:MediaPath"] = storage, ["Storage:KeysPath"] = Path.Combine(storage, "keys"), ["Authentication:Firebase:ProjectId"] = "test-firebase", ["Authentication:Firebase:ApiKey"] = "public-test-key", ["Authentication:Firebase:AuthDomain"] = "test-firebase.firebaseapp.com", ["Authentication:Firebase:AppId"] = "1:test:web:test" }));
             b.ConfigureTestServices(s =>
             {
+                s.AddSingleton(f.ChatEncryption);
                 s.AddSingleton<ILogEventSink>(logs);
                 var pushWorker = s.FirstOrDefault(d => d.ImplementationType == typeof(VeganAdda.Web.Services.ChatPushWorker));
                 if (pushWorker != null) s.Remove(pushWorker);
@@ -108,7 +109,7 @@ public class HttpTests : IDisposable
             (await db.Accounts.FindAsync(moderator))!.Moderator = true;
             (await db.Accounts.FindAsync(suspendedAdmin))!.Suspended = true;
             db.Relationships.Add(new() { Key = conversation, A = member, B = peer, State = "accepted", RequestedBy = member });
-            db.Messages.Add(new() { Conversation = conversation, SenderId = peer, Text = "Test conversation" });
+            db.Messages.Add(f.Message(conversation, peer, "Test conversation"));
             db.Saved.Add(new() { UserId = peer, TargetId = member, Kind = "person" });
             await db.SaveChangesAsync();
         }

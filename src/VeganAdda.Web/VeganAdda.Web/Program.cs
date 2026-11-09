@@ -53,6 +53,8 @@ if (!dev && !migrationOnly && !firebaseConfigured) throw new InvalidOperationExc
 if (!dev && !migrationOnly && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS")))
     throw new InvalidOperationException("GOOGLE_APPLICATION_CREDENTIALS must point to a mounted Firebase Admin service-account file.");
 builder.Services.AddDbContext<CommunityDb>(o => o.UseNpgsql(connection));
+builder.Services.AddSingleton(s => ChatEncryption.LoadForHost(
+    s.GetRequiredService<IConfiguration>(), s.GetRequiredService<IWebHostEnvironment>()));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IActor, HttpActor>(); builder.Services.AddCommunityFeatures();
 builder.Services.AddScoped<ICommunityApi, ServerApi>();
@@ -214,9 +216,13 @@ if (args.Contains("--check-migrations"))
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     var knownMigrations = db.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
-    if ((await db.Database.GetAppliedMigrationsAsync()).Any(id => !knownMigrations.Contains(id)))
+    var applied = (await db.Database.GetAppliedMigrationsAsync()).ToHashSet(StringComparer.Ordinal);
+    if (applied.Any(id => !knownMigrations.Contains(id)))
         throw new InvalidOperationException("The database contains migrations unknown to this image.");
-    Environment.ExitCode = (await db.Database.GetPendingMigrationsAsync()).Any() ? 10 : 0;
+    var encryption = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
+    if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Expand))
+        await ChatEncryptionMigration.VerifyKeys(db, encryption);
+    Environment.ExitCode = knownMigrations.Except(applied).Any() ? 10 : 0;
     return;
 }
 if (args.Contains("--migrate"))
@@ -224,7 +230,7 @@ if (args.Contains("--migrate"))
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     diagnosticLog.LogInformation("Database migrations started.");
-    await db.Database.MigrateAsync();
+    await ChatEncryptionMigration.Migrate(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
     diagnosticLog.LogInformation("Database migrations completed.");
     return;
 }
@@ -233,7 +239,7 @@ if (dev)
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     diagnosticLog.LogInformation("Database migrations started.");
-    await db.Database.MigrateAsync();
+    await ChatEncryptionMigration.Migrate(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
     diagnosticLog.LogInformation("Database migrations completed.");
     if (builder.Configuration.GetValue<bool>("Development:Seed"))
     {
@@ -245,6 +251,9 @@ else
 {
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
+    _ = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
+    if (!ChatEncryptionMigration.Includes(await db.Database.GetAppliedMigrationsAsync(), ChatEncryptionMigration.Contract))
+        throw new InvalidOperationException("Apply the chat encryption migration before starting the web server.");
     if (await db.Accounts.AnyAsync(a => a.Demo) || await db.Events.AnyAsync(e => e.Demo)) throw new InvalidOperationException("Production cannot use a database containing development fixtures.");
 }
 await app.RunAsync();

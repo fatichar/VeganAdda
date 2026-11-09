@@ -140,7 +140,7 @@ public class ProfileSetupTests(DatabaseFixture f)
     public async Task Migration_backfills_only_approved_declared_vegans_and_enables_all_feature_consent()
     {
         var isolated = new DatabaseFixture();
-        await isolated.InitializeAsync();
+        await isolated.InitializeAt("ProfilePhotoFocus");
         try
         {
             var cases = new (bool Approved, bool? Vegan)[] { (true, true), (true, false), (true, null), (false, true) };

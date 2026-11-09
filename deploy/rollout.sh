@@ -60,6 +60,8 @@ docker compose pull web web_standby migrate
 # the image's non-root app user before stopping the existing web container.
 docker compose run -T --rm --no-deps --pull never --entrypoint /bin/sh web \
   -c 'test -r /run/secrets/firebase_admin' || { echo 'Firebase Admin secret is not readable by the web container user'; exit 1; }
+docker compose run -T --rm --no-deps --pull never --entrypoint /bin/sh web \
+  -c 'test -r /run/secrets/chat_message_keys' || { echo 'Chat encryption secret is not readable by the web container user'; exit 1; }
 docker compose up -d --wait --wait-timeout 120 db
 
 # An included upstream file enables an already-running slot to stay online while
