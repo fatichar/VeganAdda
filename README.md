@@ -34,6 +34,23 @@ Without fixtures, omit `-Fixtures` and configure Firebase (see below). Developme
 
 The development script uses `-m:1 /nr:false` and builds before `dotnet run --no-build` to avoid an intermittent WebAssembly task-host failure with older .NET 10 SDKs. Use a current serviced SDK for ongoing development.
 
+## Publish a feature announcement
+
+Add an entry at the top of the `FeatureAnnouncements` list in
+[`appsettings.json`](src/VeganAdda.Web/VeganAdda.Web/appsettings.json) as part of the feature's release.
+Choose a unique `Id` (for example, `saved-events`), and write a short
+`Title` and `Message`. To add a button-like link, set both `ActionLabel` and a path on VeganAdda
+such as `ActionPath: "/events"`. Remove both fields for an announcement without a link.
+
+Signed-in members with a complete profile see one banner at a time, in list order.
+Closing a banner reveals the next announcement they haven't dismissed in that browser.
+Use `"RequiresProfilePhoto": true` only when the feature needs an existing photo.
+Keep the same ID when correcting the copy so a previous dismissal still applies.
+Delete older entries when they are no longer useful. An empty list turns off announcements.
+
+Preview it locally with a development account, then include the config change in the feature
+PR. Merging to `master` triggers the normal **Build and Deploy to VPS** workflow.
+
 ## Firebase Authentication setup
 
 The app defaults to the registered Firebase Web app in `veganadda-app`. Its public web configuration is in the host's `appsettings.json` and the deployment settings in `.env.example`. Enable Google under Authentication → Sign-in method, and add `localhost`, `veganadda.com` and `www.veganadda.com` to Firebase Authentication's authorized domains. Google's OAuth consent screen must allow the intended audience/test users. To use a different Firebase project locally, override the web configuration with user-secrets:

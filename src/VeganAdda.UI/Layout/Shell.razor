@@ -9,7 +9,12 @@
 <nav class="desktop-nav" aria-label="Main navigation"><NavLink href="/" Match="NavLinkMatch.All">Discover</NavLink><NavLink href="/events">Events</NavLink><NavLink href="/messages" class="messages-link">Messages @if (unreadMessages > 0) { <span class="count" aria-label="@($"{unreadMessages} unread messages")">@unreadMessages</span> }</NavLink>@if (session?.IsAdmin == true) { <NavLink href="/admin" class="admin-link">Admin @if (pendingAdminActions > 0) { <span class="count" aria-label="@($"{pendingAdminActions} actions awaiting review")">@pendingAdminActions</span> }</NavLink> }</nav>
 <div class="header-actions"><a class="icon-button" href="/saved" aria-label="Saved items"><Icon Name="bookmark_border" /></a><a class="icon-button notification-link" href="/notifications" aria-label="Notifications"><Icon Name="notifications" />@if (unread > 0) { <span class="count">@unread</span> }</a><a aria-label="@(session?.Id == null ? "Sign in" : "Your profile and settings")" class="@(session?.Id == null ? "button sign-in" : "profile-link")" href="@(session?.Id == null ? "/signin" : "/settings")">@if (session?.Id != null) { <Avatar Name="@session.Name" VeganVerified="@session.VeganVerified" Size="tiny" /> } else { <span>Sign in</span><Icon Name="arrow_forward" /> }</a></div></div></header>
 @if (session?.Development == true) { <div class="dev-banner">Development · fictional profiles &amp; events <a href="/signin">Switch account</a></div> }
-<main id="main" class="page" tabindex="-1">@if (session?.BasicProfileComplete == true && new Uri(Nav.Uri).AbsolutePath.StartsWith("/messages")) { <ChatPushSettings /> }<ErrorBoundary @ref="boundary"><ChildContent>
+<main id="main" class="page" tabindex="-1">
+@if (ShowAnnouncement && session?.Announcements is { Count: > 0 } announcements)
+{
+    <FeatureAnnouncement Announcements="announcements" />
+}
+@if (session?.BasicProfileComplete == true && CurrentPath.StartsWith("/messages")) { <ChatPushSettings /> }<ErrorBoundary @ref="boundary"><ChildContent>
 @if (session == null) { <p role="status">Loading your session…</p> }
 else if (NeedsBasicProfile) { <section class="card narrow profile-completion-notice" role="status"><h1>Complete your basic profile to use VeganAdda</h1><p>Add your name, vegan status, birth month and year, and location to get started. Photos and other details can wait.</p><a class="button" href="@ProfileSetup.OnboardingUrl(Nav.ToBaseRelativePath(Nav.Uri).Insert(0, "/"))">Complete basic profile<Icon Name="arrow_forward" /></a><a class="text-button" href="/settings">Account settings</a></section> }
 else {
@@ -21,6 +26,9 @@ else {
 <nav class="bottom-nav" aria-label="Mobile navigation"><NavLink href="/" Match="NavLinkMatch.All"><Icon Name="explore" /><span>Discover</span></NavLink><NavLink href="/events"><Icon Name="festival" /><span>Events</span></NavLink><NavLink href="/messages" class="messages-link"><Icon Name="chat_bubble" /><span>Messages</span>@if (unreadMessages > 0) { <span class="count" aria-label="@($"{unreadMessages} unread messages")">@unreadMessages</span> }</NavLink>@if (session?.IsAdmin == true) { <NavLink href="/admin" class="admin-link"><Icon Name="admin_panel_settings" /><span>Admin</span>@if (pendingAdminActions > 0) { <span class="count" aria-label="@($"{pendingAdminActions} actions awaiting review")">@pendingAdminActions</span> }</NavLink> }</nav>
 <div id="blazor-error-ui">Connection interrupted. <a href="" class="reload">Reload this page</a></div>
 @code {
+    string CurrentPath => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+    bool ShowAnnouncement => CurrentPath is not ("/settings/profile" or "/onboarding" or "/signin" or "/messages")
+        && !CurrentPath.StartsWith("/messages/", StringComparison.Ordinal);
     bool NeedsBasicProfile => session?.Id != null && !session.BasicProfileComplete
         && !ProfileSetup.AllowsIncomplete(new Uri(Nav.Uri).AbsolutePath)
         && !(session.IsAdmin && new Uri(Nav.Uri).AbsolutePath.StartsWith("/admin", StringComparison.Ordinal));

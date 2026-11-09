@@ -95,6 +95,7 @@ else if (model != null) {
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery(Name = "ref")] public string? ReferralCode { get; set; }
+    [SupplyParameterFromQuery(Name = "adjustPhoto")] public string? OpenPhotoAdjustment { get; set; }
     ProfileInput? model; string interests = ""; bool onboarding => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("onboarding");
     bool locationBusy, reportValidation, tabsInitialized;
     bool adjustPhoto;
@@ -117,7 +118,18 @@ else if (model != null) {
         }
     }
     string SignInUrl => "/signin?returnUrl=" + E(onboarding && !string.IsNullOrWhiteSpace(ReferralCode) ? "/onboarding?ref=" + E(ReferralCode) : "/onboarding");
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.Id != null) await Run(async () => { model = await Profiles.GetProfile();  interests = string.Join(", ", model.Interests); RememberSaved(); }); }
+    protected override async Task OnInitializedAsync()
+    {
+        adjustPhoto = OpenPhotoAdjustment == "true";
+        await base.OnInitializedAsync();
+        if (Session?.Id == null) return;
+        await Run(async () =>
+        {
+            model = await Profiles.GetProfile();
+            interests = string.Join(", ", model.Interests);
+            RememberSaved();
+        });
+    }
     void Intent(string intention, ChangeEventArgs e) { model!.LookingFor = (bool)e.Value! ? model.LookingFor.Append(intention).Distinct().ToArray() : model.LookingFor.Where(x => x != intention).ToArray(); }
     async Task Save()
     {

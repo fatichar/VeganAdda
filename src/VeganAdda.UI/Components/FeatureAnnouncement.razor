@@ -1,0 +1,61 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+@if (NextAnnouncement is { } announcement && checkedStorage.Contains(announcement.Id))
+{
+    <aside class="feature-announcement" aria-label="What's new">
+        <div class="announcement-copy" aria-live="polite">
+            <strong>New: @announcement.Title</strong>
+            <p>@announcement.Message</p>
+        </div>
+        @if (announcement.ActionPath is { Length: > 0 } path && announcement.ActionLabel is { Length: > 0 } label)
+        {
+            <a class="announcement-link" href="@path">@label</a>
+        }
+        <button type="button" class="icon-button announcement-dismiss" aria-label="Dismiss announcement" @onclick="() => Dismiss(announcement.Id)">
+            <Icon Name="close" />
+        </button>
+    </aside>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<Announcement> Announcements { get; set; } = [];
+
+    readonly HashSet<string> dismissed = new(StringComparer.Ordinal);
+    readonly HashSet<string> checkedStorage = new(StringComparer.Ordinal);
+    bool readingStorage;
+    Announcement? NextAnnouncement => Announcements.FirstOrDefault(item => !dismissed.Contains(item.Id));
+    static string StorageKey(string id) => $"veganadda-announcement-dismissed:{id}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (readingStorage || Announcements.All(item => checkedStorage.Contains(item.Id)))
+            return;
+
+        readingStorage = true;
+        try
+        {
+            foreach (var item in Announcements)
+            {
+                if (checkedStorage.Contains(item.Id)) continue;
+
+                try
+                {
+                    if (await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey(item.Id)) == "1")
+                        dismissed.Add(item.Id);
+                }
+                catch (JSException) { } // Storage can be disabled by browser policy.
+                checkedStorage.Add(item.Id);
+            }
+        }
+        finally { readingStorage = false; }
+        StateHasChanged();
+    }
+
+    async Task Dismiss(string id)
+    {
+        dismissed.Add(id);
+        try { await JS.InvokeVoidAsync("localStorage.setItem", StorageKey(id), "1"); }
+        catch (JSException) { } // Keep the announcement dismissed on this page even without storage.
+    }
+}
