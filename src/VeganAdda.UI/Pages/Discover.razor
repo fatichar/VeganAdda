@@ -30,7 +30,7 @@
             {
                 <form id="discovery-search" class="discovery-search" role="search" @onsubmit="Search" @onsubmit:preventDefault @onkeydown="SearchKeyDown">
                     <label class="sr-only" for="people-search">Search people and interests</label>
-                    <input @ref="searchInput" id="people-search" type="search" enterkeyhint="search" placeholder="Search" maxlength="200" @bind="search" @bind:event="oninput" />
+                    <input @ref="searchInput" id="people-search" type="search" enterkeyhint="search" placeholder="Search" maxlength="200" @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
                     <button type="button" class="icon-button" aria-label="Collapse search" @onclick="ToggleSearch"><Icon Name="close" /></button>
                 </form>
             }
@@ -157,6 +157,7 @@
     bool initialized, restoring, locationReady, searched, searchSucceeded;
     bool loadingMore, loadMoreFailed, hasMore, disposed;
     int searchVersion;
+    CancellationTokenSource? pendingSearch;
     ElementReference loadMoreTrigger;
     IJSObjectReference? discoveryModule;
     DotNetObjectReference<Discover>? scrollReference;
@@ -196,7 +197,7 @@
         if (locationReady)
         {
             if (discoveryModule != null && !disposed)
-                await discoveryModule.InvokeVoidAsync("observeScroll", loadMoreTrigger, scrollReference, searchSucceeded && hasMore && !Busy && !loadMoreFailed);
+                await discoveryModule.InvokeVoidAsync("observeScroll", loadMoreTrigger, scrollReference, searchSucceeded && hasMore && !Busy && pendingSearch == null && !loadMoreFailed);
             await base.OnAfterRenderAsync(firstRender);
             return;
         }
@@ -241,7 +242,9 @@
     }
     protected override async Task Refresh()
     {
-        if (!locationReady) return;
+        CancelPendingSearch();
+        if (!locationReady || disposed) return;
+        var version = ++searchVersion;
         if (locationReady && discoveryModule != null)
             await discoveryModule.InvokeVoidAsync("saveViewState", "discover", Session?.Id, new DiscoveryInput
             {
@@ -250,11 +253,12 @@
                 Genders = genders, VerifiedVegansOnly = verifiedVegansOnly, IncludeNonVegan = includeNonVegan,
                 MinAge = minAge, MaxAge = maxAge, RadiusKm = nearby ? radius : null
             });
+        if (disposed || version != searchVersion) return;
         page = 1;
-        var version = ++searchVersion;
         loadMoreFailed = false;
         searchSucceeded = false;
         if (eventId != "" && selectedEvent?.Id.ToString() != eventId) selectedEvent = await Api.Get<EventCard>("events/" + eventId);
+        if (disposed || version != searchVersion) return;
         var result = await FetchPage(1);
         if (disposed || version != searchVersion) return;
         people = result.Items; total = result.Total;
@@ -280,7 +284,7 @@
     });
     protected async Task LoadMore()
     {
-        if (disposed || Busy || loadingMore || !searchSucceeded || !hasMore) return;
+        if (disposed || Busy || pendingSearch != null || loadingMore || !searchSucceeded || !hasMore) return;
         var version = searchVersion;
         loadingMore = true;
         loadMoreFailed = true;
@@ -302,6 +306,28 @@
     void OpenPanel(string value) { panelError = ""; panel = value; }
     void ToggleSearch() { searchOpen = !searchOpen; focusSearch = searchOpen; focusSearchToggle = !searchOpen; }
     void SearchKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") ToggleSearch(); }
+    protected async Task SearchChanged()
+    {
+        CancelPendingSearch();
+        if (disposed) return;
+        searchVersion++;
+        using var delay = new CancellationTokenSource();
+        pendingSearch = delay;
+        try
+        {
+            await Task.Delay(300, delay.Token);
+            // Let an in-flight search finish before starting the latest query.
+            while (Busy) await Task.Delay(50, delay.Token);
+            if (!disposed) await Search();
+        }
+        catch (OperationCanceledException) when (delay.IsCancellationRequested) { }
+        finally { if (pendingSearch == delay) pendingSearch = null; }
+    }
+    void CancelPendingSearch()
+    {
+        pendingSearch?.Cancel();
+        pendingSearch = null;
+    }
     async Task ChangeSortField(string field)
     {
         if (Busy || locating || field == SortField) return;
@@ -417,6 +443,7 @@
     public async ValueTask DisposeAsync()
     {
         disposed = true;
+        CancelPendingSearch();
         base.Dispose();
         try
         {

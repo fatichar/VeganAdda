@@ -188,8 +188,6 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 
 /* Discovery uses the shared card and type system, with photos when supplied by members. */
 .discovery-panel-actions{display:flex;justify-content:space-between;gap:12px;margin-top:24px;align-items:center}
-.discovery-person-photo{display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--soft);border-radius:10px;margin-bottom:14px}
-.discovery-person-card:has(.discovery-person-photo) .person-identity>.avatar{display:none}
 .discovery-person-card .person-header h3{font-size:1.25rem}
 .discovery-person-card .person-footer{display:flex;flex-wrap:wrap;gap:8px}
 .discovery-person-card .person-footer>.button,.discovery-person-card .person-footer>button{width:100%;margin-left:0}
@@ -198,12 +196,9 @@ html{scrollbar-width:none}html::-webkit-scrollbar{display:none}:root{font-size:1
 .person-details>.tags{margin-bottom:0;min-width:0}
 .person-details>.tags span{max-width:100%;overflow-wrap:anywhere}
 .person-details>.person-intentions{margin:0;min-width:0;overflow-wrap:anywhere}
-@media(min-width:768px){.discovery .people-grid{grid-template-columns:repeat(auto-fit,minmax(250px,320px));justify-content:start}.discovery-person-photo{height:180px;aspect-ratio:auto}.discovery-person-card{padding:16px}.discovery-person-card .person-header h3{font-size:1.1rem}}
-@media(max-width:767px){.discovery-person-card{padding:10px}.discovery-person-card .person-header,.discovery-person-card .bio,.discovery-person-card .tags,.discovery-person-card .person-intentions,.discovery-person-card .person-footer{margin-left:8px;margin-right:8px}.discovery-person-card .person-footer{padding-bottom:8px}}
 
 .person-profession{color:var(--muted);font-size:.9rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:10px}
 .profile-profession{color:var(--muted);overflow-wrap:anywhere}
-@media(max-width:767px){.discovery-person-card .person-profession{margin-left:8px;margin-right:8px}}
 
 /* The profile editor owns its scrolling region; keep its title and save controls in view. */
 html:has(.profile-editor){overflow:clip}
@@ -218,25 +213,28 @@ body:has(.profile-editor) .site-footer{display:none}
 .desktop-nav .admin-link .count{margin-left:5px}
 .bottom-nav .admin-link .count{position:absolute;top:0;left:calc(50% + 6px);font-size:.65rem;line-height:1;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center}
 
-/* Discover: distinct surfaces, one portrait, and compact member actions. */
+/* Discover: equal-width, ordered cards with a consistent photo or initials area. */
 .person-content{display:flex;flex:1;flex-direction:column;min-width:0}
-.discovery-person-card{border-color:#d5ddd3}
-.discovery-person-card.has-discovery-photo{display:grid;grid-template-columns:minmax(0,40%) minmax(0,1fr);gap:14px;align-items:stretch;padding:14px}
-.discovery-person-media{display:block;min-width:0;min-height:210px;border-radius:12px;overflow:hidden;background:#e9eee8;border:1px solid #dce4db}
-.discovery-person-card.has-discovery-photo .discovery-person-photo{width:100%;height:100%;min-height:210px;margin:0;border-radius:0;aspect-ratio:auto;object-fit:cover;object-position:center;background:transparent}
-.discovery-person-card.has-discovery-photo .person-header{align-items:flex-start;margin:0 0 10px}
-.discovery-person-card.has-discovery-photo .person-identity{align-items:flex-start;min-width:0}
-.discovery-person-card.has-discovery-photo .person-identity>div{min-width:0}
-.discovery-person-card.has-discovery-photo .person-details{display:block;margin-bottom:12px}
-.discovery-person-card.has-discovery-photo .person-footer{margin-top:auto}
+.discovery .people-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr))}
+.discovery-person-card{padding:0;overflow:hidden;border-color:#d5ddd3}
+.discovery-person-media{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:100%;aspect-ratio:4/3;overflow:hidden;background:#e9eee8;border-bottom:1px solid #dce4db}
+.discovery-person-photo{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
+.discovery-person-card .person-content{padding:20px}
+.discovery-person-card .person-header{align-items:flex-start;margin:0 0 10px}
+.discovery-person-card .person-identity{align-items:flex-start;min-width:0}
+.discovery-person-card .person-identity>div{min-width:0}
+.discovery-person-card .person-header h3{overflow-wrap:anywhere}
+.discovery-person-card .location{overflow-wrap:anywhere}
+.discovery-person-card .person-details{display:block;margin-bottom:12px}
+.discovery-person-card .person-intentions{margin-top:10px}
+.discovery-person-card .person-footer{margin-top:auto}
 .discovery-person-card .person-footer>.button,.discovery-person-card .person-footer>button{min-height:44px;background:#e6f1e9;color:var(--green);border-color:var(--control);box-shadow:none}
 .discovery-person-card .person-footer>.button:hover,.discovery-person-card .person-footer>button:hover{background:#d8e9de}
 .discovery-person-card .person-footer>.secondary{background:#fff;border-color:var(--control)}
 .discovery-person-card .person-footer>.secondary:hover{background:#f2f4f0}
 .photo-verified{display:inline-flex;vertical-align:middle;margin-left:5px;color:var(--forest)}
 .photo-verified .material-symbols-outlined{font-size:16px}
-@media(min-width:768px){.discovery-person-card.has-discovery-photo{grid-column:span 2}.discovery-person-card.has-discovery-photo .discovery-person-photo{height:100%}}
-@media(max-width:767px){.discovery-person-card.has-discovery-photo{grid-template-columns:minmax(92px,38%) minmax(0,1fr);gap:10px;padding:10px}.discovery-person-card.has-discovery-photo .person-header,.discovery-person-card.has-discovery-photo .bio,.discovery-person-card.has-discovery-photo .tags,.discovery-person-card.has-discovery-photo .person-intentions,.discovery-person-card.has-discovery-photo .person-footer,.discovery-person-card.has-discovery-photo .person-profession{margin-left:0;margin-right:0}.discovery-person-card.has-discovery-photo .person-header h3{font-size:1.05rem;overflow-wrap:anywhere}.discovery-person-card.has-discovery-photo .person-identity .location{font-size:.72rem;overflow-wrap:anywhere}.discovery-person-card.has-discovery-photo .person-footer>.button,.discovery-person-card.has-discovery-photo .person-footer>button{font-size:.76rem;padding:8px 6px}.discovery-person-media,.discovery-person-card.has-discovery-photo .discovery-person-photo{min-height:190px}}
+@media(max-width:767px){.discovery-person-card .person-content{padding:18px}}
 
 /* Keep chat actions outside the scrolling history. */
 .chat-referral-actions{flex-shrink:0;background:#fff}
