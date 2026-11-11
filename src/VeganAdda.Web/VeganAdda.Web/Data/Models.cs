@@ -334,6 +334,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<VerificationReferral> VerificationReferrals => Set<VerificationReferral>();
     public DbSet<VerificationRequest> VerificationRequests => Set<VerificationRequest>();
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
+    public DbSet<ChatKeyRepair> ChatKeyRepairs => Set<ChatKeyRepair>();
     public DbSet<PushDevice> PushDevices => Set<PushDevice>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Profile> Profiles => Set<Profile>();
@@ -400,6 +401,8 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<VerificationRequest>().Property(r => r.Explanation).HasMaxLength(4000);
         b.Entity<Relationship>().Property(r => r.IntroductionKeyId).HasMaxLength(32);
         b.Entity<ChatMessage>().Property(m => m.BodyKeyId).HasMaxLength(32);
+        b.Entity<ChatKeyRepair>().HasKey(x => x.KeyId);
+        b.Entity<ChatKeyRepair>().Property(x => x.KeyId).HasMaxLength(32);
         b.Entity<Report>().Property(r => r.Details).HasMaxLength(1000).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
@@ -422,6 +425,13 @@ public class PushDevice
 }
 
 /// <summary>A push attempt linking a message to a target device.</summary>
+/// <summary>A chat key whose cohort verification has started but not finished.</summary>
+public class ChatKeyRepair
+{
+    /// <summary>Key ID whose messages and introductions must all be verified.</summary>
+    public string KeyId { get; set; } = "";
+}
+
 public class PushDelivery
 {
     /// <summary>Message being delivered.</summary>

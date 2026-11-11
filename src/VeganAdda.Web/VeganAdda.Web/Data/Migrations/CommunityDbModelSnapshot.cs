@@ -97,6 +97,17 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Blocks");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.ChatKeyRepair", b =>
+                {
+                    b.Property<string>("KeyId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("KeyId");
+
+                    b.ToTable("ChatKeyRepairs");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.ChatMessage", b =>
                 {
                     b.Property<long>("Id")

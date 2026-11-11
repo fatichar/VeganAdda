@@ -258,4 +258,95 @@ public class PushLeaseTests
         }
         finally { await fixture.DisposeAsync(); }
     }
+
+    [Fact]
+    public async Task Interrupted_key_repair_resumes_on_the_next_release_check()
+    {
+        var fixture = new DatabaseFixture(); await fixture.InitializeAt(null);
+        var historicalPath = fixture.ChatKeysPath + ".historical";
+        var rotatedPath = fixture.ChatKeysPath + ".rotated";
+        try
+        {
+            var a = await fixture.Member();
+            var b = await fixture.Member();
+            var key = CommunityService.Pair(a, b);
+            await fixture.Call(a, "connections", new ConnectionInput(b), "POST");
+            await fixture.Call(b, "connections/accept", new ConnectionInput(a), "POST");
+
+            using var fixtureRing = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(fixture.ChatKeysPath));
+            var current = fixture.ChatEncryption.CurrentKeyId;
+            var historicalKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+            File.WriteAllText(historicalPath, System.Text.Json.JsonSerializer.Serialize(new
+            {
+                current = "historical",
+                keys = new Dictionary<string, byte[]> { ["historical"] = historicalKey }
+            }));
+            File.WriteAllText(rotatedPath, System.Text.Json.JsonSerializer.Serialize(new
+            {
+                current,
+                keys = new Dictionary<string, byte[]>
+                {
+                    [current] = fixtureRing.RootElement.GetProperty("keys").GetProperty(current).GetBytesFromBase64(),
+                    ["historical"] = historicalKey
+                }
+            }));
+            using var historical = ChatEncryption.Load(historicalPath);
+            using var rotated = ChatEncryption.Load(rotatedPath);
+
+            // Damaged rows open and close the historical cohort; healthy rows fill the batches between them.
+            const int total = 450;
+            await using (var db = fixture.Db())
+            {
+                for (var i = 0; i < total; i++)
+                {
+                    var clientId = Guid.NewGuid();
+                    var text = $"History {i}";
+                    var damaged = i < 3 || i >= total - 3;
+                    db.Messages.Add(new ChatMessage
+                    {
+                        Conversation = key, SenderId = a, ClientId = clientId, Text = text, BodyKeyId = "historical",
+                        EncryptedBody = damaged ? [0] : historical.EncryptMessage(key, a, clientId, text)
+                    });
+                }
+                await db.SaveChangesAsync();
+            }
+            await using var upgraded = fixture.Db();
+            var ids = await upgraded.Messages.Where(m => m.Conversation == key).OrderBy(m => m.Id).Select(m => m.Id).ToListAsync();
+            Assert.Equal(total, ids.Count);
+            var last = ids[^1];
+
+            // Fail the final batch after the first batch has committed its repairs.
+            await upgraded.Database.ExecuteSqlRawAsync($$"""
+                CREATE FUNCTION test_interrupt_chat_repair() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'interrupted'; END; $$;
+                CREATE TRIGGER "InterruptChatRepair" BEFORE UPDATE ON "Messages"
+                FOR EACH ROW WHEN (OLD."Id" = {{last}}) EXECUTE FUNCTION test_interrupt_chat_repair();
+                """);
+            await Assert.ThrowsAnyAsync<Npgsql.PostgresException>(() => ChatEncryptionMigration.Migrate(upgraded, rotated));
+            var opening = await upgraded.Messages.AsNoTracking().Where(m => ids.Take(3).Contains(m.Id)).ToListAsync();
+            Assert.All(opening, row => Assert.Equal(current, row.BodyKeyId));
+            Assert.Equal("historical", (await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == last)).BodyKeyId);
+            await upgraded.Database.ExecuteSqlRawAsync("""
+                DROP TRIGGER "InterruptChatRepair" ON "Messages";
+                DROP FUNCTION test_interrupt_chat_repair();
+                """);
+
+            // The next three historical samples are healthy, so only the recorded cohort reveals the remaining work.
+            Assert.False(await ChatEncryptionMigration.HasLegacyWrites(upgraded));
+            Assert.True(await ChatEncryptionMigration.NeedsBackfill(upgraded, rotated));
+            await ChatEncryptionMigration.Migrate(upgraded, rotated);
+            Assert.False(await ChatEncryptionMigration.NeedsBackfill(upgraded, rotated));
+            Assert.Empty(await upgraded.ChatKeyRepairs.ToListAsync());
+            var rows = await upgraded.Messages.AsNoTracking().Where(m => m.Conversation == key).ToListAsync();
+            Assert.All(rows, row => Assert.Equal(row.Text, rotated.DecryptMessage(key, row.SenderId, row.ClientId,
+                row.BodyKeyId!, row.EncryptedBody!)));
+            Assert.Equal(6, rows.Count(row => row.BodyKeyId == current));
+        }
+        finally
+        {
+            File.Delete(historicalPath);
+            File.Delete(rotatedPath);
+            await fixture.DisposeAsync();
+        }
+    }
 }

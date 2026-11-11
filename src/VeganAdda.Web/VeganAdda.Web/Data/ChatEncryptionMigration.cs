@@ -57,13 +57,25 @@ public static class ChatEncryptionMigration
             // FindRepairs performs the same check while sampling.
             if (!checkSamples) await EnsureKeysAvailable(db, encryption, ct);
             var legacyWrites = await HasLegacyWrites(db, ct);
-            if (checkSamples || legacyWrites)
+            var pending = await PendingRepairs(db, ct);
+            if (checkSamples || legacyWrites || pending.Length != 0)
             {
-                var repairs = checkSamples ? await FindRepairs(db, encryption, ct) : [];
+                var found = checkSamples ? await FindRepairs(db, encryption, ct) : [];
+                var repairs = found.Union(pending, StringComparer.Ordinal).ToArray();
                 if (repairs.Length != 0 || legacyWrites)
                 {
+                    // Record the cohorts first: once a batch moves repaired rows to the active key,
+                    // sampling alone can no longer find the rest, so an interrupted run must resume them.
+                    if (repairs.Length != 0)
+                        await db.Database.ExecuteSqlInterpolatedAsync($"""
+                            INSERT INTO "ChatKeyRepairs" ("KeyId") SELECT unnest({repairs}) ON CONFLICT DO NOTHING
+                            """, ct);
                     await BackfillMessages(db, encryption, repairs, ct);
                     await BackfillIntroductions(db, encryption, repairs, ct);
+                    if (repairs.Length != 0)
+                        await db.Database.ExecuteSqlInterpolatedAsync($"""
+                            DELETE FROM "ChatKeyRepairs" WHERE "KeyId" = ANY ({repairs})
+                            """, ct);
                 }
             }
         }
@@ -86,7 +98,16 @@ public static class ChatEncryptionMigration
     public static async Task<bool> NeedsBackfill(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
     {
         var repairs = await FindRepairs(db, encryption, ct);
-        return repairs.Length != 0 || await HasLegacyWrites(db, ct);
+        return repairs.Length != 0 || (await PendingRepairs(db, ct)).Length != 0 || await HasLegacyWrites(db, ct);
+    }
+
+    // The table is absent until PersistChatKeyRepairs is applied; the release check runs before that.
+    private static async Task<string[]> PendingRepairs(CommunityDb db, CancellationToken ct)
+    {
+        var exists = await db.Database.SqlQueryRaw<bool>("""
+            SELECT to_regclass('"ChatKeyRepairs"') IS NOT NULL AS "Value"
+            """).SingleAsync(ct);
+        return exists ? await db.ChatKeyRepairs.Select(r => r.KeyId).ToArrayAsync(ct) : [];
     }
 
     /// <summary>Fails when stored chat rows reference a key ID that the configured ring lacks.</summary>
