@@ -222,7 +222,7 @@ if (args.Contains("--check-migrations"))
     var encryption = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
     var pending = knownMigrations.Except(applied).Any();
     if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Contract))
-        await ChatEncryptionMigration.EnsureEncryptedKeysAvailable(db, encryption);
+        await ChatEncryptionMigration.AuthenticateKeys(db, encryption);
     else if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Expand))
     {
         // Fails before maintenance on a missing key or an unexplained mismatch; legacy rows and
@@ -262,7 +262,7 @@ else
     var encryption = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
     if (!ChatEncryptionMigration.Includes(await db.Database.GetAppliedMigrationsAsync(), ChatEncryptionMigration.Contract))
         throw new InvalidOperationException("Apply the chat encryption migration before starting the web server.");
-    await ChatEncryptionMigration.EnsureEncryptedKeysAvailable(db, encryption);
+    await ChatEncryptionMigration.AuthenticateKeys(db, encryption);
     if (await db.Accounts.AnyAsync(a => a.Demo) || await db.Events.AnyAsync(e => e.Demo)) throw new InvalidOperationException("Production cannot use a database containing development fixtures.");
 }
 await app.RunAsync();

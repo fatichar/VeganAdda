@@ -59,8 +59,9 @@ public static class ChatEncryptionMigration
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationLock})", ct);
             await db.GetService<IMigrator>().MigrateAsync(Staged, ct);
-            // FindRepairs performs the same check while sampling.
-            if (!checkSamples) await EnsureKeysAvailable(db, encryption, ct);
+            // FindRepairs performs the same check while sampling. Authenticate the active key before
+            // any backfill writes ciphertext under it.
+            if (!checkSamples) await AuthenticateKeys(db, encryption, ct, activeOnly: true);
             var legacyWrites = await HasLegacyWrites(db, ct);
             var pending = await PendingRepairs(db, ct);
             if (checkSamples || legacyWrites || pending.Length != 0)
@@ -97,7 +98,7 @@ public static class ChatEncryptionMigration
         if (Includes(applied, Contract))
         {
             await db.Database.MigrateAsync(ct);
-            await EnsureEncryptedKeysAvailable(db, encryption, ct);
+            await AuthenticateKeys(db, encryption, ct);
             return;
         }
 
@@ -122,33 +123,6 @@ public static class ChatEncryptionMigration
             await transaction.CommitAsync(ct);
         }
         await db.Database.MigrateAsync(ct);
-    }
-
-    public static async Task EnsureEncryptedKeysAvailable(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
-    {
-        // Loose index scans: one probe per distinct key ID instead of reading every row.
-        var stored = await db.Database.SqlQueryRaw<string>("""
-            WITH RECURSIVE keys AS (
-                (SELECT "BodyKeyId" AS id FROM "Messages" ORDER BY "BodyKeyId" LIMIT 1)
-                UNION ALL
-                SELECT (SELECT "BodyKeyId" FROM "Messages" WHERE "BodyKeyId" > keys.id ORDER BY "BodyKeyId" LIMIT 1)
-                FROM keys WHERE keys.id IS NOT NULL
-            )
-            SELECT id AS "Value" FROM keys WHERE id IS NOT NULL
-            """).ToListAsync(ct);
-        stored.AddRange(await db.Database.SqlQueryRaw<string>("""
-            WITH RECURSIVE keys AS (
-                (SELECT "IntroductionKeyId" AS id FROM "Relationships" WHERE "IntroductionKeyId" IS NOT NULL
-                 ORDER BY "IntroductionKeyId" LIMIT 1)
-                UNION ALL
-                SELECT (SELECT "IntroductionKeyId" FROM "Relationships"
-                        WHERE "IntroductionKeyId" IS NOT NULL AND "IntroductionKeyId" > keys.id
-                        ORDER BY "IntroductionKeyId" LIMIT 1)
-                FROM keys WHERE keys.id IS NOT NULL
-            )
-            SELECT id AS "Value" FROM keys WHERE id IS NOT NULL
-            """).ToListAsync(ct));
-        ThrowIfMissing(stored, encryption);
     }
 
     /// <summary>
@@ -236,16 +210,63 @@ public static class ChatEncryptionMigration
         return exists ? await db.ChatKeyRepairs.Select(r => r.KeyId).ToArrayAsync(ct) : [];
     }
 
-    /// <summary>Fails when stored chat rows reference a key ID that the configured ring lacks.</summary>
-    public static async Task EnsureKeysAvailable(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    /// <summary>
+    /// Confirms that the ring holds every stored key ID and that its key material authenticates stored
+    /// ciphertext: up to three envelopes per key ID are decrypted, and a key fails when none of them
+    /// authenticate. A ring with the expected IDs but different key bytes is rejected before any write.
+    /// With <paramref name="activeOnly"/>, only the active key must authenticate; while plaintext is
+    /// retained, rows under other keys are rebuilt from it.
+    /// </summary>
+    public static async Task AuthenticateKeys(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default,
+        bool activeOnly = false)
     {
-        var stored = await db.Database.SqlQueryRaw<string>(MessageKeys + """
-            SELECT "BodyKeyId" AS "Value" FROM keys
+        // Loose index scans enumerate distinct key IDs; each lateral probe reads at most three rows.
+        var samples = await db.Database.SqlQueryRaw<CipherSample>("""
+            WITH RECURSIVE keys AS (
+                (SELECT "BodyKeyId" AS id FROM "Messages"
+                 WHERE "BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL ORDER BY "BodyKeyId" LIMIT 1)
+                UNION ALL
+                SELECT (SELECT "BodyKeyId" FROM "Messages"
+                        WHERE "BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL AND "BodyKeyId" > keys.id
+                        ORDER BY "BodyKeyId" LIMIT 1)
+                FROM keys WHERE keys.id IS NOT NULL
+            )
+            SELECT sample.* FROM keys CROSS JOIN LATERAL (
+                SELECT m."BodyKeyId" AS "KeyId", m."Conversation", m."SenderId" AS "Actor",
+                    m."ClientId" AS "ClientId", m."EncryptedBody" AS "Envelope"
+                FROM "Messages" m WHERE m."BodyKeyId" = keys.id AND m."EncryptedBody" IS NOT NULL LIMIT 3
+            ) AS sample
             """).ToListAsync(ct);
-        stored.AddRange(await db.Database.SqlQueryRaw<string>(IntroductionKeys + """
-            SELECT "IntroductionKeyId" AS "Value" FROM keys
+        samples.AddRange(await db.Database.SqlQueryRaw<CipherSample>("""
+            WITH RECURSIVE keys AS (
+                (SELECT "IntroductionKeyId" AS id FROM "Relationships"
+                 WHERE "IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL
+                 ORDER BY "IntroductionKeyId" LIMIT 1)
+                UNION ALL
+                SELECT (SELECT "IntroductionKeyId" FROM "Relationships"
+                        WHERE "IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL
+                            AND "IntroductionKeyId" > keys.id
+                        ORDER BY "IntroductionKeyId" LIMIT 1)
+                FROM keys WHERE keys.id IS NOT NULL
+            )
+            SELECT sample.* FROM keys CROSS JOIN LATERAL (
+                SELECT r."IntroductionKeyId" AS "KeyId", r."Key" AS "Conversation", r."RequestedBy" AS "Actor",
+                    NULL::uuid AS "ClientId", r."EncryptedIntroduction" AS "Envelope"
+                FROM "Relationships" r
+                WHERE r."IntroductionKeyId" = keys.id AND r."EncryptedIntroduction" IS NOT NULL LIMIT 3
+            ) AS sample
             """).ToListAsync(ct));
-        ThrowIfMissing(stored, encryption);
+        ThrowIfMissing(samples.Select(sample => sample.KeyId), encryption);
+
+        var failing = samples.GroupBy(sample => sample.KeyId, StringComparer.Ordinal)
+            .Where(group => !activeOnly || group.Key == encryption.CurrentKeyId)
+            .Where(group => group.All(sample => TryDecrypt(() => sample.ClientId is { } clientId
+                ? encryption.DecryptMessage(sample.Conversation, sample.Actor, clientId, sample.KeyId, sample.Envelope)
+                : encryption.DecryptIntroduction(sample.Conversation, sample.Actor, sample.KeyId, sample.Envelope)) == null))
+            .Select(group => group.Key).ToArray();
+        if (failing.Length != 0)
+            throw new InvalidOperationException("Stored chat ciphertext does not authenticate with configured key ID(s) "
+                + string.Join(", ", failing) + ". Check the key ring before starting or writing data.");
     }
 
     private static void ThrowIfMissing(IEnumerable<string> keyIds, ChatEncryption encryption)
@@ -374,6 +395,8 @@ public static class ChatEncryptionMigration
 
     private sealed record StoredIntroduction(string Key, Guid RequestedBy, string Introduction,
         string IntroductionKeyId, byte[] EncryptedIntroduction);
+
+    private sealed record CipherSample(string KeyId, string Conversation, Guid Actor, Guid? ClientId, byte[] Envelope);
 
     private sealed record MessageSource(long Id, string Conversation, Guid SenderId, Guid ClientId, string Text,
         string? BodyKeyId, byte[]? EncryptedBody);

@@ -275,6 +275,24 @@ public class PushLeaseTests
                 await Assert.ThrowsAsync<InvalidOperationException>(() => ChatEncryptionMigration.VerifyAllPlaintext(upgraded, rotated));
                 await ChatEncryptionMigration.VerifyAllPlaintext(upgraded, rotated, allowRepairable: true);
 
+                // A ring with the expected key IDs but different key bytes is rejected before backfill writes.
+                var wrongPath = fixture.ChatKeysPath + ".wrong";
+                File.WriteAllText(wrongPath, System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    current,
+                    keys = new Dictionary<string, byte[]>
+                    {
+                        [current] = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32),
+                        ["historical"] = keys["historical"]
+                    }
+                }));
+                using var wrong = ChatEncryption.Load(wrongPath);
+                File.Delete(wrongPath);
+                await Assert.ThrowsAsync<InvalidOperationException>(() => ChatEncryptionMigration.MigrateEncryptedOnly(upgraded, wrong));
+                Assert.True(await upgraded.Database.SqlQuery<bool>($"""
+                    SELECT "EncryptedBody" IS NULL AS "Value" FROM "Messages" WHERE "ClientId" = {lateClientId}
+                    """).SingleAsync());
+
                 var messageFile = await RelationFile(upgraded, "Messages");
                 var relationshipFile = await RelationFile(upgraded, "Relationships");
                 await ChatEncryptionMigration.MigrateEncryptedOnly(upgraded, rotated);
@@ -284,6 +302,9 @@ public class PushLeaseTests
                 var history = (MessagePage)await fixture.Call(b, $"conversations/{key}/messages");
                 Assert.Contains(history.Items, m => m.ClientId == rollbackClientId && m.Text == "Sent after rollback");
                 Assert.Contains(history.Items, m => m.ClientId == lateClientId && m.Text == "Written by the previous image");
+                // After the drop, startup and the release check authenticate ciphertext, not just key IDs.
+                await ChatEncryptionMigration.AuthenticateKeys(upgraded, rotated);
+                await Assert.ThrowsAsync<InvalidOperationException>(() => ChatEncryptionMigration.AuthenticateKeys(upgraded, wrong));
                 var connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
                 Assert.Equal("Replaced after rollback", Assert.Single(connection).Introduction);
             }

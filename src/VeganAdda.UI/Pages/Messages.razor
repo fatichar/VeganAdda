@@ -102,7 +102,7 @@ else
                         }
                         @foreach (var item in pending.Values.Where(p => p.Key == Key).ToList())
                         {
-                            <div class="message-row mine"><div class="message-bubble">@item.Text</div><small>@(item.Failed ? "Failed to send" : "Sending…")</small>@if (item.Failed) { <button class="text-button" @onclick="() => SendPending(item)">Retry message</button> }</div>
+                            <div class="message-row mine"><div class="message-bubble">@item.Text</div><small>@(item.Rejected ? "Not sent" : item.Failed ? "Failed to send" : "Sending…")</small>@if (item.Rejected) { <button class="text-button" @onclick="() => pending.Remove(item.Id)">Discard</button> } else if (item.Failed) { <button class="text-button" @onclick="() => SendPending(item)">Retry message</button> }</div>
                         }
                     </div>
                     @if (SelectedPersonId is { } pendingReferralPersonId)
@@ -176,7 +176,7 @@ else
     IEnumerable<Conversation> Chats => conversations;
     IEnumerable<ConnectionItem> VisibleRequests => Requests;
     IEnumerable<Conversation> VisibleChats => Chats;
-    class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; }
+    class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; public bool Rejected; }
     protected override async Task OnParametersSetAsync()
     {
         if (Key != loadedKey) { history.Clear(); referralCards.Clear(); latestFetchedMessageId = 0; messagePage = null; hasOlder = false; confirmAction = ""; menuOpen = false; loadedKey = Key ?? ""; }
@@ -274,6 +274,8 @@ else
             if (item.Key == Key) { history = history.Append(result).DistinctBy(m => m.Id).OrderBy(m => m.Id).ToList(); scrollToLatest = true; }
             await Refresh(); Error = "";
         }
+        // A conflict is final for this message ID: retrying the same ID cannot succeed.
+        catch (ApiException e) when (e.Status == 409) { item.Failed = item.Rejected = true; Error = e.Message; }
         catch (Exception e) { item.Failed = true; Error = e is ApiException ? e.Message : "Message couldn't be sent. Retry when your connection returns."; }
         finally { sending = false; }
     }
