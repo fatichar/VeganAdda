@@ -19,6 +19,7 @@ export COMPOSE_ENV_FILES="$root/.env"
 if [[ -s "$release/analytics.env" ]]; then
   export COMPOSE_ENV_FILES="$root/.env,$release/analytics.env"
 fi
+image_repository="${IMAGE_REF%@sha256:*}"
 # CI always overrides the local IMAGE_REF value in .env.
 export DOCKER_CONFIG
 DOCKER_CONFIG=$(mktemp -d "$root/.docker-login.XXXXXX")
@@ -53,8 +54,26 @@ cleanup() {
   exit "$result"
 }
 trap cleanup EXIT
+prune_old_veganadda_images() {
+  local -a images=()
+  local image_id
+  # Docker lists newest images first. Retain the running image and one prior
+  # release for rollback; remove only older images from this exact repository.
+  mapfile -t images < <(docker image ls --no-trunc --format '{{.ID}}' "$image_repository" | awk '!seen[$0]++')
+  if ((${#images[@]} <= 2)); then
+    echo "Found ${#images[@]} VeganAdda image(s); nothing to prune."
+    return
+  fi
+  echo "Pruning $(( ${#images[@]} - 2 )) older VeganAdda image(s) before pulling the release."
+  for image_id in "${images[@]:2}"; do
+    if ! docker image rm "$image_id"; then
+      echo "Warning: could not remove old VeganAdda image $image_id; continuing." >&2
+    fi
+  done
+}
 docker login ghcr.io --username "$registry_user" --password-stdin
 docker compose config --quiet
+prune_old_veganadda_images
 docker compose pull web web_standby migrate
 # File-backed Compose secrets retain the host file's permissions. Check access as
 # the image's non-root app user before stopping the existing web container.
