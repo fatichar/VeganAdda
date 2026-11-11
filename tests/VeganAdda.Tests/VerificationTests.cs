@@ -122,7 +122,7 @@ public class VerificationTests(DatabaseFixture f)
     [Fact]
     public async Task Migration_preserves_legacy_referral_response_and_timestamp()
     {
-        var isolated = new DatabaseFixture(); await isolated.InitializeAsync();
+        var isolated = new DatabaseFixture(); await isolated.InitializeAt("ProfilePhotoFocus");
         try
         {
             var applicant = await isolated.Member(); var referrer = await isolated.Member();

@@ -11,6 +11,7 @@
 artifacts/
 **/uploads/
 **/keys/
+**/message-keys/
 node_modules/
 *.user
 *.suo

@@ -3,10 +3,11 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Profiles;
+using VeganAdda.Web.Services;
 
 namespace VeganAdda.Web.Features.Messaging;
 
-public sealed class MessagingService(FeatureContext context, ProfileVisibility visibility) : FeatureService(context)
+public sealed class MessagingService(FeatureContext context, ProfileVisibility visibility, ChatContent content) : FeatureService(context)
 {
     private async Task<Relationship> ConversationAccess(string key)
     {
@@ -76,7 +77,8 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
             var canMessage = MessagingPolicy.CanMessage(rel.State, blocked,
                 new(!me.Suspended, myProfile.TestProfile, me.Admin),
                 new(account != null && !account.Suspended, profile?.TestProfile ?? false, account?.Admin ?? false));
-            result.Add(new(rel.Key, card?.Name ?? "Unavailable member", card?.Photo ?? "", message?.Text ?? (rel.State == "referral" ? "Vegan confirmation request" : "Say hello"),
+            var preview = message == null ? (rel.State == "referral" ? "Vegan confirmation request" : "Say hello") : content.MessageText(message);
+            result.Add(new(rel.Key, card?.Name ?? "Unavailable member", card?.Photo ?? "", preview,
                 unread.GetValueOrDefault(rel.Key), message == null || rel.Updated > message.SentAt ? rel.Updated : message.SentAt, canMessage,
                 unavailable && !blockedByMe ? null : other, blockedByMe, rel.State == "removed" && !unavailable && visible.Contains(other), card?.IsVegan == true && card.VeganVerified, rel.State == "referral"));
         }
@@ -89,10 +91,10 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
         if (after.HasValue)
         {
             var missed = await db.Messages.Where(m => m.Conversation == key && m.Id > after.Value).OrderBy(m => m.Id).Take(41).ToListAsync();
-            return new MessagePage(missed.Take(40).Select(m => new Message(m.Id, m.SenderId, m.ClientId, m.Text, m.SentAt)).ToList(), false, await CanMessage(r), missed.Count > 40);
+            return new MessagePage(missed.Take(40).Select(content.View).ToList(), false, await CanMessage(r), missed.Count > 40);
         }
         var messages = await db.Messages.Where(m => m.Conversation == key && m.Id < before).OrderByDescending(m => m.Id).Take(41).ToListAsync();
-        return new MessagePage(messages.Take(40).Reverse().Select(m => new Message(m.Id, m.SenderId, m.ClientId, m.Text, m.SentAt)).ToList(), messages.Count > 40, await CanMessage(r));
+        return new MessagePage(messages.Take(40).Reverse().Select(content.View).ToList(), messages.Count > 40, await CanMessage(r));
     }
     public async Task<Message> SendMessage(string key, MessageInput input)
     {
@@ -106,11 +108,12 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
         var previous = await db.Messages.SingleOrDefaultAsync(m => m.SenderId == me.Id && m.ClientId == input.ClientId);
         if (previous != null)
         {
-            if (previous.Conversation != key || previous.Text != text) throw new ApiException(409, "This message ID has already been used.");
-            return new Message(previous.Id, previous.SenderId, previous.ClientId, previous.Text, previous.SentAt);
+            if (previous.Conversation != key || content.MessageText(previous) != text)
+                throw new ApiException(409, "This message ID has already been used.");
+            return new Message(previous.Id, previous.SenderId, previous.ClientId, text, previous.SentAt);
         }
         var other = r.A == me.Id ? r.B : r.A;
-        var message = new ChatMessage { Conversation = key, SenderId = me.Id, ClientId = input.ClientId, Text = text, PushPending = true };
+        var message = content.NewMessage(key, me.Id, input.ClientId, text, pushPending: true);
         db.Messages.Add(message); r.Updated = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(ChangeArea.Messaging, me.Id, other);
         return new Message(message.Id, me.Id, input.ClientId, text, message.SentAt);

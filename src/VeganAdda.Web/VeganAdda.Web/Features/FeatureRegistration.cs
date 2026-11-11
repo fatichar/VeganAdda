@@ -37,6 +37,7 @@ public static class FeatureRegistration
     public static IServiceCollection AddCommunityFeatures(this IServiceCollection services)
     {
         services.AddLogging();
+        services.AddScoped<ChatContent>();
         services.AddSingleton<LifecycleEvents>();
         services.AddScoped<VerificationService>();
         services.AddScoped<FeatureContext>();

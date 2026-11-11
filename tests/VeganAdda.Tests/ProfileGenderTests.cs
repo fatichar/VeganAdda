@@ -34,7 +34,7 @@ public class ProfileGenderTests(DatabaseFixture f)
     public async Task Legacy_profiles_receive_one_gender_reminder_and_saving_marks_it_read()
     {
         var isolated = new DatabaseFixture();
-        await isolated.InitializeAsync();
+        await isolated.InitializeAt("ProfilePhotoFocus");
         try
         {
             var missing = await isolated.Member(); var assigned = await isolated.Member();
@@ -118,7 +118,7 @@ public class ProfileGenderTests(DatabaseFixture f)
     public async Task Other_and_unspecified_are_distinct_and_legacy_genders_migrate_to_other()
     {
         var isolated = new DatabaseFixture();
-        await isolated.InitializeAsync();
+        await isolated.InitializeAt("ProfilePhotoFocus");
         try
         {
             var viewer = await isolated.Member();

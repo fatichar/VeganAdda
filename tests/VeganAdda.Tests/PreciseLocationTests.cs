@@ -13,7 +13,7 @@ public class PreciseLocationTests(DatabaseFixture f)
     public async Task Migration_backfills_city_centers_and_preserves_existing_precise_locations()
     {
         var isolated = new DatabaseFixture();
-        await isolated.InitializeAsync();
+        await isolated.InitializeAt("ProfilePhotoFocus");
         try
         {
             var approximate = await isolated.Member(); var precise = await isolated.Member();

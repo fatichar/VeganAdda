@@ -85,7 +85,9 @@ public class FeatureQueryTests(DatabaseFixture f)
                 if (i < 13)
                 {
                     chats.Add(key);
-                    db.Messages.Add(new ChatMessage { Conversation = key, SenderId = peer.Id, ClientId = Guid.NewGuid(), Text = "History", SentAt = DateTimeOffset.UtcNow.AddMinutes(-i) });
+                    var message = f.Message(key, peer.Id, "History");
+                    message.SentAt = DateTimeOffset.UtcNow.AddMinutes(-i);
+                    db.Messages.Add(message);
                 }
             }
             await db.SaveChangesAsync();

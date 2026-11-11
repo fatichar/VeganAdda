@@ -79,6 +79,8 @@ docker compose pull web web_standby migrate
 # the image's non-root app user before stopping the existing web container.
 docker compose run -T --rm --no-deps --pull never --entrypoint /bin/sh web \
   -c 'test -r /run/secrets/firebase_admin' || { echo 'Firebase Admin secret is not readable by the web container user'; exit 1; }
+docker compose run -T --rm --no-deps --pull never --entrypoint /bin/sh web \
+  -c 'test -r /run/secrets/chat_message_keys' || { echo 'Chat encryption secret is not readable by the web container user'; exit 1; }
 docker compose up -d --wait --wait-timeout 120 db
 
 # An included upstream file enables an already-running slot to stay online while
@@ -110,7 +112,7 @@ fi
 
 pending=false
 if docker compose run -T --rm --no-deps --pull never migrate --check-migrations; then
-  echo 'No pending database migrations; preparing a short cutover.'
+  echo 'No pending database maintenance; preparing a short cutover.'
 else
   result=$?
   if (( result != 10 )); then echo "Migration check failed with exit code $result" >&2; exit "$result"; fi

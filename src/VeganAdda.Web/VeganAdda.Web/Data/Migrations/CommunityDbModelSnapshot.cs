@@ -97,6 +97,17 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Blocks");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.ChatKeyRepair", b =>
+                {
+                    b.Property<string>("KeyId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("KeyId");
+
+                    b.ToTable("ChatKeyRepairs");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.ChatMessage", b =>
                 {
                     b.Property<long>("Id")
@@ -105,6 +116,10 @@ namespace VeganAdda.Web.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("BodyKeyId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid>("ClientId")
                         .HasColumnType("uuid");
 
@@ -112,6 +127,9 @@ namespace VeganAdda.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
+
+                    b.Property<byte[]>("EncryptedBody")
+                        .HasColumnType("bytea");
 
                     b.Property<int>("PushAttempts")
                         .HasColumnType("integer");
@@ -519,10 +537,17 @@ namespace VeganAdda.Web.Data.Migrations
                     b.Property<Guid>("B")
                         .HasColumnType("uuid");
 
+                    b.Property<byte[]>("EncryptedIntroduction")
+                        .HasColumnType("bytea");
+
                     b.Property<string>("Introduction")
                         .IsRequired()
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
+
+                    b.Property<string>("IntroductionKeyId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<long>("ReadA")
                         .HasColumnType("bigint");
