@@ -17,6 +17,36 @@ public static class ChatEncryptionMigration
           OR ("Introduction" = '' AND ("IntroductionKeyId" IS NOT NULL OR "EncryptedIntroduction" IS NOT NULL)))
         """;
 
+    // Loose index scans over the partial sample indexes: one probe per distinct key ID.
+    private const string MessageKeys = """
+        WITH RECURSIVE keys AS (
+            (SELECT "BodyKeyId" FROM "Messages"
+             WHERE "BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL
+             ORDER BY "BodyKeyId" LIMIT 1)
+            UNION ALL
+            SELECT next_key."BodyKeyId" FROM keys CROSS JOIN LATERAL (
+                SELECT source."BodyKeyId" FROM "Messages" source
+                WHERE source."BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL
+                    AND source."BodyKeyId" > keys."BodyKeyId"
+                ORDER BY source."BodyKeyId" LIMIT 1
+            ) AS next_key
+        )
+        """;
+    private const string IntroductionKeys = """
+        WITH RECURSIVE keys AS (
+            (SELECT "IntroductionKeyId" FROM "Relationships"
+             WHERE "IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL AND "Introduction" <> ''
+             ORDER BY "IntroductionKeyId" LIMIT 1)
+            UNION ALL
+            SELECT next_key."IntroductionKeyId" FROM keys CROSS JOIN LATERAL (
+                SELECT source."IntroductionKeyId" FROM "Relationships" source
+                WHERE source."IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL AND "Introduction" <> ''
+                    AND source."IntroductionKeyId" > keys."IntroductionKeyId"
+                ORDER BY source."IntroductionKeyId" LIMIT 1
+            ) AS next_key
+        )
+        """;
+
     public static async Task Migrate(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default, bool checkSamples = true)
     {
         await db.Database.OpenConnectionAsync(ct);
@@ -24,6 +54,8 @@ public static class ChatEncryptionMigration
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationLock})", ct);
             await db.Database.MigrateAsync(ct);
+            // FindRepairs performs the same check while sampling.
+            if (!checkSamples) await EnsureKeysAvailable(db, encryption, ct);
             var legacyWrites = await HasLegacyWrites(db, ct);
             if (checkSamples || legacyWrites)
             {
@@ -57,41 +89,36 @@ public static class ChatEncryptionMigration
         return repairs.Length != 0 || await HasLegacyWrites(db, ct);
     }
 
+    /// <summary>Fails when stored chat rows reference a key ID that the configured ring lacks.</summary>
+    public static async Task EnsureKeysAvailable(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    {
+        var stored = await db.Database.SqlQueryRaw<string>(MessageKeys + """
+            SELECT "BodyKeyId" AS "Value" FROM keys
+            """).ToListAsync(ct);
+        stored.AddRange(await db.Database.SqlQueryRaw<string>(IntroductionKeys + """
+            SELECT "IntroductionKeyId" AS "Value" FROM keys
+            """).ToListAsync(ct));
+        ThrowIfMissing(stored, encryption);
+    }
+
+    private static void ThrowIfMissing(IEnumerable<string> keyIds, ChatEncryption encryption)
+    {
+        if (keyIds.Any(id => !encryption.HasKey(id)))
+            throw new InvalidOperationException("Chat rows reference a key missing from the configured ring. "
+                + "Set Storage:MessageKeysPath to the ring that encrypted this database before starting.");
+    }
+
     private static async Task<string[]> FindRepairs(CommunityDb db, ChatEncryption encryption, CancellationToken ct)
     {
         // Select representative IDs from narrow indexes, then fetch the bodies.
-        var messages = await db.Database.SqlQueryRaw<StoredMessage>("""
-            WITH RECURSIVE keys AS (
-                (SELECT "BodyKeyId" FROM "Messages"
-                 WHERE "BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL
-                 ORDER BY "BodyKeyId" LIMIT 1)
-                UNION ALL
-                SELECT next_key."BodyKeyId" FROM keys CROSS JOIN LATERAL (
-                    SELECT source."BodyKeyId" FROM "Messages" source
-                    WHERE source."BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL
-                        AND source."BodyKeyId" > keys."BodyKeyId"
-                    ORDER BY source."BodyKeyId" LIMIT 1
-                ) AS next_key
-            )
+        var messages = await db.Database.SqlQueryRaw<StoredMessage>(MessageKeys + """
             SELECT sample.* FROM keys CROSS JOIN LATERAL (
                 SELECT m."Id", m."Conversation", m."SenderId", m."ClientId", m."BodyKeyId", m."EncryptedBody", m."Text"
                 FROM "Messages" m WHERE m."BodyKeyId" = keys."BodyKeyId" AND "EncryptedBody" IS NOT NULL
                 ORDER BY "Id" LIMIT 3
             ) AS sample
             """).ToListAsync(ct);
-        var introductions = await db.Database.SqlQueryRaw<StoredIntroduction>("""
-            WITH RECURSIVE keys AS (
-                (SELECT "IntroductionKeyId" FROM "Relationships"
-                 WHERE "IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL AND "Introduction" <> ''
-                 ORDER BY "IntroductionKeyId" LIMIT 1)
-                UNION ALL
-                SELECT next_key."IntroductionKeyId" FROM keys CROSS JOIN LATERAL (
-                    SELECT source."IntroductionKeyId" FROM "Relationships" source
-                    WHERE source."IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL AND "Introduction" <> ''
-                        AND source."IntroductionKeyId" > keys."IntroductionKeyId"
-                    ORDER BY source."IntroductionKeyId" LIMIT 1
-                ) AS next_key
-            )
+        var introductions = await db.Database.SqlQueryRaw<StoredIntroduction>(IntroductionKeys + """
             SELECT sample.* FROM keys CROSS JOIN LATERAL (
                 SELECT r."Key", r."RequestedBy", r."Introduction", r."IntroductionKeyId", r."EncryptedIntroduction"
                 FROM "Relationships" r WHERE r."IntroductionKeyId" = keys."IntroductionKeyId"
@@ -99,9 +126,7 @@ public static class ChatEncryptionMigration
                 ORDER BY "Key" LIMIT 3
             ) AS sample
             """).ToListAsync(ct);
-        if (messages.Any(row => !encryption.HasKey(row.BodyKeyId)) ||
-            introductions.Any(row => !encryption.HasKey(row.IntroductionKeyId)))
-            throw new InvalidOperationException("Chat rows reference a key missing from the configured ring. Restore the key before deployment.");
+        ThrowIfMissing(messages.Select(row => row.BodyKeyId).Concat(introductions.Select(row => row.IntroductionKeyId)), encryption);
 
         var samples = messages.Select(row => (KeyId: row.BodyKeyId, Text: row.Text,
                 Read: TryDecrypt(() => encryption.DecryptMessage(row.Conversation, row.SenderId, row.ClientId,
@@ -113,7 +138,7 @@ public static class ChatEncryptionMigration
         if (active.Length != 0 && active.All(row => row.Read == null))
             throw new InvalidOperationException("No chat sample authenticates with the active key. Check the configured key before rewriting data.");
 
-        // Repair the entire key's cohort in one maintenance window so another
+        // Verify the entire key's cohort in one maintenance window so another
         // damaged row under that key cannot trigger a new rollout.
         return samples.Where(row => row.Read != row.Text).Select(row => row.KeyId).Distinct().ToArray();
     }
@@ -132,18 +157,24 @@ public static class ChatEncryptionMigration
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             // Only fixed predicates and column names enter the SQL text.
             var sql = $$"""
-                SELECT "Id", "Conversation", "SenderId", "ClientId", "Text"
+                SELECT "Id", "Conversation", "SenderId", "ClientId", "Text", "BodyKeyId", "EncryptedBody"
                 FROM "Messages" WHERE "Id" > {0} AND {{Candidate(LegacyMessage, "BodyKeyId", repairs.Length)}}
                 ORDER BY "Id" LIMIT {2} FOR UPDATE
                 """;
             var rows = await db.Database.SqlQueryRaw<MessageSource>(sql, after, repairs, BatchSize).ToListAsync(ct);
             if (rows.Count == 0) return;
-            var envelopes = rows.Select(row => encryption.EncryptMessage(row.Conversation, row.SenderId, row.ClientId, row.Text)).ToArray();
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                UPDATE "Messages" m SET "BodyKeyId" = {encryption.CurrentKeyId}, "EncryptedBody" = batch.body
-                FROM unnest({rows.Select(row => row.Id).ToArray()}, {Bodies(envelopes)}) AS batch(id, body)
-                WHERE m."Id" = batch.id
-                """, ct);
+            // Rows in a repaired cohort keep their envelope when it still matches the retained text.
+            var stale = rows.Where(row => !(row is { BodyKeyId: { } keyId, EncryptedBody: { } body }
+                && TryDecrypt(() => encryption.DecryptMessage(row.Conversation, row.SenderId, row.ClientId, keyId, body)) == row.Text)).ToArray();
+            if (stale.Length != 0)
+            {
+                var envelopes = stale.Select(row => encryption.EncryptMessage(row.Conversation, row.SenderId, row.ClientId, row.Text)).ToArray();
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE "Messages" m SET "BodyKeyId" = {encryption.CurrentKeyId}, "EncryptedBody" = batch.body
+                    FROM unnest({stale.Select(row => row.Id).ToArray()}, {Bodies(envelopes)}) AS batch(id, body)
+                    WHERE m."Id" = batch.id
+                    """, ct);
+            }
             await transaction.CommitAsync(ct);
             if (rows.Count < BatchSize) return;
             after = rows[^1].Id;
@@ -157,21 +188,28 @@ public static class ChatEncryptionMigration
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var sql = $$"""
-                SELECT "Key", "RequestedBy", "Introduction"
+                SELECT "Key", "RequestedBy", "Introduction", "IntroductionKeyId", "EncryptedIntroduction"
                 FROM "Relationships" WHERE "Key" > {0} AND {{Candidate(LegacyIntroduction, "IntroductionKeyId", repairs.Length)}}
                 ORDER BY "Key" LIMIT {2} FOR UPDATE
                 """;
             var rows = await db.Database.SqlQueryRaw<IntroductionSource>(sql, after, repairs, BatchSize).ToListAsync(ct);
             if (rows.Count == 0) return;
-            var envelopes = rows.Select(row => row.Introduction.Length == 0 ? null
-                : encryption.EncryptIntroduction(row.Key, row.RequestedBy, row.Introduction)).ToArray();
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                UPDATE "Relationships" r SET
-                    "IntroductionKeyId" = CASE WHEN batch.body IS NULL THEN NULL ELSE {encryption.CurrentKeyId} END,
-                    "EncryptedIntroduction" = batch.body
-                FROM unnest({rows.Select(row => row.Key).ToArray()}, {Bodies(envelopes)}) AS batch(key, body)
-                WHERE r."Key" = batch.key
-                """, ct);
+            var stale = rows.Where(row => row.Introduction.Length == 0
+                ? row.IntroductionKeyId != null || row.EncryptedIntroduction != null
+                : !(row is { IntroductionKeyId: { } keyId, EncryptedIntroduction: { } body }
+                    && TryDecrypt(() => encryption.DecryptIntroduction(row.Key, row.RequestedBy, keyId, body)) == row.Introduction)).ToArray();
+            if (stale.Length != 0)
+            {
+                var envelopes = stale.Select(row => row.Introduction.Length == 0 ? null
+                    : encryption.EncryptIntroduction(row.Key, row.RequestedBy, row.Introduction)).ToArray();
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE "Relationships" r SET
+                        "IntroductionKeyId" = CASE WHEN batch.body IS NULL THEN NULL ELSE {encryption.CurrentKeyId} END,
+                        "EncryptedIntroduction" = batch.body
+                    FROM unnest({stale.Select(row => row.Key).ToArray()}, {Bodies(envelopes)}) AS batch(key, body)
+                    WHERE r."Key" = batch.key
+                    """, ct);
+            }
             await transaction.CommitAsync(ct);
             if (rows.Count < BatchSize) return;
             after = rows[^1].Key;
@@ -190,6 +228,8 @@ public static class ChatEncryptionMigration
     private sealed record StoredIntroduction(string Key, Guid RequestedBy, string Introduction,
         string IntroductionKeyId, byte[] EncryptedIntroduction);
 
-    private sealed record MessageSource(long Id, string Conversation, Guid SenderId, Guid ClientId, string Text);
-    private sealed record IntroductionSource(string Key, Guid RequestedBy, string Introduction);
+    private sealed record MessageSource(long Id, string Conversation, Guid SenderId, Guid ClientId, string Text,
+        string? BodyKeyId, byte[]? EncryptedBody);
+    private sealed record IntroductionSource(string Key, Guid RequestedBy, string Introduction,
+        string? IntroductionKeyId, byte[]? EncryptedIntroduction);
 }

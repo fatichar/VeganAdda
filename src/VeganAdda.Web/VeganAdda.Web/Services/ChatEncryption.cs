@@ -154,10 +154,18 @@ public sealed class ChatEncryption : IDisposable
         foreach (var pool in ciphers.Values) pool.Dispose();
     }
 
-    private sealed class CipherPool(byte[] key) : IDisposable
+    private sealed class CipherPool : IDisposable
     {
         private readonly Stack<AesGcm> idle = new();
+        // Pinned so heap compaction cannot leave stray copies of the key behind.
+        private readonly byte[] key = GC.AllocateArray<byte>(KeySize, pinned: true);
         private bool disposed;
+
+        public CipherPool(byte[] source)
+        {
+            source.CopyTo(key, 0);
+            CryptographicOperations.ZeroMemory(source);
+        }
 
         public AesGcm Rent()
         {

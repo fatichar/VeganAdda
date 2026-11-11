@@ -179,8 +179,9 @@ public class PushLeaseTests
             // The old image reads and writes only the plaintext columns.
             var newMessage = (Message)await fixture.Call(a, $"conversations/{key}/messages",
                 new MessageInput(Guid.NewGuid(), "Sent before rollback"), "POST");
-            await fixture.Call(a, $"conversations/{key}/messages",
+            var healthy = (Message)await fixture.Call(a, $"conversations/{key}/messages",
                 new MessageInput(Guid.NewGuid(), "Healthy encrypted sample"), "POST");
+            var healthyEnvelope = (await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == healthy.Id)).EncryptedBody;
             Assert.Equal("Sent before rollback", await upgraded.Database.SqlQuery<string>($"""
                 SELECT "Text" AS "Value" FROM "Messages" WHERE "Id" = {newMessage.Id}
                 """).SingleAsync());
@@ -207,6 +208,8 @@ public class PushLeaseTests
             await ChatEncryptionMigration.Migrate(upgraded, fixture.ChatEncryption);
             Assert.False(await ChatEncryptionMigration.HasLegacyWrites(upgraded));
             Assert.False(await ChatEncryptionMigration.NeedsBackfill(upgraded, fixture.ChatEncryption));
+            // Verified rows in a repaired cohort keep their envelope.
+            Assert.Equal(healthyEnvelope, (await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == healthy.Id)).EncryptedBody);
             var repaired = await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == message.Id);
             Assert.Equal("Queued", fixture.ChatEncryption.DecryptMessage(key, a, clientId,
                 repaired.BodyKeyId!, repaired.EncryptedBody!));
@@ -225,6 +228,8 @@ public class PushLeaseTests
                 """);
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => ChatEncryptionMigration.NeedsBackfill(upgraded, fixture.ChatEncryption));
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => ChatEncryptionMigration.Migrate(upgraded, fixture.ChatEncryption, checkSamples: false));
             using var fixtureRing = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(fixture.ChatKeysPath));
             var current = fixture.ChatEncryption.CurrentKeyId;
             var keys = new Dictionary<string, byte[]>
