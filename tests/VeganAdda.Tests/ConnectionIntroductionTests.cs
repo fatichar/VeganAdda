@@ -8,7 +8,7 @@ namespace VeganAdda.Tests;
 public class ConnectionIntroductionTests(DatabaseFixture f)
 {
     [Fact]
-    public async Task Damaged_ciphertext_uses_plaintext_for_history_and_send_retries()
+    public async Task Damaged_ciphertext_keeps_other_messages_readable_and_prevents_duplicate_retries()
     {
         var sender = await f.Member();
         var recipient = await f.Member();
@@ -36,11 +36,11 @@ public class ConnectionIntroductionTests(DatabaseFixture f)
             var history = (MessagePage)await f.Call(recipient, path);
             Assert.Collection(history.Items,
                 message => { Assert.Equal(first.Id, message.Id); Assert.Equal(first.Text, message.Text); },
-                message => { Assert.Equal(second.Id, message.Id); Assert.Equal(secondInput.Text, message.Text); });
+                message => { Assert.Equal(second.Id, message.Id); Assert.Contains("unavailable", message.Text); });
             var missed = (MessagePage)await f.Call(recipient, path + $"?after={first.Id}");
             Assert.Equal(second.Id, Assert.Single(missed.Items).Id);
-            var retry = (Message)await f.Call(sender, path, secondInput, "POST");
-            Assert.Equal(second.Id, retry.Id);
+            var retry = await Assert.ThrowsAsync<ApiException>(() => f.Call(sender, path, secondInput, "POST"));
+            Assert.Equal(503, retry.Status);
             await using var finalDb = f.Db();
             Assert.Equal(2, await finalDb.Messages.CountAsync(m => m.Conversation == key));
         }

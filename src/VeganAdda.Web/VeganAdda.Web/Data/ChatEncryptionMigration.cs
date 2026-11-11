@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using NpgsqlTypes;
 using VeganAdda.Web.Services;
@@ -9,6 +11,8 @@ namespace VeganAdda.Web.Data;
 public static class ChatEncryptionMigration
 {
     public const string Expand = "ExpandChatEncryption";
+    public const string Staged = "PersistChatKeyRepairs";
+    public const string Contract = "RemoveChatPlaintext";
     private const long MigrationLock = 8743651203778414;
     private const int BatchSize = 200;
     private const string LegacyMessage = """("BodyKeyId" IS NULL OR "EncryptedBody" IS NULL)""";
@@ -53,7 +57,7 @@ public static class ChatEncryptionMigration
         try
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationLock})", ct);
-            await db.Database.MigrateAsync(ct);
+            await db.GetService<IMigrator>().MigrateAsync(Staged, ct);
             // FindRepairs performs the same check while sampling.
             if (!checkSamples) await EnsureKeysAvailable(db, encryption, ct);
             var legacyWrites = await HasLegacyWrites(db, ct);
@@ -83,6 +87,93 @@ public static class ChatEncryptionMigration
         {
             try { await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_unlock({MigrationLock})"); }
             finally { await db.Database.CloseConnectionAsync(); }
+        }
+    }
+
+    public static async Task MigrateEncryptedOnly(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    {
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToArray();
+        if (Includes(applied, Contract))
+        {
+            await db.Database.MigrateAsync(ct);
+            await EnsureEncryptedKeysAvailable(db, encryption, ct);
+            return;
+        }
+
+        if (!Includes(applied, Expand))
+            await Migrate(db, encryption, ct);
+        else if (!Includes(applied, Staged))
+            await db.GetService<IMigrator>().MigrateAsync(Staged, ct);
+
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.Database.ExecuteSqlRawAsync("""LOCK TABLE "Relationships", "Messages", "ChatKeyRepairs" IN ACCESS EXCLUSIVE MODE""", ct);
+            if (!Includes(await db.Database.GetAppliedMigrationsAsync(ct), Contract))
+            {
+                await VerifyAllPlaintext(db, encryption, ct);
+                await db.Database.ExecuteSqlRawAsync("SET LOCAL veganadda.chat_plaintext_verified = 'yes'", ct);
+                var sql = db.GetService<IMigrator>().GenerateScript(Staged, Contract, MigrationsSqlGenerationOptions.NoTransactions);
+                await db.Database.ExecuteSqlRawAsync(sql, ct);
+            }
+            await transaction.CommitAsync(ct);
+        }
+        await db.Database.MigrateAsync(ct);
+    }
+
+    public static async Task EnsureEncryptedKeysAvailable(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    {
+        var stored = await db.Database.SqlQueryRaw<string>("""
+            SELECT "BodyKeyId" AS "Value" FROM "Messages"
+            UNION
+            SELECT "IntroductionKeyId" AS "Value" FROM "Relationships" WHERE "IntroductionKeyId" IS NOT NULL
+            """).ToListAsync(ct);
+        ThrowIfMissing(stored, encryption);
+    }
+
+    public static async Task VerifyAllPlaintext(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    {
+        if ((await PendingRepairs(db, ct)).Length != 0)
+            throw new InvalidOperationException("Chat key repairs are pending. Complete the staged repair before removing plaintext.");
+
+        long? lastId = null;
+        while (true)
+        {
+            var rows = await db.Database.SqlQuery<MessageSource>($"""
+                SELECT "Id", "Conversation", "SenderId", "ClientId", "Text", "BodyKeyId", "EncryptedBody"
+                FROM "Messages" WHERE {lastId}::bigint IS NULL OR "Id" > {lastId}
+                ORDER BY "Id" LIMIT {BatchSize}
+                """).ToListAsync(ct);
+            foreach (var row in rows)
+            {
+                if (row.BodyKeyId == null || row.EncryptedBody == null ||
+                    TryDecrypt(() => encryption.DecryptMessage(row.Conversation, row.SenderId, row.ClientId,
+                        row.BodyKeyId, row.EncryptedBody)) != row.Text)
+                    throw new InvalidOperationException("A message failed ciphertext verification. Plaintext must be retained.");
+            }
+            if (rows.Count < BatchSize) break;
+            lastId = rows[^1].Id;
+        }
+
+        string? lastKey = null;
+        while (true)
+        {
+            var rows = await db.Database.SqlQuery<IntroductionSource>($"""
+                SELECT "Key", "RequestedBy", "Introduction", "IntroductionKeyId", "EncryptedIntroduction"
+                FROM "Relationships" WHERE {lastKey}::text IS NULL OR "Key" > {lastKey}
+                ORDER BY "Key" LIMIT {BatchSize}
+                """).ToListAsync(ct);
+            foreach (var row in rows)
+            {
+                var valid = row.Introduction.Length == 0
+                    ? row.IntroductionKeyId == null && row.EncryptedIntroduction == null
+                    : row.IntroductionKeyId != null && row.EncryptedIntroduction != null &&
+                        TryDecrypt(() => encryption.DecryptIntroduction(row.Key, row.RequestedBy,
+                            row.IntroductionKeyId, row.EncryptedIntroduction)) == row.Introduction;
+                if (!valid)
+                    throw new InvalidOperationException("A connection introduction failed ciphertext verification. Plaintext must be retained.");
+            }
+            if (rows.Count < BatchSize) break;
+            lastKey = rows[^1].Key;
         }
     }
 

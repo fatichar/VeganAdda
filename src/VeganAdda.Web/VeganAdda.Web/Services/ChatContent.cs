@@ -12,7 +12,6 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
             Conversation = conversation,
             SenderId = sender,
             ClientId = clientId,
-            Text = text,
             BodyKeyId = encryption.CurrentKeyId,
             EncryptedBody = encryption.EncryptMessage(conversation, sender, clientId, text),
             PushPending = pushPending
@@ -23,29 +22,27 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         relationship.EncryptedIntroduction = text.Length == 0 ? null
             : encryption.EncryptIntroduction(relationship.Key, requester, text);
         relationship.IntroductionKeyId = text.Length == 0 ? null : encryption.CurrentKeyId;
-        relationship.Introduction = text;
         relationship.RequestedBy = requester;
     }
 
-    public string MessageText(ChatMessage message)
+    public string MessageText(ChatMessage message, bool required = false)
     {
-        if (message.BodyKeyId == null && message.EncryptedBody == null) return message.Text;
         try
         {
-            if (message.BodyKeyId == null || message.EncryptedBody == null) throw new CryptographicException();
             return encryption.DecryptMessage(message.Conversation, message.SenderId, message.ClientId,
                 message.BodyKeyId, message.EncryptedBody);
         }
         catch (CryptographicException)
         {
             logger.LogWarning("Unable to decrypt chat message {MessageId}.", message.Id);
-            return message.Text;
+            if (required) throw new ApiException(503, "This message is temporarily unavailable. Please try again.");
+            return "This message is unavailable.";
         }
     }
 
-    public string IntroductionText(Relationship relationship)
+    public string IntroductionText(Relationship relationship, bool required = false)
     {
-        if (relationship.IntroductionKeyId == null && relationship.EncryptedIntroduction == null) return relationship.Introduction;
+        if (relationship.IntroductionKeyId == null && relationship.EncryptedIntroduction == null) return "";
         try
         {
             if (relationship.IntroductionKeyId == null || relationship.EncryptedIntroduction == null) throw new CryptographicException();
@@ -55,7 +52,8 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         catch (CryptographicException)
         {
             logger.LogWarning("Unable to decrypt a connection introduction.");
-            return relationship.Introduction;
+            if (required) throw new ApiException(503, "The introduction is temporarily unavailable. Please try again.");
+            return "This introduction is unavailable.";
         }
     }
 

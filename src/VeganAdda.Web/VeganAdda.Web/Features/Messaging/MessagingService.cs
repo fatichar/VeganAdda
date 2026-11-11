@@ -108,7 +108,7 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
         var previous = await db.Messages.SingleOrDefaultAsync(m => m.SenderId == me.Id && m.ClientId == input.ClientId);
         if (previous != null)
         {
-            if (previous.Conversation != key || content.MessageText(previous) != text)
+            if (previous.Conversation != key || content.MessageText(previous, required: true) != text)
                 throw new ApiException(409, "This message ID has already been used.");
             return new Message(previous.Id, previous.SenderId, previous.ClientId, text, previous.SentAt);
         }

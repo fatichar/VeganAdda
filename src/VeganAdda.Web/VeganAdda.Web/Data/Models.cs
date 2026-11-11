@@ -104,8 +104,6 @@ public class Relationship
     public Guid RequestedBy { get; set; }
     /// <summary>Connection state.</summary>
     public string State { get; set; } = "pending";
-    /// <summary>Introduction attached to the request.</summary>
-    public string Introduction { get; set; } = "";
     /// <summary>Key ID of the encrypted introduction.</summary>
     public string? IntroductionKeyId { get; set; }
     /// <summary>Encrypted copy of the connection introduction.</summary>
@@ -144,12 +142,10 @@ public class ChatMessage
     public Guid SenderId { get; set; }
     /// <summary>Client-generated idempotency identifier.</summary>
     public Guid ClientId { get; set; }
-    /// <summary>Message body.</summary>
-    public string Text { get; set; } = "";
     /// <summary>Key ID of the encrypted message body.</summary>
-    public string? BodyKeyId { get; set; }
+    public string BodyKeyId { get; set; } = "";
     /// <summary>Encrypted copy of the message body.</summary>
-    public byte[]? EncryptedBody { get; set; }
+    public byte[] EncryptedBody { get; set; } = [];
     /// <summary>Message send time.</summary>
     public DateTimeOffset SentAt { get; set; } = DateTimeOffset.UtcNow;
 }
@@ -401,6 +397,10 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<VerificationRequest>().Property(r => r.Explanation).HasMaxLength(4000);
         b.Entity<Relationship>().Property(r => r.IntroductionKeyId).HasMaxLength(32);
         b.Entity<ChatMessage>().Property(m => m.BodyKeyId).HasMaxLength(32);
+        b.Entity<ChatMessage>().ToTable(t => t.HasCheckConstraint("CK_Messages_EncryptedBody",
+            """length("BodyKeyId") > 0 AND octet_length("EncryptedBody") >= 29"""));
+        b.Entity<Relationship>().ToTable(t => t.HasCheckConstraint("CK_Relationships_EncryptedIntroduction",
+            """("IntroductionKeyId" IS NULL AND "EncryptedIntroduction" IS NULL) OR ("IntroductionKeyId" IS NOT NULL AND length("IntroductionKeyId") > 0 AND "EncryptedIntroduction" IS NOT NULL AND octet_length("EncryptedIntroduction") > 29)"""));
         b.Entity<ChatKeyRepair>().HasKey(x => x.KeyId);
         b.Entity<ChatKeyRepair>().Property(x => x.KeyId).HasMaxLength(32);
         b.Entity<Report>().Property(r => r.Details).HasMaxLength(1000).HasDefaultValue("");

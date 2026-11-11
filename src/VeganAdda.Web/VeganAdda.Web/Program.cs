@@ -221,10 +221,10 @@ if (args.Contains("--check-migrations"))
         throw new InvalidOperationException("The database contains migrations unknown to this image.");
     var encryption = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
     var pending = knownMigrations.Except(applied).Any();
-    if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Expand))
-    {
-        pending = await ChatEncryptionMigration.NeedsBackfill(db, encryption) || pending;
-    }
+    if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Contract))
+        await ChatEncryptionMigration.EnsureEncryptedKeysAvailable(db, encryption);
+    else if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Expand))
+        await ChatEncryptionMigration.VerifyAllPlaintext(db, encryption);
     Environment.ExitCode = pending ? 10 : 0;
     return;
 }
@@ -233,7 +233,7 @@ if (args.Contains("--migrate"))
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     diagnosticLog.LogInformation("Database migrations started.");
-    await ChatEncryptionMigration.Migrate(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
+    await ChatEncryptionMigration.MigrateEncryptedOnly(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
     diagnosticLog.LogInformation("Database migrations completed.");
     return;
 }
@@ -242,7 +242,7 @@ if (dev)
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     diagnosticLog.LogInformation("Database migrations started.");
-    await ChatEncryptionMigration.Migrate(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>(), checkSamples: false);
+    await ChatEncryptionMigration.MigrateEncryptedOnly(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
     diagnosticLog.LogInformation("Database migrations completed.");
     if (builder.Configuration.GetValue<bool>("Development:Seed"))
     {
@@ -254,9 +254,10 @@ else
 {
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
-    _ = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
-    if (!ChatEncryptionMigration.Includes(await db.Database.GetAppliedMigrationsAsync(), ChatEncryptionMigration.Expand))
+    var encryption = scope.ServiceProvider.GetRequiredService<ChatEncryption>();
+    if (!ChatEncryptionMigration.Includes(await db.Database.GetAppliedMigrationsAsync(), ChatEncryptionMigration.Contract))
         throw new InvalidOperationException("Apply the chat encryption migration before starting the web server.");
+    await ChatEncryptionMigration.EnsureEncryptedKeysAvailable(db, encryption);
     if (await db.Accounts.AnyAsync(a => a.Demo) || await db.Events.AnyAsync(e => e.Demo)) throw new InvalidOperationException("Production cannot use a database containing development fixtures.");
 }
 await app.RunAsync();

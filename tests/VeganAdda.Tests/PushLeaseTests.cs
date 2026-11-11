@@ -169,28 +169,24 @@ public class PushLeaseTests
             var message = await upgraded.Messages.SingleAsync(m => m.ClientId == clientId);
             Assert.True(message.PushPending);
             Assert.Null(message.PushLeaseId); Assert.Null(message.PushLeaseUntil);
-            var history = (MessagePage)await fixture.Call(b, $"conversations/{key}/messages");
-            Assert.Equal("Queued", Assert.Single(history.Items).Text);
-            var connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
-            Assert.Equal("Legacy introduction", Assert.Single(connection).Introduction);
-            Assert.Equal("Queued", message.Text);
             Assert.NotNull(message.EncryptedBody);
 
-            // The old image reads and writes only the plaintext columns.
-            var newMessage = (Message)await fixture.Call(a, $"conversations/{key}/messages",
-                new MessageInput(Guid.NewGuid(), "Sent before rollback"), "POST");
-            var healthy = (Message)await fixture.Call(a, $"conversations/{key}/messages",
-                new MessageInput(Guid.NewGuid(), "Healthy encrypted sample"), "POST");
-            var healthyEnvelope = (await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == healthy.Id)).EncryptedBody;
+            var newClient = Guid.NewGuid();
+            var healthyClient = Guid.NewGuid();
+            var newId = await InsertStagedMessage(upgraded, key, a, newClient, "Sent before rollback",
+                fixture.ChatEncryption.CurrentKeyId, fixture.ChatEncryption.EncryptMessage(key, a, newClient, "Sent before rollback"));
+            var healthyBody = fixture.ChatEncryption.EncryptMessage(key, a, healthyClient, "Healthy encrypted sample");
+            var healthyId = await InsertStagedMessage(upgraded, key, a, healthyClient, "Healthy encrypted sample",
+                fixture.ChatEncryption.CurrentKeyId, healthyBody);
             Assert.Equal("Sent before rollback", await upgraded.Database.SqlQuery<string>($"""
-                SELECT "Text" AS "Value" FROM "Messages" WHERE "Id" = {newMessage.Id}
+                SELECT "Text" AS "Value" FROM "Messages" WHERE "Id" = {newId}
                 """).SingleAsync());
             await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE "Messages" SET "EncryptedBody" = decode('00', 'hex') WHERE "Id" = {message.Id}
                 """);
             Assert.True(await ChatEncryptionMigration.NeedsBackfill(upgraded, fixture.ChatEncryption));
             await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
-                UPDATE "Messages" SET "BodyKeyId" = NULL WHERE "Id" = {newMessage.Id}
+                UPDATE "Messages" SET "BodyKeyId" = NULL WHERE "Id" = {newId}
                 """);
             var rollbackClientId = Guid.NewGuid();
             await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
@@ -201,19 +197,15 @@ public class PushLeaseTests
                 UPDATE "Relationships" SET "Introduction" = 'Replaced after rollback', "RequestedBy" = {b} WHERE "Key" = {key}
                 """);
             Assert.True(await ChatEncryptionMigration.HasLegacyWrites(upgraded));
-            history = (MessagePage)await fixture.Call(b, $"conversations/{key}/messages");
-            Assert.Contains(history.Items, m => m.ClientId == rollbackClientId && m.Text == "Sent after rollback");
-            connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
-            Assert.Equal("Replaced after rollback", Assert.Single(connection).Introduction);
             await ChatEncryptionMigration.Migrate(upgraded, fixture.ChatEncryption);
             Assert.False(await ChatEncryptionMigration.HasLegacyWrites(upgraded));
             Assert.False(await ChatEncryptionMigration.NeedsBackfill(upgraded, fixture.ChatEncryption));
             // Verified rows in a repaired cohort keep their envelope.
-            Assert.Equal(healthyEnvelope, (await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == healthy.Id)).EncryptedBody);
+            Assert.Equal(healthyBody, (await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == healthyId)).EncryptedBody);
             var repaired = await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == message.Id);
             Assert.Equal("Queued", fixture.ChatEncryption.DecryptMessage(key, a, clientId,
                 repaired.BodyKeyId!, repaired.EncryptedBody!));
-            var partial = await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == newMessage.Id);
+            var partial = await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == newId);
             Assert.Equal("Sent before rollback", fixture.ChatEncryption.DecryptMessage(key, a, partial.ClientId,
                 partial.BodyKeyId!, partial.EncryptedBody!));
             Assert.NotNull((await upgraded.Messages.AsNoTracking().SingleAsync(m => m.ClientId == rollbackClientId)).EncryptedBody);
@@ -250,9 +242,33 @@ public class PushLeaseTests
                 Assert.All(cohort, row =>
                 {
                     Assert.Equal(current, row.BodyKeyId);
-                    Assert.Equal(row.Text, rotated.DecryptMessage(key, row.SenderId, row.ClientId,
-                        row.BodyKeyId!, row.EncryptedBody!));
+                    Assert.NotEmpty(rotated.DecryptMessage(key, row.SenderId, row.ClientId, row.BodyKeyId, row.EncryptedBody));
                 });
+
+                // A valid envelope containing different text must also stop the drop.
+                var wrongBody = rotated.EncryptMessage(key, a, healthyClient, "Wrong body");
+                await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE "Messages" SET "EncryptedBody" = {wrongBody} WHERE "Id" = {healthyId}
+                    """);
+                await Assert.ThrowsAsync<InvalidOperationException>(
+                    () => ChatEncryptionMigration.MigrateEncryptedOnly(upgraded, rotated));
+                Assert.Equal("Healthy encrypted sample", await upgraded.Database.SqlQuery<string>($"""
+                    SELECT "Text" AS "Value" FROM "Messages" WHERE "Id" = {healthyId}
+                    """).SingleAsync());
+                await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE "Messages" SET "EncryptedBody" = {healthyBody} WHERE "Id" = {healthyId}
+                    """);
+                await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE "Relationships" SET "EncryptedIntroduction" = decode('00', 'hex') WHERE "Key" = {key}
+                    """);
+                await Assert.ThrowsAsync<InvalidOperationException>(
+                    () => ChatEncryptionMigration.MigrateEncryptedOnly(upgraded, rotated));
+                await ChatEncryptionMigration.Migrate(upgraded, rotated);
+                await ChatEncryptionMigration.MigrateEncryptedOnly(upgraded, rotated);
+                var history = (MessagePage)await fixture.Call(b, $"conversations/{key}/messages");
+                Assert.Contains(history.Items, m => m.ClientId == rollbackClientId && m.Text == "Sent after rollback");
+                var connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
+                Assert.Equal("Replaced after rollback", Assert.Single(connection).Introduction);
             }
             finally { File.Delete(rotatedPath); }
         }
@@ -262,7 +278,7 @@ public class PushLeaseTests
     [Fact]
     public async Task Interrupted_key_repair_resumes_on_the_next_release_check()
     {
-        var fixture = new DatabaseFixture(); await fixture.InitializeAt(null);
+        var fixture = new DatabaseFixture(); await fixture.InitializeAt(ChatEncryptionMigration.Staged);
         var historicalPath = fixture.ChatKeysPath + ".historical";
         var rotatedPath = fixture.ChatKeysPath + ".rotated";
         try
@@ -270,8 +286,14 @@ public class PushLeaseTests
             var a = await fixture.Member();
             var b = await fixture.Member();
             var key = CommunityService.Pair(a, b);
-            await fixture.Call(a, "connections", new ConnectionInput(b), "POST");
-            await fixture.Call(b, "connections/accept", new ConnectionInput(a), "POST");
+            await using (var db = fixture.Db())
+            {
+                var (first, second) = string.CompareOrdinal(a.ToString(), b.ToString()) < 0 ? (a, b) : (b, a);
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "Relationships" ("Key", "A", "B", "RequestedBy", "State", "Introduction", "Updated", "ReadA", "ReadB")
+                    VALUES ({key}, {first}, {second}, {a}, 'accepted', '', now(), 0, 0)
+                    """);
+            }
 
             using var fixtureRing = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(fixture.ChatKeysPath));
             var current = fixture.ChatEncryption.CurrentKeyId;
@@ -302,11 +324,8 @@ public class PushLeaseTests
                     var clientId = Guid.NewGuid();
                     var text = $"History {i}";
                     var damaged = i < 3 || i >= total - 3;
-                    db.Messages.Add(new ChatMessage
-                    {
-                        Conversation = key, SenderId = a, ClientId = clientId, Text = text, BodyKeyId = "historical",
-                        EncryptedBody = damaged ? [0] : historical.EncryptMessage(key, a, clientId, text)
-                    });
+                    await InsertStagedMessage(db, key, a, clientId, text, "historical",
+                        damaged ? [0] : historical.EncryptMessage(key, a, clientId, text));
                 }
                 await db.SaveChangesAsync();
             }
@@ -338,8 +357,11 @@ public class PushLeaseTests
             Assert.False(await ChatEncryptionMigration.NeedsBackfill(upgraded, rotated));
             Assert.Empty(await upgraded.ChatKeyRepairs.ToListAsync());
             var rows = await upgraded.Messages.AsNoTracking().Where(m => m.Conversation == key).ToListAsync();
-            Assert.All(rows, row => Assert.Equal(row.Text, rotated.DecryptMessage(key, row.SenderId, row.ClientId,
-                row.BodyKeyId!, row.EncryptedBody!)));
+            for (var i = 0; i < ids.Count; i++)
+            {
+                var row = rows.Single(m => m.Id == ids[i]);
+                Assert.Equal($"History {i}", rotated.DecryptMessage(key, row.SenderId, row.ClientId, row.BodyKeyId, row.EncryptedBody));
+            }
             Assert.Equal(6, rows.Count(row => row.BodyKeyId == current));
         }
         finally
@@ -349,4 +371,11 @@ public class PushLeaseTests
             await fixture.DisposeAsync();
         }
     }
+    private static async Task<long> InsertStagedMessage(CommunityDb db, string conversation, Guid sender,
+        Guid clientId, string text, string keyId, byte[] envelope)
+        => (await db.Database.SqlQuery<long>($"""
+            INSERT INTO "Messages" ("Conversation", "SenderId", "ClientId", "Text", "BodyKeyId", "EncryptedBody", "SentAt", "PushPending", "PushAttempts")
+            VALUES ({conversation}, {sender}, {clientId}, {text}, {keyId}, {envelope}, now(), FALSE, 0)
+            RETURNING "Id" AS "Value"
+            """).ToListAsync()).Single();
 }
