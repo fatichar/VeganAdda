@@ -83,8 +83,9 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
     }
     private void CopyIntroduction(Relationship relationship)
     {
-        var text = content.IntroductionText(relationship);
-        if (text.Length != 0)
+        // An unreadable introduction must not block accepting the connection; it is logged and not copied.
+        var text = content.TryIntroductionText(relationship);
+        if (!string.IsNullOrEmpty(text))
             db.Messages.Add(content.NewMessage(relationship.Key, relationship.RequestedBy, Guid.NewGuid(), text));
     }
 

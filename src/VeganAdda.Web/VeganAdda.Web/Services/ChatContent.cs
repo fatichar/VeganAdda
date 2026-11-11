@@ -12,7 +12,6 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
             Conversation = conversation,
             SenderId = sender,
             ClientId = clientId,
-            Text = text,
             BodyKeyId = encryption.CurrentKeyId,
             EncryptedBody = encryption.EncryptMessage(conversation, sender, clientId, text),
             PushPending = pushPending
@@ -23,29 +22,32 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         relationship.EncryptedIntroduction = text.Length == 0 ? null
             : encryption.EncryptIntroduction(relationship.Key, requester, text);
         relationship.IntroductionKeyId = text.Length == 0 ? null : encryption.CurrentKeyId;
-        relationship.Introduction = text;
         relationship.RequestedBy = requester;
     }
 
-    public string MessageText(ChatMessage message)
+    public string MessageText(ChatMessage message) => TryMessageText(message) ?? "This message is unavailable.";
+
+    /// <summary>Decrypts a message body, or returns null and logs when the envelope cannot be read.</summary>
+    public string? TryMessageText(ChatMessage message)
     {
-        if (message.BodyKeyId == null && message.EncryptedBody == null) return message.Text;
         try
         {
-            if (message.BodyKeyId == null || message.EncryptedBody == null) throw new CryptographicException();
             return encryption.DecryptMessage(message.Conversation, message.SenderId, message.ClientId,
                 message.BodyKeyId, message.EncryptedBody);
         }
         catch (CryptographicException)
         {
             logger.LogWarning("Unable to decrypt chat message {MessageId}.", message.Id);
-            return message.Text;
+            return null;
         }
     }
 
-    public string IntroductionText(Relationship relationship)
+    public string IntroductionText(Relationship relationship) => TryIntroductionText(relationship) ?? "This introduction is unavailable.";
+
+    /// <summary>Decrypts an introduction ("" when none), or returns null and logs when the envelope cannot be read.</summary>
+    public string? TryIntroductionText(Relationship relationship)
     {
-        if (relationship.IntroductionKeyId == null && relationship.EncryptedIntroduction == null) return relationship.Introduction;
+        if (relationship.IntroductionKeyId == null && relationship.EncryptedIntroduction == null) return "";
         try
         {
             if (relationship.IntroductionKeyId == null || relationship.EncryptedIntroduction == null) throw new CryptographicException();
@@ -55,7 +57,7 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         catch (CryptographicException)
         {
             logger.LogWarning("Unable to decrypt a connection introduction.");
-            return relationship.Introduction;
+            return null;
         }
     }
 

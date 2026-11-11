@@ -108,8 +108,11 @@ public sealed class MessagingService(FeatureContext context, ProfileVisibility v
         var previous = await db.Messages.SingleOrDefaultAsync(m => m.SenderId == me.Id && m.ClientId == input.ClientId);
         if (previous != null)
         {
-            if (previous.Conversation != key || content.MessageText(previous) != text)
-                throw new ApiException(409, "This message ID has already been used.");
+            if (previous.Conversation != key) throw new ApiException(409, "This message ID has already been used.");
+            // An unreadable stored body cannot prove the payload matches, and retrying cannot fix it: fail terminally.
+            var stored = content.TryMessageText(previous)
+                ?? throw new ApiException(409, "This message could not be confirmed. Discard it and send it again.");
+            if (stored != text) throw new ApiException(409, "This message ID has already been used.");
             return new Message(previous.Id, previous.SenderId, previous.ClientId, text, previous.SentAt);
         }
         var other = r.A == me.Id ? r.B : r.A;

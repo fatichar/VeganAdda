@@ -1,5 +1,8 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using VeganAdda.Web.Services;
@@ -9,6 +12,8 @@ namespace VeganAdda.Web.Data;
 public static class ChatEncryptionMigration
 {
     public const string Expand = "ExpandChatEncryption";
+    public const string Staged = "PersistChatKeyRepairs";
+    public const string Contract = "RemoveChatPlaintext";
     private const long MigrationLock = 8743651203778414;
     private const int BatchSize = 200;
     private const string LegacyMessage = """("BodyKeyId" IS NULL OR "EncryptedBody" IS NULL)""";
@@ -53,9 +58,10 @@ public static class ChatEncryptionMigration
         try
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationLock})", ct);
-            await db.Database.MigrateAsync(ct);
-            // FindRepairs performs the same check while sampling.
-            if (!checkSamples) await EnsureKeysAvailable(db, encryption, ct);
+            await db.GetService<IMigrator>().MigrateAsync(Staged, ct);
+            // FindRepairs performs the same check while sampling. Authenticate the active key before
+            // any backfill writes ciphertext under it.
+            if (!checkSamples) await AuthenticateKeys(db, encryption, ct, activeOnly: true);
             var legacyWrites = await HasLegacyWrites(db, ct);
             var pending = await PendingRepairs(db, ct);
             if (checkSamples || legacyWrites || pending.Length != 0)
@@ -86,6 +92,100 @@ public static class ChatEncryptionMigration
         }
     }
 
+    public static async Task MigrateEncryptedOnly(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    {
+        var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToArray();
+        if (Includes(applied, Contract))
+        {
+            await db.Database.MigrateAsync(ct);
+            await AuthenticateKeys(db, encryption, ct);
+            return;
+        }
+
+        // Finish any staged backfill or recorded repair from the retained plaintext first,
+        // so rollback-era rows and interrupted repairs do not block the drop. Unexplained
+        // mismatches in complete rows are not rewritten here; verification below rejects them.
+        await Migrate(db, encryption, ct, checkSamples: false);
+
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.Database.ExecuteSqlRawAsync("""LOCK TABLE "Relationships", "Messages", "ChatKeyRepairs" IN ACCESS EXCLUSIVE MODE""", ct);
+            if (!Includes(await db.Database.GetAppliedMigrationsAsync(ct), Contract))
+            {
+                await VerifyAllPlaintext(db, encryption, ct);
+                await db.Database.ExecuteSqlRawAsync("SET LOCAL veganadda.chat_plaintext_verified = 'yes'", ct);
+                // Run the generated script verbatim: EF's raw SQL APIs treat braces as format placeholders.
+                var sql = db.GetService<IMigrator>().GenerateScript(Staged, Contract, MigrationsSqlGenerationOptions.NoTransactions);
+                await using var command = new NpgsqlCommand(sql, (NpgsqlConnection)db.Database.GetDbConnection(),
+                    (NpgsqlTransaction)transaction.GetDbTransaction());
+                await command.ExecuteNonQueryAsync(ct);
+            }
+            await transaction.CommitAsync(ct);
+        }
+        await db.Database.MigrateAsync(ct);
+    }
+
+    /// <summary>
+    /// Compares every retained plaintext with its encrypted copy. With <paramref name="allowRepairable"/>,
+    /// rows the staged migration rebuilds from plaintext (missing copies and keys with recorded repairs)
+    /// are skipped, so the release check fails only on mismatches that need an operator.
+    /// </summary>
+    public static async Task VerifyAllPlaintext(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default,
+        bool allowRepairable = false)
+    {
+        var pending = (await PendingRepairs(db, ct)).ToHashSet(StringComparer.Ordinal);
+        if (!allowRepairable && pending.Count != 0)
+            throw new InvalidOperationException("Chat key repairs are pending. Complete the staged repair before removing plaintext.");
+
+        long? lastId = null;
+        while (true)
+        {
+            var rows = await db.Database.SqlQuery<MessageSource>($"""
+                SELECT "Id", "Conversation", "SenderId", "ClientId", "Text", "BodyKeyId", "EncryptedBody"
+                FROM "Messages" WHERE {lastId}::bigint IS NULL OR "Id" > {lastId}
+                ORDER BY "Id" LIMIT {BatchSize}
+                """).ToListAsync(ct);
+            foreach (var row in rows)
+            {
+                if (allowRepairable && (row.BodyKeyId == null || row.EncryptedBody == null || pending.Contains(row.BodyKeyId)))
+                    continue;
+                if (row.BodyKeyId == null || row.EncryptedBody == null ||
+                    TryDecrypt(() => encryption.DecryptMessage(row.Conversation, row.SenderId, row.ClientId,
+                        row.BodyKeyId, row.EncryptedBody)) != row.Text)
+                    throw new InvalidOperationException("A message failed ciphertext verification. Plaintext must be retained.");
+            }
+            if (rows.Count < BatchSize) break;
+            lastId = rows[^1].Id;
+        }
+
+        string? lastKey = null;
+        while (true)
+        {
+            var rows = await db.Database.SqlQuery<IntroductionSource>($"""
+                SELECT "Key", "RequestedBy", "Introduction", "IntroductionKeyId", "EncryptedIntroduction"
+                FROM "Relationships" WHERE {lastKey}::text IS NULL OR "Key" > {lastKey}
+                ORDER BY "Key" LIMIT {BatchSize}
+                """).ToListAsync(ct);
+            foreach (var row in rows)
+            {
+                var legacy = row.Introduction.Length == 0
+                    ? row.IntroductionKeyId != null || row.EncryptedIntroduction != null
+                    : row.IntroductionKeyId == null || row.EncryptedIntroduction == null;
+                if (allowRepairable && (legacy || (row.IntroductionKeyId != null && pending.Contains(row.IntroductionKeyId))))
+                    continue;
+                var valid = row.Introduction.Length == 0
+                    ? row.IntroductionKeyId == null && row.EncryptedIntroduction == null
+                    : row.IntroductionKeyId != null && row.EncryptedIntroduction != null &&
+                        TryDecrypt(() => encryption.DecryptIntroduction(row.Key, row.RequestedBy,
+                            row.IntroductionKeyId, row.EncryptedIntroduction)) == row.Introduction;
+                if (!valid)
+                    throw new InvalidOperationException("A connection introduction failed ciphertext verification. Plaintext must be retained.");
+            }
+            if (rows.Count < BatchSize) break;
+            lastKey = rows[^1].Key;
+        }
+    }
+
     public static bool Includes(IEnumerable<string> migrations, string name)
         => migrations.Any(id => id.EndsWith("_" + name, StringComparison.Ordinal));
 
@@ -110,16 +210,63 @@ public static class ChatEncryptionMigration
         return exists ? await db.ChatKeyRepairs.Select(r => r.KeyId).ToArrayAsync(ct) : [];
     }
 
-    /// <summary>Fails when stored chat rows reference a key ID that the configured ring lacks.</summary>
-    public static async Task EnsureKeysAvailable(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    /// <summary>
+    /// Confirms that the ring holds every stored key ID and that its key material authenticates stored
+    /// ciphertext: up to three envelopes per key ID are decrypted, and a key fails when none of them
+    /// authenticate. A ring with the expected IDs but different key bytes is rejected before any write.
+    /// With <paramref name="activeOnly"/>, only the active key must authenticate; while plaintext is
+    /// retained, rows under other keys are rebuilt from it.
+    /// </summary>
+    public static async Task AuthenticateKeys(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default,
+        bool activeOnly = false)
     {
-        var stored = await db.Database.SqlQueryRaw<string>(MessageKeys + """
-            SELECT "BodyKeyId" AS "Value" FROM keys
+        // Loose index scans enumerate distinct key IDs; each lateral probe reads at most three rows.
+        var samples = await db.Database.SqlQueryRaw<CipherSample>("""
+            WITH RECURSIVE keys AS (
+                (SELECT "BodyKeyId" AS id FROM "Messages"
+                 WHERE "BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL ORDER BY "BodyKeyId" LIMIT 1)
+                UNION ALL
+                SELECT (SELECT "BodyKeyId" FROM "Messages"
+                        WHERE "BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL AND "BodyKeyId" > keys.id
+                        ORDER BY "BodyKeyId" LIMIT 1)
+                FROM keys WHERE keys.id IS NOT NULL
+            )
+            SELECT sample.* FROM keys CROSS JOIN LATERAL (
+                SELECT m."BodyKeyId" AS "KeyId", m."Conversation", m."SenderId" AS "Actor",
+                    m."ClientId" AS "ClientId", m."EncryptedBody" AS "Envelope"
+                FROM "Messages" m WHERE m."BodyKeyId" = keys.id AND m."EncryptedBody" IS NOT NULL LIMIT 3
+            ) AS sample
             """).ToListAsync(ct);
-        stored.AddRange(await db.Database.SqlQueryRaw<string>(IntroductionKeys + """
-            SELECT "IntroductionKeyId" AS "Value" FROM keys
+        samples.AddRange(await db.Database.SqlQueryRaw<CipherSample>("""
+            WITH RECURSIVE keys AS (
+                (SELECT "IntroductionKeyId" AS id FROM "Relationships"
+                 WHERE "IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL
+                 ORDER BY "IntroductionKeyId" LIMIT 1)
+                UNION ALL
+                SELECT (SELECT "IntroductionKeyId" FROM "Relationships"
+                        WHERE "IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL
+                            AND "IntroductionKeyId" > keys.id
+                        ORDER BY "IntroductionKeyId" LIMIT 1)
+                FROM keys WHERE keys.id IS NOT NULL
+            )
+            SELECT sample.* FROM keys CROSS JOIN LATERAL (
+                SELECT r."IntroductionKeyId" AS "KeyId", r."Key" AS "Conversation", r."RequestedBy" AS "Actor",
+                    NULL::uuid AS "ClientId", r."EncryptedIntroduction" AS "Envelope"
+                FROM "Relationships" r
+                WHERE r."IntroductionKeyId" = keys.id AND r."EncryptedIntroduction" IS NOT NULL LIMIT 3
+            ) AS sample
             """).ToListAsync(ct));
-        ThrowIfMissing(stored, encryption);
+        ThrowIfMissing(samples.Select(sample => sample.KeyId), encryption);
+
+        var failing = samples.GroupBy(sample => sample.KeyId, StringComparer.Ordinal)
+            .Where(group => !activeOnly || group.Key == encryption.CurrentKeyId)
+            .Where(group => group.All(sample => TryDecrypt(() => sample.ClientId is { } clientId
+                ? encryption.DecryptMessage(sample.Conversation, sample.Actor, clientId, sample.KeyId, sample.Envelope)
+                : encryption.DecryptIntroduction(sample.Conversation, sample.Actor, sample.KeyId, sample.Envelope)) == null))
+            .Select(group => group.Key).ToArray();
+        if (failing.Length != 0)
+            throw new InvalidOperationException("Stored chat ciphertext does not authenticate with configured key ID(s) "
+                + string.Join(", ", failing) + ". Check the key ring before starting or writing data.");
     }
 
     private static void ThrowIfMissing(IEnumerable<string> keyIds, ChatEncryption encryption)
@@ -248,6 +395,8 @@ public static class ChatEncryptionMigration
 
     private sealed record StoredIntroduction(string Key, Guid RequestedBy, string Introduction,
         string IntroductionKeyId, byte[] EncryptedIntroduction);
+
+    private sealed record CipherSample(string KeyId, string Conversation, Guid Actor, Guid? ClientId, byte[] Envelope);
 
     private sealed record MessageSource(long Id, string Conversation, Guid SenderId, Guid ClientId, string Text,
         string? BodyKeyId, byte[]? EncryptedBody);
