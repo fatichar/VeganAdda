@@ -217,6 +217,39 @@ public class PushLeaseTests
             var relationship = await upgraded.Relationships.AsNoTracking().SingleAsync(r => r.Key == key);
             Assert.Equal("Replaced after rollback", fixture.ChatEncryption.DecryptIntroduction(key, b,
                 relationship.IntroductionKeyId!, relationship.EncryptedIntroduction!));
+
+            // More rows than the release check samples must be repaired in one run.
+            await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "Messages" SET "BodyKeyId" = 'historical', "EncryptedBody" = decode('00', 'hex')
+                WHERE "Conversation" = {key}
+                """);
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => ChatEncryptionMigration.NeedsBackfill(upgraded, fixture.ChatEncryption));
+            using var fixtureRing = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(fixture.ChatKeysPath));
+            var current = fixture.ChatEncryption.CurrentKeyId;
+            var keys = new Dictionary<string, byte[]>
+            {
+                [current] = fixtureRing.RootElement.GetProperty("keys").GetProperty(current).GetBytesFromBase64(),
+                ["historical"] = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)
+            };
+            var rotatedPath = fixture.ChatKeysPath + ".rotated";
+            try
+            {
+                File.WriteAllText(rotatedPath, System.Text.Json.JsonSerializer.Serialize(new { current, keys }));
+                using var rotated = ChatEncryption.Load(rotatedPath);
+                Assert.True(await ChatEncryptionMigration.NeedsBackfill(upgraded, rotated));
+                await ChatEncryptionMigration.Migrate(upgraded, rotated);
+                Assert.False(await ChatEncryptionMigration.NeedsBackfill(upgraded, rotated));
+                var cohort = await upgraded.Messages.AsNoTracking().Where(m => m.Conversation == key).ToListAsync();
+                Assert.Equal(4, cohort.Count);
+                Assert.All(cohort, row =>
+                {
+                    Assert.Equal(current, row.BodyKeyId);
+                    Assert.Equal(row.Text, rotated.DecryptMessage(key, row.SenderId, row.ClientId,
+                        row.BodyKeyId!, row.EncryptedBody!));
+                });
+            }
+            finally { File.Delete(rotatedPath); }
         }
         finally { await fixture.DisposeAsync(); }
     }

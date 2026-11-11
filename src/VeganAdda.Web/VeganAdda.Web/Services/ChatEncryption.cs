@@ -12,15 +12,14 @@ public sealed class ChatEncryption : IDisposable
     private const int HeaderSize = 1 + NonceSize + TagSize;
     private const byte Format = 1;
     private static readonly UTF8Encoding Utf8 = new(false, true);
-    private readonly Dictionary<string, AesGcm> ciphers;
+    private readonly Dictionary<string, CipherPool> ciphers;
 
     public string CurrentKeyId { get; }
 
     private ChatEncryption(string currentKeyId, Dictionary<string, byte[]> keys)
     {
         CurrentKeyId = currentKeyId;
-        ciphers = keys.ToDictionary(pair => pair.Key, pair => new AesGcm(pair.Value, TagSize), StringComparer.Ordinal);
-        foreach (var key in keys.Values) CryptographicOperations.ZeroMemory(key);
+        ciphers = keys.ToDictionary(pair => pair.Key, pair => new CipherPool(pair.Value), StringComparer.Ordinal);
     }
 
     public static ChatEncryption Load(string path)
@@ -56,15 +55,14 @@ public sealed class ChatEncryption : IDisposable
         if (!environment.IsDevelopment())
             throw new InvalidOperationException("Storage:MessageKeysPath must point to the chat encryption key file.");
 
-        var keyDirectory = config["Storage:KeysPath"] ?? Path.Combine(environment.ContentRootPath, "keys");
-        var fullKeyDirectory = Path.GetFullPath(keyDirectory);
-        while (Path.EndsInDirectorySeparator(fullKeyDirectory) && Path.GetDirectoryName(fullKeyDirectory) != null)
-            fullKeyDirectory = Path.TrimEndingDirectorySeparator(fullKeyDirectory);
-        var parent = Path.GetDirectoryName(fullKeyDirectory)
-            ?? throw new InvalidOperationException("Storage:KeysPath must have a parent directory.");
-        var directory = Path.Combine(parent, "message-keys");
-        if (string.Equals(directory, fullKeyDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-            throw new InvalidOperationException("Set Storage:MessageKeysPath outside the Data Protection keys directory.");
+        var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData,
+            Environment.SpecialFolderOption.DoNotVerify);
+        if (string.IsNullOrWhiteSpace(localData))
+            throw new InvalidOperationException("Set Storage:MessageKeysPath to a key file outside the checkout.");
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(environment.ContentRootPath));
+        if (OperatingSystem.IsWindows()) root = root.ToUpperInvariant();
+        var checkoutId = Convert.ToHexString(SHA256.HashData(Utf8.GetBytes(root)));
+        var directory = Path.Combine(localData, "VeganAdda", "message-keys", checkoutId);
         Directory.CreateDirectory(directory);
         path = Path.Combine(directory, "keys.json");
         if (!File.Exists(path)) CreateKeyFile(path);
@@ -78,17 +76,20 @@ public sealed class ChatEncryption : IDisposable
         if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         try
         {
+            var keyId = Guid.NewGuid().ToString("N");
             using (var stream = new FileStream(temporary, options))
                 JsonSerializer.Serialize(stream, new
                 {
-                    current = "v1",
-                    keys = new Dictionary<string, byte[]> { ["v1"] = RandomNumberGenerator.GetBytes(KeySize) }
+                    current = keyId,
+                    keys = new Dictionary<string, byte[]> { [keyId] = RandomNumberGenerator.GetBytes(KeySize) }
                 });
             try { File.Move(temporary, path); }
             catch (IOException) when (File.Exists(path)) { }
         }
         finally { File.Delete(temporary); }
     }
+
+    public bool HasKey(string keyId) => ciphers.ContainsKey(keyId);
 
     public byte[] EncryptMessage(string conversation, Guid sender, Guid clientId, string text)
         => Encrypt(text, Context("message", CurrentKeyId, conversation, sender, clientId));
@@ -116,8 +117,10 @@ public sealed class ChatEncryption : IDisposable
             envelope[0] = Format;
             var nonce = envelope.AsSpan(1, NonceSize);
             RandomNumberGenerator.Fill(nonce);
-            var aes = ciphers[CurrentKeyId];
-            lock (aes) aes.Encrypt(nonce, plaintext, envelope.AsSpan(HeaderSize), envelope.AsSpan(1 + NonceSize, TagSize), context);
+            var pool = ciphers[CurrentKeyId];
+            var aes = pool.Rent();
+            try { aes.Encrypt(nonce, plaintext, envelope.AsSpan(HeaderSize), envelope.AsSpan(1 + NonceSize, TagSize), context); }
+            finally { pool.Return(aes); }
             return envelope;
         }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
@@ -125,13 +128,18 @@ public sealed class ChatEncryption : IDisposable
 
     private string Decrypt(string keyId, byte[] envelope, byte[] context)
     {
-        if (envelope.Length < HeaderSize || envelope[0] != Format || !ciphers.TryGetValue(keyId, out var aes))
+        if (envelope.Length < HeaderSize || envelope[0] != Format || !ciphers.TryGetValue(keyId, out var pool))
             throw new CryptographicException("Chat content cannot be decrypted.");
         var plaintext = new byte[envelope.Length - HeaderSize];
         try
         {
-            lock (aes) aes.Decrypt(envelope.AsSpan(1, NonceSize), envelope.AsSpan(HeaderSize),
-                envelope.AsSpan(1 + NonceSize, TagSize), plaintext, context);
+            var aes = pool.Rent();
+            try
+            {
+                aes.Decrypt(envelope.AsSpan(1, NonceSize), envelope.AsSpan(HeaderSize),
+                    envelope.AsSpan(1 + NonceSize, TagSize), plaintext, context);
+            }
+            finally { pool.Return(aes); }
             return Utf8.GetString(plaintext);
         }
         catch (DecoderFallbackException)
@@ -143,7 +151,44 @@ public sealed class ChatEncryption : IDisposable
 
     public void Dispose()
     {
-        foreach (var aes in ciphers.Values)
-            lock (aes) aes.Dispose();
+        foreach (var pool in ciphers.Values) pool.Dispose();
+    }
+
+    private sealed class CipherPool(byte[] key) : IDisposable
+    {
+        private readonly Stack<AesGcm> idle = new();
+        private bool disposed;
+
+        public AesGcm Rent()
+        {
+            lock (idle)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                return idle.TryPop(out var cipher) ? cipher : new AesGcm(key, TagSize);
+            }
+        }
+
+        public void Return(AesGcm cipher)
+        {
+            lock (idle)
+            {
+                if (!disposed && idle.Count < 8)
+                {
+                    idle.Push(cipher);
+                    return;
+                }
+            }
+            cipher.Dispose();
+        }
+
+        public void Dispose()
+        {
+            lock (idle)
+            {
+                disposed = true;
+                while (idle.TryPop(out var cipher)) cipher.Dispose();
+                CryptographicOperations.ZeroMemory(key);
+            }
+        }
     }
 }

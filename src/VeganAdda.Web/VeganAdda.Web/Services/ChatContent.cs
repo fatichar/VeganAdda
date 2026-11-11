@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
@@ -6,6 +7,9 @@ namespace VeganAdda.Web.Services;
 
 public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> logger)
 {
+    private static readonly Meter Meter = new("VeganAdda.Chat");
+    private static readonly Counter<long> PlaintextFallback = Meter.CreateCounter<long>("veganadda.chat.plaintext_fallback");
+
     public ChatMessage NewMessage(string conversation, Guid sender, Guid clientId, string text, bool pushPending = false)
         => new()
         {
@@ -38,6 +42,7 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         }
         catch (CryptographicException)
         {
+            PlaintextFallback.Add(1, new KeyValuePair<string, object?>("content_type", "message"));
             logger.LogWarning("Unable to decrypt chat message {MessageId}.", message.Id);
             return message.Text;
         }
@@ -54,6 +59,7 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         }
         catch (CryptographicException)
         {
+            PlaintextFallback.Add(1, new KeyValuePair<string, object?>("content_type", "introduction"));
             logger.LogWarning("Unable to decrypt a connection introduction.");
             return relationship.Introduction;
         }
