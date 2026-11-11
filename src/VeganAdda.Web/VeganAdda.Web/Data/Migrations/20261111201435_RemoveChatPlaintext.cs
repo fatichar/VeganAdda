@@ -26,6 +26,10 @@ namespace VeganAdda.Web.Data.Migrations
                 DROP FUNCTION veganadda_invalidate_legacy_chat_introduction();
                 DROP INDEX "IX_Messages_ChatBackfill", "IX_Messages_ChatKeySample",
                     "IX_Relationships_ChatBackfill", "IX_Relationships_ChatKeySample";
+                -- Support the key-ring check's loose index scans.
+                CREATE INDEX "IX_Messages_BodyKeyId" ON "Messages" ("BodyKeyId");
+                CREATE INDEX "IX_Relationships_IntroductionKeyId" ON "Relationships" ("IntroductionKeyId")
+                    WHERE "IntroductionKeyId" IS NOT NULL;
                 """);
 
             migrationBuilder.DropColumn(
@@ -65,6 +69,16 @@ namespace VeganAdda.Web.Data.Migrations
                 name: "CK_Messages_EncryptedBody",
                 table: "Messages",
                 sql: "length(\"BodyKeyId\") > 0 AND octet_length(\"EncryptedBody\") >= 29");
+
+            // DROP COLUMN only hides the column: existing tuples keep the plaintext bytes on disk.
+            // Rewriting both tables in this transaction stores dropped values as NULL and unlinks
+            // the old files (including TOAST) at commit.
+            migrationBuilder.Sql("""
+                CLUSTER "Messages" USING "PK_Messages";
+                CLUSTER "Relationships" USING "PK_Relationships";
+                ALTER TABLE "Messages" SET WITHOUT CLUSTER;
+                ALTER TABLE "Relationships" SET WITHOUT CLUSTER;
+                """);
         }
 
         /// <inheritdoc />

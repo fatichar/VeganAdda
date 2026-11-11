@@ -39,8 +39,9 @@ public class ConnectionIntroductionTests(DatabaseFixture f)
                 message => { Assert.Equal(second.Id, message.Id); Assert.Contains("unavailable", message.Text); });
             var missed = (MessagePage)await f.Call(recipient, path + $"?after={first.Id}");
             Assert.Equal(second.Id, Assert.Single(missed.Items).Id);
+            // An unreadable stored body is a terminal conflict, not a retryable outage.
             var retry = await Assert.ThrowsAsync<ApiException>(() => f.Call(sender, path, secondInput, "POST"));
-            Assert.Equal(503, retry.Status);
+            Assert.Equal(409, retry.Status);
             await using var finalDb = f.Db();
             Assert.Equal(2, await finalDb.Messages.CountAsync(m => m.Conversation == key));
         }
@@ -81,5 +82,26 @@ public class ConnectionIntroductionTests(DatabaseFixture f)
         history = (MessagePage)await f.Call(recipient, $"conversations/{key}/messages");
         Assert.Equal(new[] { "Hello from the request", "A new request" }, history.Items.Select(m => m.Text));
         Assert.Equal(recipient, messages[1].SenderId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unreadable_introduction_does_not_block_acceptance(bool reciprocal)
+    {
+        var sender = await f.Member(); var recipient = await f.Member();
+        var key = CommunityService.Pair(sender, recipient);
+        await f.Call(sender, "connections", new ConnectionInput(recipient, "Damaged hello"), "POST");
+        await using (var db = f.Db())
+        {
+            var relationship = await db.Relationships.SingleAsync(r => r.Key == key);
+            relationship.EncryptedIntroduction = relationship.EncryptedIntroduction!.ToArray();
+            relationship.EncryptedIntroduction[^1] ^= 1;
+            await db.SaveChangesAsync();
+        }
+        await f.Call(recipient, reciprocal ? "connections" : "connections/accept", new ConnectionInput(sender), "POST");
+        await using var finalDb = f.Db();
+        Assert.Equal("accepted", (await finalDb.Relationships.SingleAsync(r => r.Key == key)).State);
+        Assert.Empty(await finalDb.Messages.Where(m => m.Conversation == key).ToListAsync());
     }
 }

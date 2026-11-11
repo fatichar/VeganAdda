@@ -224,7 +224,12 @@ if (args.Contains("--check-migrations"))
     if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Contract))
         await ChatEncryptionMigration.EnsureEncryptedKeysAvailable(db, encryption);
     else if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Expand))
-        await ChatEncryptionMigration.VerifyAllPlaintext(db, encryption);
+    {
+        // Fails before maintenance on a missing key or an unexplained mismatch; legacy rows and
+        // recorded repairs are rebuilt from plaintext by --migrate before it verifies again under lock.
+        await ChatEncryptionMigration.NeedsBackfill(db, encryption);
+        await ChatEncryptionMigration.VerifyAllPlaintext(db, encryption, allowRepairable: true);
+    }
     Environment.ExitCode = pending ? 10 : 0;
     return;
 }

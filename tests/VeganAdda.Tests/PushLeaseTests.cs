@@ -264,9 +264,26 @@ public class PushLeaseTests
                 await Assert.ThrowsAsync<InvalidOperationException>(
                     () => ChatEncryptionMigration.MigrateEncryptedOnly(upgraded, rotated));
                 await ChatEncryptionMigration.Migrate(upgraded, rotated);
+
+                // A plaintext-only row written by the previous image is rebuilt during the drop, and the
+                // release check tolerates it because --migrate repairs it before verifying under lock.
+                var lateClientId = Guid.NewGuid();
+                await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO "Messages" ("Conversation", "SenderId", "ClientId", "Text", "SentAt", "PushPending", "PushAttempts")
+                    VALUES ({key}, {a}, {lateClientId}, 'Written by the previous image', now(), FALSE, 0)
+                    """);
+                await Assert.ThrowsAsync<InvalidOperationException>(() => ChatEncryptionMigration.VerifyAllPlaintext(upgraded, rotated));
+                await ChatEncryptionMigration.VerifyAllPlaintext(upgraded, rotated, allowRepairable: true);
+
+                var messageFile = await RelationFile(upgraded, "Messages");
+                var relationshipFile = await RelationFile(upgraded, "Relationships");
                 await ChatEncryptionMigration.MigrateEncryptedOnly(upgraded, rotated);
+                // Both tables were rewritten, so the dropped plaintext no longer sits in live tuples.
+                Assert.NotEqual(messageFile, await RelationFile(upgraded, "Messages"));
+                Assert.NotEqual(relationshipFile, await RelationFile(upgraded, "Relationships"));
                 var history = (MessagePage)await fixture.Call(b, $"conversations/{key}/messages");
                 Assert.Contains(history.Items, m => m.ClientId == rollbackClientId && m.Text == "Sent after rollback");
+                Assert.Contains(history.Items, m => m.ClientId == lateClientId && m.Text == "Written by the previous image");
                 var connection = (List<ConnectionItem>)await fixture.Call(b, "connections");
                 Assert.Equal("Replaced after rollback", Assert.Single(connection).Introduction);
             }
@@ -371,6 +388,9 @@ public class PushLeaseTests
             await fixture.DisposeAsync();
         }
     }
+    private static async Task<long> RelationFile(CommunityDb db, string table)
+        => (await db.Database.SqlQuery<long>($"SELECT pg_relation_filenode(quote_ident({table})::regclass)::bigint AS \"Value\"").ToListAsync()).Single();
+
     private static async Task<long> InsertStagedMessage(CommunityDb db, string conversation, Guid sender,
         Guid clientId, string text, string keyId, byte[] envelope)
         => (await db.Database.SqlQuery<long>($"""

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using VeganAdda.Web.Services;
@@ -100,10 +101,10 @@ public static class ChatEncryptionMigration
             return;
         }
 
-        if (!Includes(applied, Expand))
-            await Migrate(db, encryption, ct);
-        else if (!Includes(applied, Staged))
-            await db.GetService<IMigrator>().MigrateAsync(Staged, ct);
+        // Finish any staged backfill or recorded repair from the retained plaintext first,
+        // so rollback-era rows and interrupted repairs do not block the drop. Unexplained
+        // mismatches in complete rows are not rewritten here; verification below rejects them.
+        await Migrate(db, encryption, ct, checkSamples: false);
 
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
@@ -112,8 +113,11 @@ public static class ChatEncryptionMigration
             {
                 await VerifyAllPlaintext(db, encryption, ct);
                 await db.Database.ExecuteSqlRawAsync("SET LOCAL veganadda.chat_plaintext_verified = 'yes'", ct);
+                // Run the generated script verbatim: EF's raw SQL APIs treat braces as format placeholders.
                 var sql = db.GetService<IMigrator>().GenerateScript(Staged, Contract, MigrationsSqlGenerationOptions.NoTransactions);
-                await db.Database.ExecuteSqlRawAsync(sql, ct);
+                await using var command = new NpgsqlCommand(sql, (NpgsqlConnection)db.Database.GetDbConnection(),
+                    (NpgsqlTransaction)transaction.GetDbTransaction());
+                await command.ExecuteNonQueryAsync(ct);
             }
             await transaction.CommitAsync(ct);
         }
@@ -122,17 +126,41 @@ public static class ChatEncryptionMigration
 
     public static async Task EnsureEncryptedKeysAvailable(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
     {
+        // Loose index scans: one probe per distinct key ID instead of reading every row.
         var stored = await db.Database.SqlQueryRaw<string>("""
-            SELECT "BodyKeyId" AS "Value" FROM "Messages"
-            UNION
-            SELECT "IntroductionKeyId" AS "Value" FROM "Relationships" WHERE "IntroductionKeyId" IS NOT NULL
+            WITH RECURSIVE keys AS (
+                (SELECT "BodyKeyId" AS id FROM "Messages" ORDER BY "BodyKeyId" LIMIT 1)
+                UNION ALL
+                SELECT (SELECT "BodyKeyId" FROM "Messages" WHERE "BodyKeyId" > keys.id ORDER BY "BodyKeyId" LIMIT 1)
+                FROM keys WHERE keys.id IS NOT NULL
+            )
+            SELECT id AS "Value" FROM keys WHERE id IS NOT NULL
             """).ToListAsync(ct);
+        stored.AddRange(await db.Database.SqlQueryRaw<string>("""
+            WITH RECURSIVE keys AS (
+                (SELECT "IntroductionKeyId" AS id FROM "Relationships" WHERE "IntroductionKeyId" IS NOT NULL
+                 ORDER BY "IntroductionKeyId" LIMIT 1)
+                UNION ALL
+                SELECT (SELECT "IntroductionKeyId" FROM "Relationships"
+                        WHERE "IntroductionKeyId" IS NOT NULL AND "IntroductionKeyId" > keys.id
+                        ORDER BY "IntroductionKeyId" LIMIT 1)
+                FROM keys WHERE keys.id IS NOT NULL
+            )
+            SELECT id AS "Value" FROM keys WHERE id IS NOT NULL
+            """).ToListAsync(ct));
         ThrowIfMissing(stored, encryption);
     }
 
-    public static async Task VerifyAllPlaintext(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    /// <summary>
+    /// Compares every retained plaintext with its encrypted copy. With <paramref name="allowRepairable"/>,
+    /// rows the staged migration rebuilds from plaintext (missing copies and keys with recorded repairs)
+    /// are skipped, so the release check fails only on mismatches that need an operator.
+    /// </summary>
+    public static async Task VerifyAllPlaintext(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default,
+        bool allowRepairable = false)
     {
-        if ((await PendingRepairs(db, ct)).Length != 0)
+        var pending = (await PendingRepairs(db, ct)).ToHashSet(StringComparer.Ordinal);
+        if (!allowRepairable && pending.Count != 0)
             throw new InvalidOperationException("Chat key repairs are pending. Complete the staged repair before removing plaintext.");
 
         long? lastId = null;
@@ -145,6 +173,8 @@ public static class ChatEncryptionMigration
                 """).ToListAsync(ct);
             foreach (var row in rows)
             {
+                if (allowRepairable && (row.BodyKeyId == null || row.EncryptedBody == null || pending.Contains(row.BodyKeyId)))
+                    continue;
                 if (row.BodyKeyId == null || row.EncryptedBody == null ||
                     TryDecrypt(() => encryption.DecryptMessage(row.Conversation, row.SenderId, row.ClientId,
                         row.BodyKeyId, row.EncryptedBody)) != row.Text)
@@ -164,6 +194,11 @@ public static class ChatEncryptionMigration
                 """).ToListAsync(ct);
             foreach (var row in rows)
             {
+                var legacy = row.Introduction.Length == 0
+                    ? row.IntroductionKeyId != null || row.EncryptedIntroduction != null
+                    : row.IntroductionKeyId == null || row.EncryptedIntroduction == null;
+                if (allowRepairable && (legacy || (row.IntroductionKeyId != null && pending.Contains(row.IntroductionKeyId))))
+                    continue;
                 var valid = row.Introduction.Length == 0
                     ? row.IntroductionKeyId == null && row.EncryptedIntroduction == null
                     : row.IntroductionKeyId != null && row.EncryptedIntroduction != null &&
