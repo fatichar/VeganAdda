@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace VeganAdda.Web.Services;
 
-public sealed class ChatEncryption
+public sealed class ChatEncryption : IDisposable
 {
     private const int KeySize = 32;
     private const int NonceSize = 12;
@@ -12,14 +12,15 @@ public sealed class ChatEncryption
     private const int HeaderSize = 1 + NonceSize + TagSize;
     private const byte Format = 1;
     private static readonly UTF8Encoding Utf8 = new(false, true);
-    private readonly Dictionary<string, byte[]> keys;
+    private readonly Dictionary<string, AesGcm> ciphers;
 
     public string CurrentKeyId { get; }
 
     private ChatEncryption(string currentKeyId, Dictionary<string, byte[]> keys)
     {
         CurrentKeyId = currentKeyId;
-        this.keys = keys;
+        ciphers = keys.ToDictionary(pair => pair.Key, pair => new AesGcm(pair.Value, TagSize), StringComparer.Ordinal);
+        foreach (var key in keys.Values) CryptographicOperations.ZeroMemory(key);
     }
 
     public static ChatEncryption Load(string path)
@@ -56,7 +57,14 @@ public sealed class ChatEncryption
             throw new InvalidOperationException("Storage:MessageKeysPath must point to the chat encryption key file.");
 
         var keyDirectory = config["Storage:KeysPath"] ?? Path.Combine(environment.ContentRootPath, "keys");
-        var directory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(keyDirectory))!, "message-keys");
+        var fullKeyDirectory = Path.GetFullPath(keyDirectory);
+        while (Path.EndsInDirectorySeparator(fullKeyDirectory) && Path.GetDirectoryName(fullKeyDirectory) != null)
+            fullKeyDirectory = Path.TrimEndingDirectorySeparator(fullKeyDirectory);
+        var parent = Path.GetDirectoryName(fullKeyDirectory)
+            ?? throw new InvalidOperationException("Storage:KeysPath must have a parent directory.");
+        var directory = Path.Combine(parent, "message-keys");
+        if (string.Equals(directory, fullKeyDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new InvalidOperationException("Set Storage:MessageKeysPath outside the Data Protection keys directory.");
         Directory.CreateDirectory(directory);
         path = Path.Combine(directory, "keys.json");
         if (!File.Exists(path)) CreateKeyFile(path);
@@ -108,8 +116,8 @@ public sealed class ChatEncryption
             envelope[0] = Format;
             var nonce = envelope.AsSpan(1, NonceSize);
             RandomNumberGenerator.Fill(nonce);
-            using var aes = new AesGcm(keys[CurrentKeyId], TagSize);
-            aes.Encrypt(nonce, plaintext, envelope.AsSpan(HeaderSize), envelope.AsSpan(1 + NonceSize, TagSize), context);
+            var aes = ciphers[CurrentKeyId];
+            lock (aes) aes.Encrypt(nonce, plaintext, envelope.AsSpan(HeaderSize), envelope.AsSpan(1 + NonceSize, TagSize), context);
             return envelope;
         }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
@@ -117,13 +125,12 @@ public sealed class ChatEncryption
 
     private string Decrypt(string keyId, byte[] envelope, byte[] context)
     {
-        if (envelope.Length < HeaderSize || envelope[0] != Format || !keys.TryGetValue(keyId, out var key))
+        if (envelope.Length < HeaderSize || envelope[0] != Format || !ciphers.TryGetValue(keyId, out var aes))
             throw new CryptographicException("Chat content cannot be decrypted.");
         var plaintext = new byte[envelope.Length - HeaderSize];
         try
         {
-            using var aes = new AesGcm(key, TagSize);
-            aes.Decrypt(envelope.AsSpan(1, NonceSize), envelope.AsSpan(HeaderSize),
+            lock (aes) aes.Decrypt(envelope.AsSpan(1, NonceSize), envelope.AsSpan(HeaderSize),
                 envelope.AsSpan(1 + NonceSize, TagSize), plaintext, context);
             return Utf8.GetString(plaintext);
         }
@@ -132,5 +139,11 @@ public sealed class ChatEncryption
             throw new CryptographicException("Chat content cannot be decrypted.");
         }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
+    }
+
+    public void Dispose()
+    {
+        foreach (var aes in ciphers.Values)
+            lock (aes) aes.Dispose();
     }
 }

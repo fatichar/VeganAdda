@@ -179,9 +179,18 @@ public class PushLeaseTests
             // The old image reads and writes only the plaintext columns.
             var newMessage = (Message)await fixture.Call(a, $"conversations/{key}/messages",
                 new MessageInput(Guid.NewGuid(), "Sent before rollback"), "POST");
+            await fixture.Call(a, $"conversations/{key}/messages",
+                new MessageInput(Guid.NewGuid(), "Healthy encrypted sample"), "POST");
             Assert.Equal("Sent before rollback", await upgraded.Database.SqlQuery<string>($"""
                 SELECT "Text" AS "Value" FROM "Messages" WHERE "Id" = {newMessage.Id}
                 """).SingleAsync());
+            await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "Messages" SET "EncryptedBody" = decode('00', 'hex') WHERE "Id" = {message.Id}
+                """);
+            Assert.True(await ChatEncryptionMigration.NeedsBackfill(upgraded, fixture.ChatEncryption));
+            await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE "Messages" SET "BodyKeyId" = NULL WHERE "Id" = {newMessage.Id}
+                """);
             var rollbackClientId = Guid.NewGuid();
             await upgraded.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "Messages" ("Conversation", "SenderId", "ClientId", "Text", "SentAt", "PushPending", "PushAttempts")
@@ -197,6 +206,13 @@ public class PushLeaseTests
             Assert.Equal("Replaced after rollback", Assert.Single(connection).Introduction);
             await ChatEncryptionMigration.Migrate(upgraded, fixture.ChatEncryption);
             Assert.False(await ChatEncryptionMigration.HasLegacyWrites(upgraded));
+            Assert.False(await ChatEncryptionMigration.NeedsBackfill(upgraded, fixture.ChatEncryption));
+            var repaired = await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == message.Id);
+            Assert.Equal("Queued", fixture.ChatEncryption.DecryptMessage(key, a, clientId,
+                repaired.BodyKeyId!, repaired.EncryptedBody!));
+            var partial = await upgraded.Messages.AsNoTracking().SingleAsync(m => m.Id == newMessage.Id);
+            Assert.Equal("Sent before rollback", fixture.ChatEncryption.DecryptMessage(key, a, partial.ClientId,
+                partial.BodyKeyId!, partial.EncryptedBody!));
             Assert.NotNull((await upgraded.Messages.AsNoTracking().SingleAsync(m => m.ClientId == rollbackClientId)).EncryptedBody);
             var relationship = await upgraded.Relationships.AsNoTracking().SingleAsync(r => r.Key == key);
             Assert.Equal("Replaced after rollback", fixture.ChatEncryption.DecryptIntroduction(key, b,

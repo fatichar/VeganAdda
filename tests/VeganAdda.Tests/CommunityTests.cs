@@ -89,6 +89,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     }
     public async Task DisposeAsync()
     {
+        ChatEncryption?.Dispose();
         File.Delete(ChatKeysPath);
         if (string.IsNullOrEmpty(Connection)) return;
         NpgsqlConnection.ClearAllPools(); var b = new NpgsqlConnectionStringBuilder(Connection) { Database = "postgres" };

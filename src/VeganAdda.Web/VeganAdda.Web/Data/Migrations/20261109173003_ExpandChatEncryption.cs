@@ -39,6 +39,16 @@ namespace VeganAdda.Web.Data.Migrations
             // The previous image can replace an introduction on reconnection.
             // Discard the old envelope when that image changes its source fields.
             migrationBuilder.Sql("""
+                CREATE INDEX "IX_Messages_ChatBackfill" ON "Messages" ("Id")
+                    WHERE "BodyKeyId" IS NULL OR "EncryptedBody" IS NULL;
+                CREATE INDEX "IX_Messages_ChatKeySample" ON "Messages" ("BodyKeyId", "Id")
+                    WHERE "BodyKeyId" IS NOT NULL AND "EncryptedBody" IS NOT NULL;
+                CREATE INDEX "IX_Relationships_ChatBackfill" ON "Relationships" ("Key")
+                    WHERE ("Introduction" <> '' AND ("IntroductionKeyId" IS NULL OR "EncryptedIntroduction" IS NULL))
+                       OR ("Introduction" = '' AND ("IntroductionKeyId" IS NOT NULL OR "EncryptedIntroduction" IS NOT NULL));
+                CREATE INDEX "IX_Relationships_ChatKeySample" ON "Relationships" ("IntroductionKeyId", "Key")
+                    WHERE "IntroductionKeyId" IS NOT NULL AND "EncryptedIntroduction" IS NOT NULL AND "Introduction" <> '';
+
                 CREATE FUNCTION veganadda_invalidate_legacy_chat_introduction() RETURNS trigger
                 LANGUAGE plpgsql AS $$
                 BEGIN
@@ -64,6 +74,8 @@ namespace VeganAdda.Web.Data.Migrations
             migrationBuilder.Sql("""
                 DROP TRIGGER "InvalidateLegacyChatIntroduction" ON "Relationships";
                 DROP FUNCTION veganadda_invalidate_legacy_chat_introduction();
+                DROP INDEX "IX_Messages_ChatBackfill", "IX_Messages_ChatKeySample",
+                    "IX_Relationships_ChatBackfill", "IX_Relationships_ChatKeySample";
                 """);
 
             migrationBuilder.DropColumn(

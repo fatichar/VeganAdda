@@ -27,7 +27,7 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         relationship.RequestedBy = requester;
     }
 
-    public string MessageText(ChatMessage message, bool required = false)
+    public string MessageText(ChatMessage message)
     {
         if (message.BodyKeyId == null && message.EncryptedBody == null) return message.Text;
         try
@@ -39,12 +39,11 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         catch (CryptographicException)
         {
             logger.LogWarning("Unable to decrypt chat message {MessageId}.", message.Id);
-            if (required) throw new ApiException(503, "This message is temporarily unavailable. Please try again.");
-            return "This message is unavailable. Reload the conversation to try again.";
+            return message.Text;
         }
     }
 
-    public string IntroductionText(Relationship relationship, bool required = false)
+    public string IntroductionText(Relationship relationship)
     {
         if (relationship.IntroductionKeyId == null && relationship.EncryptedIntroduction == null) return relationship.Introduction;
         try
@@ -56,8 +55,7 @@ public sealed class ChatContent(ChatEncryption encryption, ILogger<ChatContent> 
         catch (CryptographicException)
         {
             logger.LogWarning("Unable to decrypt a connection introduction.");
-            if (required) throw new ApiException(503, "The introduction is temporarily unavailable. Please try again.");
-            return "This introduction is unavailable.";
+            return relationship.Introduction;
         }
     }
 

@@ -83,7 +83,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
     }
     private void CopyIntroduction(Relationship relationship)
     {
-        var text = content.IntroductionText(relationship, required: true);
+        var text = content.IntroductionText(relationship);
         if (text.Length != 0)
             db.Messages.Add(content.NewMessage(relationship.Key, relationship.RequestedBy, Guid.NewGuid(), text));
     }

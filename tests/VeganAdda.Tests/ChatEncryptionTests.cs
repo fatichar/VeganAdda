@@ -14,7 +14,7 @@ public class ChatEncryptionTests
         try
         {
             File.WriteAllText(path, JsonSerializer.Serialize(new { current = "old", keys }));
-            var first = ChatEncryption.Load(path);
+            using var first = ChatEncryption.Load(path);
             const string original = "नमस्ते 🌱";
             var sender = Guid.NewGuid();
             var clientId = Guid.NewGuid();
@@ -23,7 +23,7 @@ public class ChatEncryptionTests
 
             keys["new"] = RandomNumberGenerator.GetBytes(32);
             File.WriteAllText(path, JsonSerializer.Serialize(new { current = "new", keys }));
-            var rotated = ChatEncryption.Load(path);
+            using var rotated = ChatEncryption.Load(path);
             Assert.Equal("new", rotated.CurrentKeyId);
             Assert.Equal(original, rotated.DecryptMessage("pair", sender, clientId, "old", envelope));
             Assert.ThrowsAny<CryptographicException>(() => rotated.DecryptMessage("other", sender, clientId, "old", envelope));

@@ -223,8 +223,7 @@ if (args.Contains("--check-migrations"))
     var pending = knownMigrations.Except(applied).Any();
     if (ChatEncryptionMigration.Includes(applied, ChatEncryptionMigration.Expand))
     {
-        await ChatEncryptionMigration.VerifyKeys(db, encryption);
-        pending = pending || await ChatEncryptionMigration.HasLegacyWrites(db);
+        pending = await ChatEncryptionMigration.NeedsBackfill(db, encryption) || pending;
     }
     Environment.ExitCode = pending ? 10 : 0;
     return;
@@ -243,7 +242,7 @@ if (dev)
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     diagnosticLog.LogInformation("Database migrations started.");
-    await ChatEncryptionMigration.Migrate(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
+    await ChatEncryptionMigration.Migrate(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>(), checkSamples: false);
     diagnosticLog.LogInformation("Database migrations completed.");
     if (builder.Configuration.GetValue<bool>("Development:Seed"))
     {
