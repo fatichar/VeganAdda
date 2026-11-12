@@ -1,5 +1,9 @@
 <Router AppAssembly="typeof(Program).Assembly" AdditionalAssemblies="new[] { typeof(VeganAdda.UI._Imports).Assembly }" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
+        @if (routeData.PageType != typeof(VeganAdda.UI.Pages.EventDetail))
+        {
+            <VeganAdda.UI.Components.SearchMetadata />
+        }
         <RouteView RouteData="routeData" DefaultLayout="typeof(VeganAdda.UI.Layout.Shell)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>

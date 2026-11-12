@@ -1,6 +1,7 @@
 @page "/events/{Id:guid}"
 @inherits Screen
 <PageTitle>@(ev?.Title ?? "Event") · VeganAdda</PageTitle>
+<SearchMetadata EventAvailable="@available" />
 <a class="back-link" href="/events"><Icon Name="arrow_back" />All events</a><Feedback Error="@Error" Success="@Success" />
 @if (ev != null) { <section class="event-detail-hero">@if (ev.Cover != "") { <img src="@ev.Cover" alt="" /> }<div class="event-detail-title"><span class="badge">@(ev.Demo ? "Fictional sample event · development only" : "Community event")</span><h1>@ev.Title</h1><div class="event-meta"><span><Icon Name="calendar_today" />@Date(ev.Start, ev.TimeZone)@if (ev.End.HasValue) { <span> – @Date(ev.End, ev.TimeZone)</span> }</span><span><Icon Name="location_on" />@ev.City · @ev.Venue</span></div><p>Times are local to the event venue. @if (ev.Organizer != "") { <span> · Contact: @ev.Organizer</span> }</p></div></section><div class="event-detail-grid"><section class="card"><h2>What it is</h2><p class="event-description">@ev.Description</p><div class="attendance-box"><button @onclick="Attend" disabled="@Busy"><Icon Name="@(ev.Attending ? "check_circle" : "event_available")" />@(ev.Attending ? "I'm attending · undo" : "I'm attending")</button><button class="secondary" @onclick="Save" disabled="@Busy"><Icon Name="@(ev.Saved ? "bookmark" : "bookmark_border")" />@(ev.Saved ? "Saved" : "Save for later")</button></div><p class="small muted">Attendance here is a community signal. It is not a ticket purchase or official organizer registration.</p>
 @if (ev.Registration != null) { <a class="external-link" href="@ev.Registration" target="_blank" rel="noopener noreferrer nofollow">Official registration / event information<Icon Name="north_east" /></a> }
@@ -16,11 +17,31 @@ else if (ev.Attending && ev.Start > DateTimeOffset.UtcNow) { <p class="small mut
     [Parameter] public Guid Id { get; set; }
     [SupplyParameterFromQuery] public string? Action { get; set; }
     EventCard? ev; bool actionDone;
+    // Null until the event is known to exist or be gone, so transient failures emit neither canonical nor noindex.
+    bool? available; Guid loadedId;
+    long refreshVersion;
     bool EventRunning => ev?.Start <= DateTimeOffset.UtcNow && (ev?.End ?? ev?.Start?.AddHours(4)) > DateTimeOffset.UtcNow;
     bool IsCheckedIn => ev?.CheckedInUntil > DateTimeOffset.UtcNow && EventRunning;
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); }
-    protected override Task OnParametersSetAsync() => Run(Refresh);
-    protected override async Task Refresh() { ev = await Api.Get<EventCard>("events/" + Id); }
+    protected override Task OnParametersSetAsync()
+    {
+        if (Id != loadedId) { ev = null; available = null; loadedId = Id; }
+        return Run(Refresh);
+    }
+    protected override async Task Refresh()
+    {
+        // Only the latest lookup can update the page, even when the event ID stays the same.
+        var version = ++refreshVersion;
+        var id = Id;
+        try
+        {
+            var loaded = await Api.Get<EventCard>("events/" + id);
+            if (version != refreshVersion || id != Id) return;
+            ev = loaded; available = true;
+        }
+        catch (Exception) when (version != refreshVersion || id != Id) { }
+        catch (ApiException ex) when (ex.Status == 404) { ev = null; available = false; throw; }
+    }
     protected override async Task OnAfterRenderAsync(bool first) { await base.OnAfterRenderAsync(first); if (!actionDone && Action != null && ev != null && Session?.Id != null) { actionDone = true; if (!ReadyForAction(Current)) return; if (Action == "save" && !ev.Saved) await Save(); else if (Action == "attend" && !ev.Attending) await Attend(); Nav.NavigateTo("/events/" + Id, replace: true); StateHasChanged(); } }
     async Task Attend() { if (!ReadyForAction($"/events/{Id}?action=attend")) return; await Act(async () => { var visibility = ev!.Attending ? false : (await Api.Get<ProfileInput>("profile")).DefaultAttendeeVisible; await Api.Send<Ok>($"events/{Id}/attendance", new AttendanceInput(!ev.Attending, visibility)); await Refresh(); Success = ev!.Attending ? "You're attending. Check the organizer's registration requirements separately." : "Your attendance has been removed."; }); }
     async Task Save() { if (!ReadyForAction($"/events/{Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"events/{Id}/save"); await Refresh(); Success = "Your saved events are updated."; }); }
