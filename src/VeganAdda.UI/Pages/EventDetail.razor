@@ -29,7 +29,15 @@ else if (ev.Attending && ev.Start > DateTimeOffset.UtcNow) { <p class="small mut
     }
     protected override async Task Refresh()
     {
-        try { ev = await Api.Get<EventCard>("events/" + Id); available = true; }
+        // A lookup that finishes after the route moved to another event must not touch that event's state.
+        var id = Id;
+        try
+        {
+            var loaded = await Api.Get<EventCard>("events/" + id);
+            if (id != Id) return;
+            ev = loaded; available = true;
+        }
+        catch (Exception) when (id != Id) { }
         catch (ApiException ex) when (ex.Status == 404) { ev = null; available = false; throw; }
     }
     protected override async Task OnAfterRenderAsync(bool first) { await base.OnAfterRenderAsync(first); if (!actionDone && Action != null && ev != null && Session?.Id != null) { actionDone = true; if (!ReadyForAction(Current)) return; if (Action == "save" && !ev.Saved) await Save(); else if (Action == "attend" && !ev.Attending) await Attend(); Nav.NavigateTo("/events/" + Id, replace: true); StateHasChanged(); } }
