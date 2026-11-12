@@ -104,6 +104,14 @@ builder.Services.AddRateLimiter(o =>
     o.RejectionStatusCode = 429;
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
     {
+        var member = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        // Signed-out visitors browsing people or blurred previews get a tighter per-IP budget to deter scraping.
+        if (member == null && (ctx.Request.Path.StartsWithSegments("/api/people") || ctx.Request.Path.StartsWithSegments("/media/preview")))
+        {
+            var preview = ctx.Request.Path.StartsWithSegments("/media/preview");
+            return RateLimitPartition.GetFixedWindowLimiter((ctx.Connection.RemoteIpAddress?.ToString() ?? "anonymous") + (preview ? ":anonymous-preview" : ":anonymous-people"),
+                _ => new() { PermitLimit = preview ? 120 : 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+        }
         if (!ctx.Request.Path.StartsWithSegments("/api") && !ctx.Request.Path.StartsWithSegments("/auth") && !ctx.Request.Path.StartsWithSegments("/hubs"))
             return RateLimitPartition.GetNoLimiter("static-and-pages");
         var sensitive = HttpMethods.IsPost(ctx.Request.Method) || HttpMethods.IsDelete(ctx.Request.Method);
@@ -112,7 +120,7 @@ builder.Services.AddRateLimiter(o =>
         var readmark = sensitive && ctx.Request.Path.StartsWithSegments("/api/conversations") && ctx.Request.Path.Value!.EndsWith("/read", StringComparison.Ordinal);
         var request = sensitive && ctx.Request.Path == "/api/connections";
         var bucket = transport ? "transport" : readmark ? "readmark" : message ? "message" : request ? "request" : sensitive ? "write" : "read";
-        var identity = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+        var identity = member ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         return RateLimitPartition.GetFixedWindowLimiter(identity + ":" + bucket, _ => new() { PermitLimit = transport ? 300 : readmark ? 240 : message ? 60 : request ? 15 : sensitive ? 30 : 240, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
     });
     o.OnRejected = async (c, ct) => await c.HttpContext.Response.WriteAsJsonAsync(new { error = "Please slow down and try again in a minute." }, ct);

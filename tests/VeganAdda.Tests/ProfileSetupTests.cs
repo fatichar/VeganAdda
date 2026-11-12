@@ -82,9 +82,9 @@ public class ProfileSetupTests(DatabaseFixture f)
         var p = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
         p.Public = true;
         await f.Call(id, "profile", p, "POST");
-        Assert.False(Assert.IsType<Person>(await f.Call(null, "people/" + id)).Featured);
+        Assert.False(Assert.IsType<Person>(await f.Call(admin, "people/" + id)).Featured);
         await f.Call(admin, "admin/moderate", new ModerateInput(id, "feature"), "POST");
-        Assert.True(Assert.IsType<Person>(await f.Call(null, "people/" + id)).Featured);
+        Assert.True(Assert.IsType<Person>(await f.Call(admin, "people/" + id)).Featured);
         p.Public = false;
         await f.Call(id, "profile", p, "POST");
         await using var check = f.Db();
@@ -126,14 +126,15 @@ public class ProfileSetupTests(DatabaseFixture f)
         var profile = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
         profile.Profession = "  Teacher  ";
         await f.Call(id, "profile", profile, "POST");
-        var person = Assert.IsType<Person>(await f.Call(null, "people/" + id));
+        var viewer = await f.Member();
+        var person = Assert.IsType<Person>(await f.Call(viewer, "people/" + id));
         Assert.Equal("Teacher", person.Profession);
         Assert.True(person.VeganVerified);
         profile.Profession = new string('x', 81);
         Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(id, "profile", profile, "POST"))).Status);
         profile.Profession = " ";
         await f.Call(id, "profile", profile, "POST");
-        Assert.Equal("", Assert.IsType<Person>(await f.Call(null, "people/" + id)).Profession);
+        Assert.Equal("", Assert.IsType<Person>(await f.Call(viewer, "people/" + id)).Profession);
     }
 
     [Fact]

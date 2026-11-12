@@ -391,9 +391,11 @@ public class VerificationTests(DatabaseFixture f)
         {
             var p = (await db.Profiles.FindAsync(member))!;
             p.Instagram = "https://instagram.com/example"; p.LinkedIn = "https://linkedin.com/in/example"; p.Website = "https://example.org";
+            p.City = "Socialpur-" + member.ToString("N");
             await db.SaveChangesAsync();
         }
-        var anonymous = (Person)await f.Call(null, $"people/{member}");
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, $"people/{member}"))).Status);
+        var anonymous = Assert.Single(((Page<Person>)await f.Call(null, "people?city=Socialpur-" + member.ToString("N"))).Items);
         Assert.Null(anonymous.Instagram); Assert.Null(anonymous.LinkedIn); Assert.Null(anonymous.Website);
         var signedIn = (Person)await f.Call(viewer, $"people/{member}");
         Assert.NotNull(signedIn.Instagram); Assert.NotNull(signedIn.LinkedIn); Assert.NotNull(signedIn.Website);

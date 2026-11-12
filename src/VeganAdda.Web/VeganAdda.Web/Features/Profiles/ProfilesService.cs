@@ -101,7 +101,10 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         lifecycle.Record(LifecycleEvent.AccountDeleted, id, actorId);
         var media = config["Storage:MediaPath"] ?? "uploads";
         if (Directory.Exists(media)) foreach (var marker in Directory.EnumerateFiles(media, "*.owner-" + id.ToString("N")))
-        { File.Delete(marker[..marker.LastIndexOf(".owner-", StringComparison.Ordinal)]); File.Delete(marker); }
+        {
+            var original = marker[..marker.LastIndexOf(".owner-", StringComparison.Ordinal)];
+            File.Delete(original); File.Delete(Path.Combine(media, "previews", Path.GetFileName(original))); File.Delete(marker);
+        }
         await changes.Changed([.. peers, id, actorId]);
         return new Ok();
     }
@@ -114,6 +117,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
     public async Task<Person> GetPerson(Guid id)
     {
         await ActiveViewer();
+        if (!Viewer.HasValue) throw new ApiException(401, "Sign in to view member profiles.");
         var person = await visibility.Query(true).SingleOrDefaultAsync(p => p.Id == id) ?? throw Missing();
         return await people.One(person);
     }

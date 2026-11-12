@@ -149,9 +149,28 @@ public class CommunityTests(DatabaseFixture f)
         var hidden = await f.Member(false, true); var visible = await f.Member(true, true);
         var page = Assert.IsType<Page<Person>>(await f.Call(null, "people"));
         Assert.DoesNotContain(page.Items, p => p.Id == hidden); Assert.DoesNotContain(page.Items.SelectMany(p => p.LookingFor), i => i == "Dating");
-        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, "people/" + hidden))).Status);
-        var serialized = JsonSerializer.Serialize(await f.Call(null, "people/" + visible), Wire.Json);
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, "people/" + hidden))).Status);
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, "people/" + visible))).Status);
+        var serialized = JsonSerializer.Serialize(page, Wire.Json);
         Assert.DoesNotContain("Dating", serialized); Assert.DoesNotContain("Subject", serialized, StringComparison.OrdinalIgnoreCase); Assert.DoesNotContain("email", serialized, StringComparison.OrdinalIgnoreCase);
+    }
+    [Fact] public async Task Signed_out_visitors_get_one_page_of_teaser_cards()
+    {
+        var id = await f.Member();
+        await using (var db = f.Db())
+        {
+            var profile = (await db.Profiles.FindAsync(id))!;
+            profile.Name = "Asha  Teaser Kulkarni"; profile.Bio = "Private bio"; profile.Profession = "Architect"; profile.Photo = "/media/" + new string('a', 32) + ".jpg";
+            profile.City = "Teaserpur";
+            await db.SaveChangesAsync();
+        }
+        var teaser = Assert.Single(Assert.IsType<Page<Person>>(await f.Call(null, "people?city=Teaserpur")).Items);
+        Assert.Equal(("Asha", "", "", "/media/preview/" + new string('a', 32) + ".jpg"), (teaser.Name, teaser.Bio, teaser.Profession, teaser.Photo));
+        Assert.Equal(["Running"], teaser.Interests);
+        var member = Assert.Single(Assert.IsType<Page<Person>>(await f.Call(await f.Member(), "people?city=Teaserpur")).Items);
+        Assert.Equal(("Asha  Teaser Kulkarni", "Private bio", "Architect", "/media/" + new string('a', 32) + ".jpg"), (member.Name, member.Bio, member.Profession, member.Photo));
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, "people?page=2"))).Status);
+        Assert.IsType<Page<Person>>(await f.Call(id, "people?page=2"));
     }
     [Fact] public async Task Dating_requires_mutual_opt_in_and_private_member_profiles_are_authenticated_only()
     {
@@ -390,7 +409,7 @@ public class CommunityTests(DatabaseFixture f)
         Assert.Equal(400,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(admin,"admin/moderate",new ModerateInput(user,"feature"),"POST"))).Status);
         await f.Call(admin,"admin/moderate",new ModerateInput(user,"suspend"),"POST");
         Assert.Equal(403,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(user,"session"))).Status);
-        Assert.Equal(404,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(null,"people/"+user))).Status);
+        Assert.Equal(404,(await Assert.ThrowsAsync<ApiException>(()=>f.Call(admin,"people/"+user))).Status);
     }
     [Fact] public async Task Account_deletion_removes_conversations_and_anonymizes_reports()
     {

@@ -136,12 +136,23 @@ public class DiscoveryScrollTests
         Assert.Equal(new[] { 1, 2, 1 }, api.Pages);
     }
 
+    [Fact]
+    public async Task Signed_out_visitors_do_not_request_further_pages()
+    {
+        var api = new PeopleApi(); var screen = new Harness(api, signedIn: false);
+        api.Results.Enqueue(() => Task.FromResult(new Page<Person>([Person()], 30, 1, 1)));
+        await screen.Reload();
+        await screen.More();
+        Assert.Equal(new[] { 1 }, api.Pages);
+    }
+
     static Person Person() => new(Guid.NewGuid(), "Member", "Pune", "", "", [], [], null, null, null, false, false, "");
     sealed class Harness : Discover
     {
-        public Harness(IProfilesApi api)
+        public Harness(IProfilesApi api, bool signedIn = true)
         {
             Profiles = api;
+            if (signedIn) Session = new Session(Guid.NewGuid(), "Member", true, false, false, true, BasicProfileComplete: true);
             typeof(Discover).GetField("locationReady", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(this, true);
         }
         public Task Reload() => Refresh();

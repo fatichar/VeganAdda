@@ -8,6 +8,8 @@ namespace VeganAdda.Web.Features.Discovery;
 
 public sealed class DiscoveryService(FeatureContext context, ProfileVisibility visibility, PeopleProjection projection) : FeatureService(context)
 {
+    // Signed-out visitors see a single page of teaser cards.
+    public const int AnonymousPages = 1;
     public async Task<Page<Person>> SearchPeople(DiscoveryInput input)
     {
         await ActiveViewer();
@@ -19,6 +21,7 @@ public sealed class DiscoveryService(FeatureContext context, ProfileVisibility v
         if (!Viewer.HasValue && (input.ConnectionsOnly || locationSupplied || distanceSort || input.MinAge.HasValue || input.MaxAge.HasValue || input.IncludeNonVegan || genders.Length > 0
             || !string.IsNullOrEmpty(input.Search) || !string.IsNullOrEmpty(input.Interest) || !string.IsNullOrEmpty(input.Intent) || !string.IsNullOrEmpty(input.Event) || input.CheckedIn))
             throw new ApiException(401, "Sign in to use member filters.");
+        if (!Viewer.HasValue && input.Page > AnonymousPages) throw new ApiException(401, "Sign in to see more people.");
         if (input.MinAge is < 18 or > 120 || input.MaxAge is < 18 or > 120 || input.MinAge > input.MaxAge)
             throw new ApiException(400, "Choose an age range between 18 and 120.");
         if ((locationSupplied || distanceSort) && (input.Latitude is not double lat || !double.IsFinite(lat) || lat < -90 || lat > 90
