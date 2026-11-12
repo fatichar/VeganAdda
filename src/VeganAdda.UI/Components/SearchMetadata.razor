@@ -6,14 +6,15 @@
     {
         <link rel="canonical" href="@($"https://veganadda.com{path}")" />
     }
-    else
+    else if (!AwaitingEvent)
     {
         <meta name="robots" content="noindex, follow" />
     }
 </HeadContent>
 
 @code {
-    [Parameter] public bool EventAvailable { get; set; }
+    // True: the event exists. False: it is missing. Null: not yet known (or a transient error).
+    [Parameter] public bool? EventAvailable { get; set; }
     // Only public content gets an indexable canonical. Member-only screens show
     // sign-in prompts to crawlers and must not become duplicate search results.
     private string? CanonicalPath
@@ -23,12 +24,14 @@
             var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/').ToLowerInvariant();
             if (path is "" or "/events" or "/help" or "/privacy" or "/terms")
                 return path == "" ? "/" : path;
-            if (EventAvailable && path.StartsWith("/events/", StringComparison.Ordinal)
-                && Guid.TryParse(path[8..], out var eventId))
+            if (EventAvailable == true && EventId(path) is { } eventId)
                 return $"/events/{eventId:D}";
             return null;
         }
     }
+    private bool AwaitingEvent => EventAvailable is null && EventId(new Uri(Nav.Uri).AbsolutePath.TrimEnd('/')) is not null;
+    private static Guid? EventId(string path)
+        => path.StartsWith("/events/", StringComparison.OrdinalIgnoreCase) && Guid.TryParse(path[8..], out var id) ? id : null;
 
     protected override void OnInitialized() => Nav.LocationChanged += LocationChanged;
     private void LocationChanged(object? sender, LocationChangedEventArgs args) => _ = InvokeAsync(StateHasChanged);

@@ -96,6 +96,21 @@ public class HttpTests : IDisposable
     }
 
     [Fact]
+    public async Task Search_metadata_canonicalizes_available_events()
+    {
+        Guid id;
+        await using (var db = f.Db())
+        {
+            var e = new VeganAdda.Web.Data.Gathering { Title = "Canonical test", City = "Pune", Published = true, Start = DateTimeOffset.UtcNow.AddDays(2), End = DateTimeOffset.UtcNow.AddDays(3) };
+            db.Events.Add(e); await db.SaveChangesAsync(); id = e.Id;
+        }
+        using var client = Client();
+        var html = await client.GetStringAsync($"/events/{id.ToString("D").ToUpperInvariant()}?utm_source=search");
+        Assert.Contains($"rel=\"canonical\" href=\"https://veganadda.com/events/{id:D}\"", html);
+        Assert.DoesNotContain("noindex", html);
+    }
+
+    [Fact]
     public async Task Public_sitemap_is_discoverable_and_unknown_routes_stay_not_found()
     {
         using var client = Client();
