@@ -50,9 +50,13 @@ public class PreciseLocationTests(DatabaseFixture f)
         Assert.True(saved.VeganVerified); // Private coordinate changes do not require profile review.
         foreach (var audience in new Guid?[] { null, viewer })
         {
-            var person = JsonSerializer.Serialize(await f.Call(audience, "people/" + id), Wire.Json);
-            Assert.DoesNotContain("latitude", person, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("longitude", person, StringComparison.OrdinalIgnoreCase);
+            if (audience == null) Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(audience, "people/" + id))).Status);
+            else
+            {
+                var person = JsonSerializer.Serialize(await f.Call(audience, "people/" + id), Wire.Json);
+                Assert.DoesNotContain("latitude", person, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("longitude", person, StringComparison.OrdinalIgnoreCase);
+            }
             var people = JsonSerializer.Serialize(await f.Call(audience, "people"), Wire.Json);
             Assert.DoesNotContain("latitude", people, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("longitude", people, StringComparison.OrdinalIgnoreCase);

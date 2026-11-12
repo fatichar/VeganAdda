@@ -14,10 +14,11 @@ public sealed class ProfileVisibility(FeatureContext context) : FeatureService(c
             && (db.Accounts.Any(a => a.Id == v && a.Admin) || p.Id == v || !db.Profiles.Any(x => x.Id == v && x.TestProfile) || db.Accounts.Any(a => a.Id == p.Id && a.Admin))
             && !db.Blocks.Any(b => (b.Owner == v && b.Subject == p.Id) || (b.Subject == v && b.Owner == p.Id)));
     }
-    public Task<bool> CanReadPhoto(string url, Guid? id, bool isAdmin, bool isModerator)
+    // Signed-out visitors may read only the blurred preview of a public profile photo, never the original.
+    public Task<bool> CanReadPhoto(string url, Guid? id, bool isAdmin, bool isModerator, bool preview = false)
         => db.Profiles.AnyAsync(p => p.Photo == url && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended)
             && ((id.HasValue && p.Id == id) || isAdmin || (isModerator && p.IsVegan == true && !p.VeganVerified && !p.TestProfile)
-                || (db.Profiles.Where(BasicProfile.Complete).Any(x => x.Id == p.Id) && !p.TestProfile && (id.HasValue || p.Public)
+                || (db.Profiles.Where(BasicProfile.Complete).Any(x => x.Id == p.Id) && !p.TestProfile && (id.HasValue || (preview && p.Public))
                     && (!id.HasValue || (db.Profiles.Where(BasicProfile.Complete).Any(x => x.Id == id)
                         && (!db.Profiles.Any(x => x.Id == id && x.TestProfile) || db.Accounts.Any(a => a.Id == p.Id && a.Admin))
                         && !db.Blocks.Any(b => (b.Owner == id && b.Subject == p.Id) || (b.Subject == id && b.Owner == p.Id)))))));

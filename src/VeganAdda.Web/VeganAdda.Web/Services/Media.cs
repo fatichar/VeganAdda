@@ -11,6 +11,30 @@ namespace VeganAdda.Web.Services;
 public static class Media
 {
     private static readonly SemaphoreSlim UploadSlots = new(2, 2);
+    private static readonly SemaphoreSlim PreviewSlots = new(2, 2);
+    internal const int PreviewSize = 320;
+    internal const float PreviewBlur = 6f;
+
+    internal static async Task WritePreview(string source, string destination)
+    {
+        using var decoded = SKBitmap.Decode(source) ?? throw new ApiException(404, "Photo not found.");
+        var scale = Math.Min(1d, (double)PreviewSize / Math.Max(decoded.Width, decoded.Height));
+        var info = new SKImageInfo(Math.Max(1, (int)(decoded.Width * scale)), Math.Max(1, (int)(decoded.Height * scale)));
+        using var small = decoded.Resize(info, new SKSamplingOptions(SKFilterMode.Linear)) ?? throw new ApiException(404, "Photo not found.");
+        using var surface = SKSurface.Create(info);
+        using (var paint = new SKPaint { ImageFilter = SKImageFilter.CreateBlur(PreviewBlur, PreviewBlur, SKShaderTileMode.Clamp) })
+        using (var image = SKImage.FromBitmap(small))
+            surface.Canvas.DrawImage(image, 0, 0, new SKSamplingOptions(SKFilterMode.Linear), paint);
+        using var snapshot = surface.Snapshot(); using var encoded = snapshot.Encode(SKEncodedImageFormat.Jpeg, 80);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var output = File.Create(temporary)) encoded.SaveTo(output);
+            File.Move(temporary, destination, overwrite: true);
+        }
+        finally { File.Delete(temporary); }
+    }
     public static void MapMedia(this WebApplication app)
     {
         var root = Path.GetFullPath(app.Configuration["Storage:MediaPath"] ?? Path.Combine(app.Environment.ContentRootPath, "uploads"));
@@ -91,6 +115,25 @@ public static class Media
                 || (id.HasValue && (File.Exists(Path.Combine(root, name + ".owner-" + id.Value.ToString("N"))) || await db.Accounts.AnyAsync(a => a.Id == id && a.Admin)));
             var file = Path.Combine(root, name);
             return visible && File.Exists(file) ? Results.File(file, name.EndsWith(".jpg") ? "image/jpeg" : name.EndsWith(".png") ? "image/png" : "image/webp") : Results.NotFound();
+        });
+        // Blurred, downscaled profile photo for signed-out visitors. Generated once and cached beside the original.
+        app.MapGet("/media/preview/{name}", async (string name, CommunityDb db, IActor actor, ProfileVisibility visibility) =>
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[a-f0-9]{32}\.(jpg|png|webp)$")) return Results.NotFound();
+            var id = actor.Id;
+            if (id.HasValue && !await db.Accounts.AnyAsync(a => a.Id == id && !a.Suspended)) return Results.NotFound();
+            var isAdmin = id.HasValue && await db.Accounts.AnyAsync(a => a.Id == id && a.Admin);
+            var source = Path.Combine(root, name);
+            if (!File.Exists(source) || !(await visibility.CanReadPhoto("/media/" + name, id, isAdmin, false, preview: true)
+                || (id.HasValue && File.Exists(source + ".owner-" + id.Value.ToString("N"))))) return Results.NotFound();
+            var preview = Path.Combine(root, "previews", name);
+            if (!File.Exists(preview))
+            {
+                if (!await PreviewSlots.WaitAsync(TimeSpan.FromSeconds(5))) throw new ApiException(429, "Photo processing is busy. Please try again in a moment.");
+                try { if (!File.Exists(preview)) await WritePreview(source, preview); }
+                finally { PreviewSlots.Release(); }
+            }
+            return Results.File(preview, "image/jpeg");
         });
     }
 }

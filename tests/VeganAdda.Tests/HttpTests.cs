@@ -91,7 +91,7 @@ public class HttpTests : IDisposable
         await Post(reviewer, "/api/admin/profile-feedback", input);
         Assert.Equal(input.Note, (await owner.GetFromJsonAsync<ProfileInput>("/api/profile"))!.ReviewNote);
         Assert.DoesNotContain(input.Note, await outsider.GetStringAsync($"/api/people/{member}"));
-        Assert.DoesNotContain(input.Note, await anonymous.GetStringAsync($"/api/people/{member}"));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync($"/api/people/{member}")).StatusCode);
         Assert.True((await owner.GetFromJsonAsync<ProfileInput>("/api/profile"))!.VeganVerified);
     }
 
@@ -143,10 +143,15 @@ public class HttpTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, await Delete(reviewer, path, new DeleteInput("delete")));
         Assert.Equal(HttpStatusCode.Conflict, await Delete(reviewer, $"/api/admin/members/{admin}", confirm));
         Assert.Equal(HttpStatusCode.Conflict, await Delete(reviewer, $"/api/admin/members/{suspendedAdmin}", confirm));
-        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync($"/api/people/{member}")).StatusCode);
+        using var peerClient = Client(peer);
+        var preview = Path.Combine(storage, "previews", Path.GetFileName(photo));
+        Directory.CreateDirectory(Path.GetDirectoryName(preview)!);
+        await File.WriteAllTextAsync(preview, "fixture");
+        Assert.Equal(HttpStatusCode.OK, (await peerClient.GetAsync($"/api/people/{member}")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, await Delete(reviewer, path, confirm));
         Assert.Equal(HttpStatusCode.NotFound, await Delete(reviewer, path, confirm));
-        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync($"/api/people/{member}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await peerClient.GetAsync($"/api/people/{member}")).StatusCode);
+        Assert.False(File.Exists(preview));
         Assert.Equal(HttpStatusCode.OK, (await reviewer.GetAsync($"/api/admin/members/{admin}")).StatusCode);
         await using var verify = f.Db();
         Assert.Null(await verify.Accounts.FindAsync(member));
@@ -218,7 +223,8 @@ public class HttpTests : IDisposable
         var chat = await connection.GetStringAsync("/messages/" + VeganAdda.Web.Features.Shared.FeatureService.Pair(applicant, referrer));
         Assert.Contains("I confirm this person is vegan", chat);
         Assert.DoesNotContain(input.Explanation, chat);
-        var publicPerson = await anon.GetStringAsync($"/api/people/{applicant}");
+        using var stranger = Client(await f.Member());
+        var publicPerson = await stranger.GetStringAsync($"/api/people/{applicant}");
         Assert.DoesNotContain(input.Explanation, publicPerson); Assert.DoesNotContain(input.EvidenceUrls[0], publicPerson);
         var review = await reviewer.GetFromJsonAsync<ProfileReview>($"/api/admin/members/{applicant}");
         Assert.Equal(input.Explanation, review!.Verification!.Explanation);
@@ -460,11 +466,28 @@ public class HttpTests : IDisposable
         var saved = (await c.GetFromJsonAsync<ProfileInput>("/api/profile"))!;
         Assert.True(saved.VeganVerified);
         Assert.Equal(profile.PhotoFocus, saved.PhotoFocus);
-        using var anon = Client(); Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
-        Assert.Equal(profile.PhotoFocus, (await anon.GetFromJsonAsync<Person>($"/api/people/{user}"))!.PhotoFocus);
+        using var anon = Client();
+        var preview = "/media/preview/" + path[7..];
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync(path)).StatusCode);
+        using (var response = await anon.GetAsync(preview))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("image/jpeg", response.Content.Headers.ContentType!.MediaType);
+            using var thumbnail = SKBitmap.Decode(await response.Content.ReadAsByteArrayAsync());
+            Assert.True(thumbnail.Width <= 320 && thumbnail.Height <= 320);
+        }
+        Assert.Equal(profile.PhotoFocus, (await other.GetFromJsonAsync<Person>($"/api/people/{user}"))!.PhotoFocus);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anon.GetAsync($"/api/people/{user}")).StatusCode);
         using var admin = Client(await f.Member(admin: true));
         Assert.Equal(HttpStatusCode.OK, (await Post(admin, "/api/admin/profile-review", new VeganVerificationInput(user, true))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK,(await anon.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await anon.GetAsync(preview)).StatusCode);
+        saved.Public = false;
+        Assert.Equal(HttpStatusCode.OK, (await Post(c, "/api/profile", saved)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync(preview)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync(path)).StatusCode);
+        saved.Public = true;
 
         saved.PhotoFocus = null;
         Assert.Equal(HttpStatusCode.OK, (await Post(c, "/api/profile", saved)).StatusCode);

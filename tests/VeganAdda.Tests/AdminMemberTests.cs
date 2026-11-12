@@ -245,6 +245,6 @@ public class AdminMemberTests(DatabaseFixture f)
         Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, $"admin/members/{member}"))).Status);
         if (suspended)
             Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => f.Call(viewer, $"people/{member}"))).Status);
-        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, $"people/{member}"))).Status);
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, $"people/{member}"))).Status);
     }
 }

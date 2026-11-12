@@ -13,6 +13,12 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
     internal static PhotoFocus? GetPhotoFocus(Profile profile) =>
         profile.PhotoFocusX is int x && profile.PhotoFocusY is int y ? new(x, y) : null;
 
+    internal static string FirstName(string name) => name.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+
+    // Anonymous viewers may only load the blurred preview served by Media; the original requires sign-in.
+    public const string PreviewPrefix = "/media/preview/";
+    internal static string PreviewUrl(string photo) => photo.StartsWith("/media/", StringComparison.Ordinal) ? PreviewPrefix + photo[7..] : "";
+
     // A fixed number of queries per page, never one query per card.
     public async Task<List<Person>> Many(List<Profile> profiles)
     {
@@ -30,10 +36,12 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
         {
             relationships.TryGetValue(p.Id, out var relation);
             var state = relation?.State == "accepted" ? "connected" : relation?.State == "pending" ? (relation.RequestedBy == Viewer ? "sent" : "received") : "none";
-            return new Person(p.Id, p.Name, p.City, p.Bio, p.Photo, p.Interests,
+            // Signed-out visitors get a teaser: first name, a blurred preview photo, and no bio or profession.
+            var member = Viewer.HasValue;
+            return new Person(p.Id, member ? p.Name : FirstName(p.Name), p.City, member ? p.Bio : "", member ? p.Photo : PreviewUrl(p.Photo), p.Interests,
                 p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), Viewer.HasValue ? p.Instagram : null, Viewer.HasValue ? p.LinkedIn : null, Viewer.HasValue ? p.Website : null,
                 p.Featured && p.Public && p.FeatureConsent, saved.Contains(p.Id), p.Id == Viewer ? "self" : state,
-                demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), p.Profession, GetPhotoFocus(p));
+                demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), member ? p.Profession : "", GetPhotoFocus(p));
         }).ToList();
     }
 }
