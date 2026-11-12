@@ -1,0 +1,36 @@
+@implements IDisposable
+@inject NavigationManager Nav
+
+<HeadContent>
+    @if (CanonicalPath is { } path)
+    {
+        <link rel="canonical" href="@($"https://veganadda.com{path}")" />
+    }
+    else
+    {
+        <meta name="robots" content="noindex, follow" />
+    }
+</HeadContent>
+
+@code {
+    [Parameter] public bool EventAvailable { get; set; }
+    // Only public content gets an indexable canonical. Member-only screens show
+    // sign-in prompts to crawlers and must not become duplicate search results.
+    private string? CanonicalPath
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/').ToLowerInvariant();
+            if (path is "" or "/events" or "/help" or "/privacy" or "/terms")
+                return path == "" ? "/" : path;
+            if (EventAvailable && path.StartsWith("/events/", StringComparison.Ordinal)
+                && Guid.TryParse(path[8..], out var eventId))
+                return $"/events/{eventId:D}";
+            return null;
+        }
+    }
+
+    protected override void OnInitialized() => Nav.LocationChanged += LocationChanged;
+    private void LocationChanged(object? sender, LocationChangedEventArgs args) => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Nav.LocationChanged -= LocationChanged;
+}

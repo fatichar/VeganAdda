@@ -72,6 +72,48 @@ public class HttpTests : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
         request.Headers.Add("X-CSRF-TOKEN", token!.Token); var response = await c.SendAsync(request); if (!response.IsSuccessStatusCode) throw new Exception($"HTTP {response.StatusCode}: {await response.Content.ReadAsStringAsync()}"); return response;
     }
+    [Theory]
+    [InlineData("/?utm_source=search", "https://veganadda.com/")]
+    [InlineData("/help?utm_source=search", "https://veganadda.com/help")]
+    [InlineData("/events", "https://veganadda.com/events")]
+    [InlineData("/signin?returnUrl=%2Fmessages", null)]
+    [InlineData("/people/00000000-0000-0000-0000-000000000000", null)]
+    [InlineData("/events/00000000-0000-0000-0000-000000000000", null)]
+    public async Task Search_metadata_canonicalizes_public_pages_and_excludes_member_screens(string path, string? canonical)
+    {
+        using var client = Client();
+        var html = await client.GetStringAsync(path);
+        if (canonical is null)
+        {
+            Assert.Contains("name=\"robots\" content=\"noindex, follow\"", html);
+            Assert.DoesNotContain("rel=\"canonical\"", html);
+        }
+        else
+        {
+            Assert.Contains($"rel=\"canonical\" href=\"{canonical}\"", html);
+            Assert.DoesNotContain("noindex", html);
+        }
+    }
+
+    [Fact]
+    public async Task Public_sitemap_is_discoverable_and_unknown_routes_stay_not_found()
+    {
+        using var client = Client();
+        Assert.Contains("Sitemap: https://veganadda.com/sitemap.xml", await client.GetStringAsync("/robots.txt"));
+        var sitemap = System.Xml.Linq.XDocument.Parse(await client.GetStringAsync("/sitemap.xml"));
+        System.Xml.Linq.XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
+        foreach (var location in sitemap.Descendants(ns + "loc"))
+        {
+            var uri = new Uri(location.Value);
+            Assert.Equal("https", uri.Scheme);
+            Assert.Equal("veganadda.com", uri.Host);
+            var html = await client.GetStringAsync(uri.PathAndQuery);
+            Assert.Contains($"rel=\"canonical\" href=\"{location.Value}\"", html);
+            Assert.DoesNotContain("noindex", html);
+        }
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/not-a-real-search-page")).StatusCode);
+    }
+
     [Fact]
     public async Task Profile_feedback_requires_admin_and_csrf_and_keeps_the_note_private()
     {
