@@ -14,6 +14,9 @@ public static class ChatEncryptionMigration
     public const string Expand = "ExpandChatEncryption";
     public const string Staged = "PersistChatKeyRepairs";
     public const string Contract = "RemoveChatPlaintext";
+    private const string LegacyContract = "RequireChatEncryption";
+    private const string ContractMigrationId = "20261111201435_RemoveChatPlaintext";
+    private const string StagedMigrationId = "20261111194657_PersistChatKeyRepairs";
     private const long MigrationLock = 8743651203778414;
     private const int BatchSize = 200;
     private const string LegacyMessage = """("BodyKeyId" IS NULL OR "EncryptedBody" IS NULL)""";
@@ -92,11 +95,28 @@ public static class ChatEncryptionMigration
         }
     }
 
-    public static async Task MigrateEncryptedOnly(CommunityDb db, ChatEncryption encryption, CancellationToken ct = default)
+    public static async Task MigrateEncryptedOnly(CommunityDb db, ChatEncryption encryption,
+        CancellationToken ct = default, bool allowLegacyContractCompatibility = false)
     {
         var applied = (await db.Database.GetAppliedMigrationsAsync(ct)).ToArray();
         if (Includes(applied, Contract))
         {
+            await db.Database.MigrateAsync(ct);
+            await AuthenticateKeys(db, encryption, ct);
+            return;
+        }
+
+        // Older development databases may already have applied the original contract
+        // migration. Its ID was removed during the rollback window, then the equivalent
+        // operation was reintroduced as RemoveChatPlaintext. The old migration already
+        // removed plaintext, so the staged backfill query below cannot run against it.
+        if (Includes(applied, LegacyContract))
+        {
+            if (!allowLegacyContractCompatibility)
+                throw new InvalidOperationException(
+                    "The database uses the legacy RequireChatEncryption migration. Run the Development compatibility recovery before using this database with the current migration set.");
+
+            await CompleteLegacyContract(db, encryption, ct);
             await db.Database.MigrateAsync(ct);
             await AuthenticateKeys(db, encryption, ct);
             return;
@@ -123,6 +143,70 @@ public static class ChatEncryptionMigration
             await transaction.CommitAsync(ct);
         }
         await db.Database.MigrateAsync(ct);
+    }
+
+    private static async Task CompleteLegacyContract(CommunityDb db, ChatEncryption encryption, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({MigrationLock})", ct);
+
+        var compatible = await db.Database.SqlQueryRaw<bool>("""
+            SELECT
+                NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                        AND ((table_name = 'Messages' AND column_name = 'Text')
+                          OR (table_name = 'Relationships' AND column_name = 'Introduction'))
+                )
+                AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'Messages'
+                        AND column_name = 'BodyKeyId' AND is_nullable = 'NO'
+                )
+                AND EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'Messages'
+                        AND column_name = 'EncryptedBody' AND is_nullable = 'NO'
+                )
+                AND EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'CK_Messages_EncryptedBody' AND convalidated
+                )
+                AND EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'CK_Relationships_EncryptedIntroduction' AND convalidated
+                )
+                AND EXISTS (
+                    SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261111194657_PersistChatKeyRepairs'
+                )
+            AS "Value"
+            """).SingleAsync(ct);
+        if (!compatible)
+            throw new InvalidOperationException(
+                "The legacy chat-encryption migration is recorded, but the database does not match its encrypted-only schema. No compatibility repair was applied.");
+
+        // Validate ciphertext with the configured key ring before changing schema metadata.
+        await AuthenticateKeys(db, encryption, ct);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            LOCK TABLE "Relationships", "Messages" IN ACCESS EXCLUSIVE MODE;
+            CREATE INDEX IF NOT EXISTS "IX_Messages_BodyKeyId" ON "Messages" ("BodyKeyId");
+            CREATE INDEX IF NOT EXISTS "IX_Relationships_IntroductionKeyId" ON "Relationships" ("IntroductionKeyId")
+                WHERE "IntroductionKeyId" IS NOT NULL;
+            CLUSTER "Messages" USING "PK_Messages";
+            CLUSTER "Relationships" USING "PK_Relationships";
+            ALTER TABLE "Messages" SET WITHOUT CLUSTER;
+            ALTER TABLE "Relationships" SET WITHOUT CLUSTER;
+            """);
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            SELECT {ContractMigrationId}, "ProductVersion"
+            FROM "__EFMigrationsHistory"
+            WHERE "MigrationId" = {StagedMigrationId}
+            ON CONFLICT ("MigrationId") DO NOTHING
+            """, ct);
+        await transaction.CommitAsync(ct);
     }
 
     /// <summary>

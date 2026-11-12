@@ -246,7 +246,8 @@ if (args.Contains("--migrate"))
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     diagnosticLog.LogInformation("Database migrations started.");
-    await ChatEncryptionMigration.MigrateEncryptedOnly(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
+    await ChatEncryptionMigration.MigrateEncryptedOnly(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>(),
+        allowLegacyContractCompatibility: dev);
     diagnosticLog.LogInformation("Database migrations completed.");
     return;
 }
@@ -255,7 +256,8 @@ if (dev)
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<CommunityDb>();
     diagnosticLog.LogInformation("Database migrations started.");
-    await ChatEncryptionMigration.MigrateEncryptedOnly(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>());
+    await ChatEncryptionMigration.MigrateEncryptedOnly(db, scope.ServiceProvider.GetRequiredService<ChatEncryption>(),
+        allowLegacyContractCompatibility: true);
     diagnosticLog.LogInformation("Database migrations completed.");
     if (builder.Configuration.GetValue<bool>("Development:Seed"))
     {
