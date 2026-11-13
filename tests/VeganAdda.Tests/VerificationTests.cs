@@ -158,7 +158,7 @@ public class VerificationTests(DatabaseFixture f)
             await db.SaveChangesAsync();
         }
         Assert.Equal(VerificationState.NotRequested, (await As(applicant, s => s.GetVerification())).Status);
-        var input = Input(referrer, "Private evidence description", ["https://example.org/vegan-evidence"]);
+        var input = Input(referrer, "Private evidence description");
         await As(applicant, s => s.SubmitVerification(input));
         await As(applicant, s => s.SubmitVerification(input)); // Transport retry is idempotent.
         var request = (await As(applicant, s => s.GetVerification())).Request!;
@@ -380,8 +380,8 @@ public class VerificationTests(DatabaseFixture f)
         var applicant = await Applicant(); var verified = await f.Member(); var referrer = await f.Member();
         Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => As(null, s => s.GetVerification()))).Status);
         Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(Input())))).Status);
-        // Evidence alone never reaches reviewers, so a verified vegan referrer is required.
-        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(Input(explanation: "Evidence only", links: ["https://instagram.com/example"]))))).Status);
+        // Reviewers need a social profile or a verified vegan referrer to check.
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(Input(explanation: "I have been vegan for years."))))).Status);
         Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => As(applicant, s => s.SubmitVerification(Input(referrer, links: ["javascript:alert(1)"]))))).Status);
         Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => As(verified, s => s.SubmitVerification(Input(referrer, explanation: "Already verified"))))).Status);
         await As(applicant, s => s.SubmitVerification(Input(referrer, explanation: "Private")));
@@ -407,5 +407,29 @@ public class VerificationTests(DatabaseFixture f)
         Assert.Null(anonymous.Instagram); Assert.Null(anonymous.LinkedIn); Assert.Null(anonymous.Website);
         var signedIn = (Person)await f.Call(viewer, $"people/{member}");
         Assert.NotNull(signedIn.Instagram); Assert.NotNull(signedIn.LinkedIn); Assert.NotNull(signedIn.Website);
+    }
+
+    [Theory]
+    [InlineData("profile")]
+    [InlineData("request")]
+    public async Task Social_profiles_send_requests_to_reviewers_without_a_referral(string source)
+    {
+        var applicant = await Applicant(); var admin = await f.Member(admin: true); var moderator = await f.Member();
+        await using (var db = f.Db())
+        {
+            (await db.Accounts.FindAsync(moderator))!.Moderator = true;
+            if (source == "profile") (await db.Profiles.FindAsync(applicant))!.LinkedIn = "https://linkedin.com/in/example";
+            await db.SaveChangesAsync();
+        }
+        var baseline = ((UnreadCounts)await f.Call(admin, "unread")).PendingAdminActions;
+        await As(applicant, s => s.SubmitVerification(Input(explanation: source == "profile" ? "" : "My Instagram: instagram.com/example")));
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        Assert.True(request.ReadyForReview);
+        Assert.Equal(baseline + 1, ((UnreadCounts)await f.Call(admin, "unread")).PendingAdminActions);
+        await using (var db = f.Db())
+            foreach (var reviewer in new[] { admin, moderator })
+                Assert.Equal(1, await db.Notifications.CountAsync(n => n.UserId == reviewer && n.Kind == "verification-request"));
+        await f.Call(moderator, "moderation/profile-review", new VeganVerificationInput(applicant, true, RequestId: request.Id), "POST");
+        Assert.Equal(VerificationState.Verified, (await As(applicant, s => s.GetVerification())).Status);
     }
 }

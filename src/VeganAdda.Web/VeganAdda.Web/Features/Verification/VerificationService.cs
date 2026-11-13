@@ -34,8 +34,9 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
             r.ReferrerId.HasValue ? names.GetValueOrDefault(r.ReferrerId.Value) : null,
             ReferralStatus(r.Status, r.ReferrerId.HasValue && eligible.Contains(r.ReferrerId.Value)))).ToArray();
         var first = referrers.FirstOrDefault();
+        var ready = row.Status == VerificationState.UnderReview && await VerificationReview.Awaiting(db).AnyAsync(p => p.Id == applicant);
         return new(row.Id, row.Status, row.Explanation, row.EvidenceUrls, first?.Id, first?.Name,
-            first?.Status ?? ReferralState.NotRequested, row.Feedback, row.Submitted, referrers);
+            first?.Status ?? ReferralState.NotRequested, row.Feedback, row.Submitted, referrers, ready);
     }
 
     public async Task<VerificationStatus> GetVerification()
@@ -66,9 +67,6 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var referrers = (input.ReferrerIds ?? []).Concat(input.ReferrerId.HasValue ? [input.ReferrerId.Value] : []).Distinct().Order().ToArray();
         if (referrers.Length > 10 || referrers.Contains(Guid.Empty)) throw new ApiException(400, "Choose up to ten verified vegans.");
         var urls = input.EvidenceUrls.Select(u => Url(u)).Where(u => u != null).Cast<string>().Distinct().ToArray();
-        // Reviewers only see a request after a verified vegan confirms it, so a referrer is required.
-        if (referrers.Length == 0)
-            throw new ApiException(400, "Choose at least one verified vegan who can confirm you are vegan.");
         await using var tx = await db.Database.BeginTransactionAsync();
         foreach (var key in referrers.Select(id => Pair(me.Id, id)).Order()) await PairLock(key);
         await UserLock(me.Id);
@@ -82,9 +80,19 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         {
             if (!await Eligible(me.Id, referrer)) throw new ApiException(409, "Choose an active verified vegan member.");
         }
+        // Reviewers need something to check: a social profile, or a verified vegan who can confirm.
+        var social = VerificationReview.HasSocialProfile(profile, explanation, urls);
+        if (!social && referrers.Length == 0)
+            throw new ApiException(400, "Add your Instagram or LinkedIn profile, or choose a verified vegan who can confirm you are vegan.");
         db.VerificationRequests.Add(new() { ApplicantId = me.Id, ClientId = input.ClientId, Explanation = explanation,
             EvidenceUrls = urls, Referrers = referrers.Select(id => new VerificationReferral { ReferrerId = id }).ToList() });
         var recipients = new List<Guid>();
+        if (social)
+        {
+            recipients.AddRange(await Reviewers());
+            foreach (var recipient in recipients)
+                Notice(recipient, "verification-request", "A member requested vegan verification.", "/moderation");
+        }
         foreach (var target in referrers)
         {
             var key = Pair(me.Id, target);
@@ -172,8 +180,8 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var response = input.Confirm ? ReferralState.Confirmed : ReferralState.Declined;
         if (referral.Status == response) return new Ok();
         if (referral.Status != ReferralState.AwaitingConfirmation) throw new ApiException(409, "You have already responded to this request.");
-        // The first confirmation is what puts the request in the reviewers' queue.
-        var enteringReview = input.Confirm && !await db.VerificationReferrals.AnyAsync(r => r.RequestId == id && r.Status == ReferralState.Confirmed);
+        // Notify reviewers when this confirmation is what puts the request in their queue.
+        var enteringReview = input.Confirm && !await VerificationReview.Awaiting(db).AnyAsync(p => p.Id == applicant);
         referral.Status = response; referral.Responded = DateTimeOffset.UtcNow;
         var recipients = await Reviewers();
         if (enteringReview)
