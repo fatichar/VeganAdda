@@ -15,7 +15,8 @@ public sealed class NotificationsService(FeatureContext context) : FeatureServic
         var pending = me.Admin
             ? await db.Profiles.Where(BasicProfile.Complete).CountAsync(p => p.IsVegan == true && !p.VeganVerified
                 && db.Accounts.Any(a => a.Id == p.Id && !a.Suspended)
-                && db.VerificationRequests.Any(r => r.ApplicantId == p.Id && r.Status == VerificationState.UnderReview))
+                && db.VerificationRequests.Any(r => r.ApplicantId == p.Id && r.Status == VerificationState.UnderReview
+                    && r.Referrers.Any(x => x.Status == ReferralState.Confirmed)))
                 + await db.Events.CountAsync(e => e.PendingReview)
                 + await db.Reports.CountAsync(r => !r.Resolved)
             : 0;

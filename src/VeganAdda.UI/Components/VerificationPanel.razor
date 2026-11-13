@@ -9,7 +9,7 @@
         @if (status.Request?.Feedback is { } feedback) { <p class="notice">@feedback</p> }
         @if (status.Status == VerificationState.UnderReview)
         {
-            <p class="small">A moderator will review your request.</p>
+            <p class="small">@(status.Request?.Referrers?.Any(r => r.Status == ReferralState.Confirmed) == true ? "A verified vegan confirmed you. A moderator will review your request." : "Waiting for a verified vegan you chose to confirm you. Your request goes to moderators after a confirmation.")</p>
             @foreach (var referrer in status.Request?.Referrers ?? []) { <p class="small">@(referrer.Name ?? "Deleted member") · @referrer.Status.Label()</p> }
             <button type="button" class="secondary" disabled="@(Busy || !RendererInfo.IsInteractive)" @onclick="Withdraw">Withdraw request</button>
         }
@@ -24,10 +24,10 @@
             {
                 <div class="verification-form">
                     <fieldset disabled="@(Busy || !RendererInfo.IsInteractive)">
-                        <p class="small">A moderator verifies your vegan status using your social links or a referral from a verified vegan. Include your social links and any other proof that shows you are vegan below. Only admins and moderators can see this information.</p>
-                        <label for="verification-explanation">Vegan verification details (optional with a referral)</label>
+                        <p class="small">Ask at least one verified vegan who knows you to confirm you are vegan. After a confirmation, moderators review your request. You can also add social links or other proof below; only admins and moderators can see it.</p>
+                        <label for="verification-explanation">Vegan verification details (optional)</label>
                         <textarea id="verification-explanation" rows="5" maxlength="4000" @bind="explanation" @bind:event="oninput" placeholder="Share social links, other proof, or tell us about being vegan…"></textarea>
-                        <label for="verification-referrer">Ask verified vegans for referrals (optional)</label>
+                        <label for="verification-referrer">Ask verified vegans to confirm you (required)</label>
                         <small>Choose up to ten verified vegans who know you. You don't need to be connected. They won't see your private verification details.</small>
                         @foreach (var person in selected)
                         {
@@ -47,7 +47,7 @@
                             else if (query.Trim().Length >= 2 && results.Count == 0) { <small role="status">No eligible verified vegans found.</small> }
                             else if (query.Trim().Length < 2) { <small>Type at least two letters to see matching members.</small> }
                         }
-                        <div class="actions"><button type="button" @onclick="Submit">Submit verification request</button><button type="button" class="secondary" @onclick="() => editing = false">Cancel</button></div>
+                        <div class="actions"><button type="button" disabled="@(selected.Count == 0)" @onclick="Submit">Submit verification request</button><button type="button" class="secondary" @onclick="() => editing = false">Cancel</button></div>
                     </fieldset>
                 </div>
             }

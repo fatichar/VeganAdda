@@ -3,7 +3,7 @@
     <section class="verification-evidence" aria-label="Private verification evidence">
         <h3>Verification request</h3>
         <p class="small">@request.Status.Label() · @request.Submitted.ToString("d MMM yyyy")</p>
-        @if (request.Explanation != "") { <p class="profile-bio">@request.Explanation</p> }
+        @if (request.Explanation != "") { <p class="profile-bio"><LinkedText Text="@request.Explanation" /></p> }
         @foreach (var url in request.EvidenceUrls) { <a class="external-link" href="@url" target="_blank" rel="noopener noreferrer nofollow">@url<Icon Name="open_in_new" /></a> }
         @foreach (var referrer in request.Referrers ?? []) { <p class="small">Referral confirmation: @(referrer.Name ?? "Deleted member") · @referrer.Status.Label()</p> }
     </section>

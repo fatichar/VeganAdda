@@ -10,6 +10,12 @@ namespace VeganAdda.Tests;
 [Collection("Postgres")]
 public class AdminMemberTests(DatabaseFixture f)
 {
+    private async Task ConfirmReferral(Guid applicant, Guid referrer)
+    {
+        var request = (await f.Feature<VerificationService, VerificationStatus>(applicant, service => service.GetVerification())).Request!;
+        await f.Feature<VerificationService, Ok>(referrer, service => service.RespondToReferral(request.Id, new(true)));
+    }
+
     [Theory]
     [InlineData(true, false, false)]
     [InlineData(true, true, false)]
@@ -29,8 +35,11 @@ public class AdminMemberTests(DatabaseFixture f)
             await db.SaveChangesAsync();
         }
         if (activeRequest)
+        {
+            var referrer = await f.Member();
             await f.Feature<VerificationService, Ok>(member, service => service.SubmitVerification(
-                new VerificationSubmission("Please verify my vegan status.", [], null, Guid.NewGuid())));
+                new VerificationSubmission("Please verify my vegan status.", [], referrer, Guid.NewGuid())));
+        }
 
         const string note = "Please add more detail to your bio.";
         await f.Feature<ModerationService, Ok>(admin, service => service.RequestProfileChanges(new(member, "  " + note + "  ")));
@@ -77,9 +86,15 @@ public class AdminMemberTests(DatabaseFixture f)
             (await db.Profiles.FindAsync(incomplete))!.City = "";
             await db.SaveChangesAsync();
         }
-        // Only a submitted request enters the review queue. Status alone is insufficient.
+        // Only a submitted request confirmed by a verified vegan enters the review queue.
+        var referrer = await f.Member(); var unconfirmed = await f.Member(); var unconfirmedReferrer = await f.Member();
+        await using (var db = f.Db()) { (await db.Profiles.FindAsync(unconfirmed))!.VeganVerified = false; await db.SaveChangesAsync(); }
         await f.Feature<VerificationService, Ok>(pending, service => service.SubmitVerification(
-            new VerificationSubmission("I have been vegan for several years.", [], null, Guid.NewGuid())));
+            new VerificationSubmission("I have been vegan for several years.", [], referrer, Guid.NewGuid())));
+        await f.Feature<VerificationService, Ok>(unconfirmed, service => service.SubmitVerification(
+            new VerificationSubmission("Awaiting a referral.", [], unconfirmedReferrer, Guid.NewGuid())));
+        Assert.DoesNotContain((await AllMembers(admin, "pending")).People, p => p.Id == pending);
+        await ConfirmReferral(pending, referrer);
         await using (var db = f.Db())
         {
             // Historical requests must still be excluded once a member becomes ineligible.
@@ -89,8 +104,9 @@ public class AdminMemberTests(DatabaseFixture f)
         }
         var rows = (await AllMembers(admin, "pending")).People;
         Assert.Contains(rows, p => p.Id == pending);
-        foreach (var id in new[] { verified, notRequested, nonVegan, suspended, incomplete })
+        foreach (var id in new[] { verified, notRequested, nonVegan, suspended, incomplete, unconfirmed })
             Assert.DoesNotContain(rows, p => p.Id == id);
+        Assert.Contains((await AllMembers(admin, "unverified")).People, p => p.Id == unconfirmed);
         Assert.All(rows, p => Assert.True(p.HasProfile && p.IsVegan == true && !p.VeganVerified && !p.Suspended));
     }
 
@@ -204,8 +220,10 @@ public class AdminMemberTests(DatabaseFixture f)
         }
         try
         {
+            var referrer = await f.Member();
             await f.Feature<VerificationService, Ok>(pending, service => service.SubmitVerification(
-                new VerificationSubmission("Please review my vegan status.", [], null, Guid.NewGuid())));
+                new VerificationSubmission("Please review my vegan status.", [], referrer, Guid.NewGuid())));
+            await ConfirmReferral(pending, referrer);
             var data = await AllMembers(admin, "pending");
             Assert.Contains(data.People, p => p.Id == pending);
             Assert.DoesNotContain(data.People, p => fixtureIds.Contains(p.Id));

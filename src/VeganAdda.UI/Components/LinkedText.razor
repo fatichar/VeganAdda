@@ -1,0 +1,25 @@
+@using System.Text.RegularExpressions
+@* Renders free text with web addresses as external links. Text stays encoded; only http(s) targets are produced. *@
+@foreach (var (text, href) in Segments(Text)) { if (href == null) { @text } else { <a href="@href" target="_blank" rel="noopener noreferrer nofollow">@text</a> } }
+@code {
+    [Parameter] public string? Text { get; set; }
+
+    static readonly Regex Address = new(@"\b(?:https?://|www\.|(?:instagram|linkedin|facebook|youtube|threads|twitter|x)\.(?:com|net)/)[^\s<>""]+",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+
+    public static IEnumerable<(string Text, string? Href)> Segments(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) yield break;
+        var at = 0;
+        foreach (Match match in Address.Matches(value))
+        {
+            var link = match.Value.TrimEnd('.', ',', ';', ':', '!', '?', ')', ']', '\'', '"');
+            var href = link.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? link : "https://" + link;
+            if (!Uri.TryCreate(href, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) continue;
+            if (match.Index > at) yield return (value[at..match.Index], null);
+            yield return (link, uri.AbsoluteUri);
+            at = match.Index + link.Length;
+        }
+        if (at < value.Length) yield return (value[at..], null);
+    }
+}
