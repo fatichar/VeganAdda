@@ -1,4 +1,4 @@
-.profile-tabs { display: flex; gap: 4px; border-bottom: 1px solid #d9dfd9; margin-bottom: 16px; }
+.profile-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
 .profile-tabs button { flex: 1; min-width: 0; border-radius: 0; padding: 8px 4px; background: transparent; color: var(--muted); border: 0; border-bottom: 3px solid transparent; font-size: .9rem; font-weight: 600; white-space: nowrap; }
 .profile-tabs button[aria-selected="true"] { border-bottom-color: var(--green); color: var(--green); font-weight: 700; }
 .profile-panel[hidden] { display: none; }
@@ -19,9 +19,9 @@
 .vegan-verification-status small { display: block; }
 .vegan-verification-status strong { font-size: 1rem; line-height: 1.35; }
 .vegan-verification-status small { margin-top: .15rem; color: var(--muted); line-height: 1.4; }
-.vegan-verification-mark { display: grid; width: 1.6rem; height: 1.6rem; flex: 0 0 1.6rem; place-items: center; border-radius: 50%; background: var(--forest); color: #fff; }
+.vegan-verification-mark { display: grid; width: 1.6rem; height: 1.6rem; flex: 0 0 1.6rem; place-items: center; border-radius: 50%; background: var(--forest); color: var(--on-accent); }
 .vegan-verification-mark ::deep .material-symbols-outlined { font-size: 1.1rem; }
-.vegan-verification-status.unverified { border-color: #d9dfd9; }
+.vegan-verification-status.unverified { border-color: var(--line); }
 .profile-editor { position: fixed; top: var(--profile-editor-top, 180px); left: 50%; transform: translateX(-50%); width: min(660px, calc(100% - 32px)); height: var(--profile-editor-height, calc(100dvh - 220px)); min-height: 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
 .profile-editor-heading { flex: none; display: flex; align-items: center; gap: .5rem; padding-bottom: .5rem; }
 .profile-editor-heading h1 { flex: 1; min-width: 0; font-size: 1.6rem; margin: 0; }
