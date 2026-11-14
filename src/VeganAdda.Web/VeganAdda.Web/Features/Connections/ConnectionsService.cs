@@ -4,11 +4,12 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 using VeganAdda.Web.Features.Profiles;
+using VeganAdda.Web.Observability;
 using VeganAdda.Web.Services;
 
 namespace VeganAdda.Web.Features.Connections;
 
-public sealed class ConnectionsService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ChatContent content) : FeatureService(context)
+public sealed class ConnectionsService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ChatContent content, LifecycleEvents lifecycle) : FeatureService(context)
 {
     public async Task<List<ConnectionItem>> Connections() => (await ConnectionsPage(pageSize: 20)).Items;
 
@@ -43,10 +44,12 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         await using var tx = await db.Database.BeginTransactionAsync(); await PairLock(key);
         var r = await db.Relationships.FindAsync(key);
         if (!await visibility.Query(includeRelatedProfiles: r?.State is "pending" or "accepted").AnyAsync(p => p.Id == input.PersonId)) throw Missing();
+        LifecycleEvent transition;
         if (action == "request")
         {
             var intro = Text(input.Introduction, 300);
             if (r?.State == "accepted" || (r?.State == "pending" && r.RequestedBy == me.Id)) return new Ok();
+            transition = r?.State == "pending" ? LifecycleEvent.ConnectionAccepted : LifecycleEvent.ConnectionRequested;
             if (r?.State == "pending")
             {
                 // A reciprocal request is an explicit mutual connection.
@@ -67,6 +70,8 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         {
             if (r == null) throw Missing();
             var incoming = r.RequestedBy != me.Id;
+            transition = action switch { "accept" => LifecycleEvent.ConnectionAccepted, "decline" => LifecycleEvent.ConnectionDeclined,
+                "cancel" => LifecycleEvent.ConnectionCancelled, _ => LifecycleEvent.ConnectionRemoved };
             if (action == "accept" && r.State == "pending" && incoming)
             {
                 r.State = "accepted";
@@ -79,7 +84,9 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
             else throw new ApiException(409, "This connection has changed. Refresh to see its current state.");
         }
         r!.Updated = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(); await tx.CommitAsync(); await changes.Changed(ChangeArea.Connections, me.Id, input.PersonId); return new Ok();
+        await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.Record(transition, me.Id);
+        await changes.Changed(ChangeArea.Connections, me.Id, input.PersonId); return new Ok();
     }
     private void CopyIntroduction(Relationship relationship)
     {
@@ -101,7 +108,7 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         if (action == "unblock")
         {
             await db.Blocks.Where(b => b.Owner == me.Id && b.Subject == id).ExecuteDeleteAsync();
-            await tx.CommitAsync(); await changes.Changed(ChangeArea.Connections, me.Id, id); return new Ok();
+            await tx.CommitAsync(); lifecycle.Record(LifecycleEvent.MemberUnblocked, me.Id); await changes.Changed(ChangeArea.Connections, me.Id, id); return new Ok();
         }
         if (!await visibility.Query(includeRelatedProfiles: true).AnyAsync(p => p.Id == id)) throw Missing();
         switch (action)
@@ -134,6 +141,8 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
             default: throw Missing();
         }
         await db.SaveChangesAsync(); await tx.CommitAsync(); var affected = new List<Guid> { me.Id, id };
+        if (action == "block") lifecycle.Record(LifecycleEvent.MemberBlocked, me.Id);
+        else if (action == "report") lifecycle.Record(LifecycleEvent.MemberReported, id, me.Id);
         if (action == "report") affected.AddRange(await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync());
         await changes.Changed(ChangeArea.Connections | ChangeArea.Notifications, affected.Distinct().ToArray()); return new Ok();
     }

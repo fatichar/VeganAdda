@@ -641,6 +641,45 @@ public class HttpTests : IDisposable
         var history = await cb.GetFromJsonAsync<MessagePage>($"/api/conversations/{key}/messages"); Assert.Single(history!.Items);
         await hub.StopAsync();
     }
+    [Fact] public async Task Safety_connection_and_moderation_transitions_are_recorded_with_identifiers_only()
+    {
+        var a = await f.Member(); var b = await f.Member(); var admin = await f.Member(admin: true);
+        using var ca = Client(a); using var cb = Client(b); using var ad = Client(admin);
+        await Post(ca, "/api/connections", new ConnectionInput(b, "Private introduction"));
+        await Post(cb, "/api/connections/accept", new ConnectionInput(a));
+        AssertLifecycleSeen("ConnectionRequested", a, a);
+        AssertLifecycleSeen("ConnectionAccepted", b, b);
+
+        Assert.Equal(HttpStatusCode.OK, (await Post(ca, $"/api/people/{b}/report", new ReportInput(b, "Spam", "Private report details"))).StatusCode);
+        AssertLifecycleSeen("MemberReported", b, a);
+        await Post(ca, $"/api/people/{b}/block", new { });
+        await Post(ca, $"/api/people/{b}/unblock", new { });
+        AssertLifecycleSeen("MemberBlocked", a, a);
+        AssertLifecycleSeen("MemberUnblocked", a, a);
+
+        await Post(ad, "/api/admin/moderate", new ModerateInput(b, "suspend"));
+        await Post(ad, "/api/admin/moderate", new ModerateInput(b, "restore"));
+        AssertLifecycleSeen("MemberSuspended", b, admin);
+        AssertLifecycleSeen("MemberRestored", b, admin);
+
+        var report = (await ad.GetFromJsonAsync<AdminData>("/api/admin?section=Reports"))!.Reports.First(r => r.SubjectId == b && !r.Resolved);
+        await Post(ad, "/api/admin/moderate", new ModerateInput(report.Id, "resolve"));
+        var resolved = Assert.Single(logs.Events, e => Name(e) == "ReportResolved" && e.Properties["SubjectId"] is ScalarValue { Value: Guid id } && id == report.Id);
+        var safeResolved = Assert.IsType<LogEvent>(SafeOperationalLogSink.Sanitize(resolved));
+        Assert.Equal(admin, ((ScalarValue)safeResolved.Properties["ActorId"]).Value);
+        Assert.Contains("report", safeResolved.RenderMessage());
+
+        foreach (var entry in logs.Events.Where(e => Name(e) != null).Select(SafeOperationalLogSink.Sanitize).OfType<LogEvent>())
+            Assert.DoesNotContain("Private", entry.RenderMessage() + string.Join(" ", entry.Properties));
+    }
+    static string? Name(LogEvent e) => e.Properties.GetValueOrDefault("EventName") is ScalarValue { Value: string name } ? name : null;
+    void AssertLifecycleSeen(string eventName, Guid accountId, Guid actorId)
+    {
+        var safe = logs.Events.Where(e => Name(e) == eventName).Select(SafeOperationalLogSink.Sanitize).OfType<LogEvent>()
+            .Where(e => e.Properties.GetValueOrDefault("AccountId") is ScalarValue { Value: Guid id } && id == accountId).ToList();
+        var entry = Assert.Single(safe);
+        Assert.Equal(actorId, ((ScalarValue)entry.Properties["ActorId"]).Value);
+    }
     static string CommunityServicePair(Guid a, Guid b) => VeganAdda.Web.Features.Shared.FeatureService.Pair(a,b);
     public void Dispose() { factory.Dispose(); foreach (var item in oldFirebaseEnvironment) Environment.SetEnvironmentVariable(item.Key, item.Value); if (Directory.Exists(storage)) Directory.Delete(storage, true); }
     record Csrf(string Token);

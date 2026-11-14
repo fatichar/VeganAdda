@@ -4,9 +4,11 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 
+using VeganAdda.Web.Observability;
+
 namespace VeganAdda.Web.Features.Events;
 
-public sealed class EventsService(FeatureContext context, EventProjection projection) : FeatureService(context)
+public sealed class EventsService(FeatureContext context, EventProjection projection, LifecycleEvents lifecycle) : FeatureService(context)
 {
     public async Task<EventCard> GetEvent(Guid id)
     {
@@ -81,11 +83,15 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         var times = ResolveTimes(input, country, state, city);
         var e = input.Id == Guid.Empty ? null : await db.Events.FindAsync(input.Id);
         if (input.Id != Guid.Empty && e == null) throw Missing();
+        var created = e == null; var wasPublished = e?.Published == true;
         e ??= new(); if (db.Entry(e).State == EntityState.Detached) db.Events.Add(e);
         e.Title = title; e.Description = description; e.Country = country; e.State = state; e.City = city; e.Venue = venue; e.Organizer = organizer; e.Registration = registration;
         e.Cover = cover; e.Start = times.Start; e.End = times.End; e.TimeZone = times.TimeZone; e.Featured = input.Featured; e.Published = input.Published;
         if (input.Published) { e.PendingReview = false; e.ReviewNote = null; e.ReviewedBy = me.Id; e.ReviewedAt = DateTimeOffset.UtcNow; }
-        await db.SaveChangesAsync(); return new Ok();
+        await db.SaveChangesAsync();
+        lifecycle.RecordSubject(created ? LifecycleEvent.EventCreated : LifecycleEvent.EventUpdated, "event", e.Id, me.Id);
+        if (e.Published != wasPublished) lifecycle.RecordSubject(e.Published ? LifecycleEvent.EventPublished : LifecycleEvent.EventUnpublished, "event", e.Id, me.Id);
+        return new Ok();
     }
     public async Task<Ok> SaveEventSubmission(EventInput input)
     {
@@ -105,6 +111,7 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         e.Cover = cover; e.Start = times.Start; e.End = times.End; e.TimeZone = times.TimeZone;
         e.Published = false; e.Featured = false; e.PendingReview = true; e.ReviewNote = null; e.ReviewedBy = null; e.ReviewedAt = null;
         await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.RecordSubject(LifecycleEvent.EventSubmitted, "event", e.Id, me.Id);
         var reviewers = await db.Accounts.Where(a => !a.Suspended && (a.Admin || a.Moderator)).Select(a => a.Id).ToArrayAsync();
         foreach (var reviewer in reviewers) Notice(reviewer, "event-submission", $"{me.Name} submitted an event for review.", "/moderation");
         if (reviewers.Length > 0) await db.SaveChangesAsync();
@@ -149,6 +156,7 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         e.ReviewedBy = reviewer.Id; e.ReviewedAt = DateTimeOffset.UtcNow;
         if (e.SubmittedBy.HasValue) Notice(e.SubmittedBy.Value, input.Approve ? "event-approved" : "event-review", input.Approve ? "Your event was approved and is now published." : "Your event needs an update before it can be published: " + e.ReviewNote, "/events/suggest");
         await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.RecordSubject(input.Approve ? LifecycleEvent.EventApproved : LifecycleEvent.EventRejected, "event", e.Id, reviewer.Id);
         var reviewers = await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync();
         if (e.SubmittedBy.HasValue) reviewers.Add(e.SubmittedBy.Value);
         await changes.Changed(reviewers.Distinct().ToArray());

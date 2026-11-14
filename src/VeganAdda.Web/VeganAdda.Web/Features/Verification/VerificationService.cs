@@ -3,9 +3,11 @@ using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 
+using VeganAdda.Web.Observability;
+
 namespace VeganAdda.Web.Features.Verification;
 
-public sealed class VerificationService(FeatureContext context) : FeatureService(context)
+public sealed class VerificationService(FeatureContext context, LifecycleEvents lifecycle) : FeatureService(context)
 {
     private static ReferralState ReferralStatus(ReferralState response, bool eligible) =>
         !eligible && response is ReferralState.AwaitingConfirmation or ReferralState.Confirmed ? ReferralState.Unavailable : response;
@@ -103,6 +105,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         }
         profile.ReviewNote = null;
         await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.Record(LifecycleEvent.VerificationRequested, me.Id);
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(me.Id).Distinct().ToArray());
         return new Ok();
     }
@@ -115,6 +118,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         if (row.Status != VerificationState.UnderReview) throw new ApiException(409, "This request is no longer under review.");
         row.Status = VerificationState.Withdrawn; row.Resolved = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.Record(LifecycleEvent.VerificationWithdrawn, me.Id);
         var recipients = await Reviewers();
         recipients.AddRange(await db.VerificationReferrals.Where(r => r.RequestId == row.Id && r.ReferrerId != null).Select(r => r.ReferrerId!.Value).ToListAsync());
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Messaging, recipients.Append(me.Id).Distinct().ToArray());
@@ -180,6 +184,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
             : await Reviewers();
         Notice(applicant, "referral-response", input.Confirm ? "Your referrer confirmed you are vegan. A moderator will review your request." : "A referrer declined to confirm your vegan status.", "/settings/profile#verification");
         await db.SaveChangesAsync(); await tx.CommitAsync();
+        lifecycle.Record(input.Confirm ? LifecycleEvent.VerificationReferralConfirmed : LifecycleEvent.VerificationReferralDeclined, applicant, me.Id);
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(applicant).Append(me.Id).Distinct().ToArray());
         return new Ok();
     }

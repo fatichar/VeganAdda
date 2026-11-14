@@ -35,6 +35,42 @@ public class ObservabilityTests
         }
     }
 
+    [Fact]
+    public void Profile_reminder_summary_reaches_external_sink_with_counts_only()
+    {
+        var actorId = Guid.NewGuid();
+        var source = new LogEvent(DateTimeOffset.UtcNow, LogEventLevel.Information, null,
+            new MessageTemplateParser().Parse("Lifecycle {EventName} by actor {ActorId}: {Sent} sent, {Skipped} skipped, {Failed} failed"),
+            [new("SourceContext", new ScalarValue(LifecycleEvents.Category)),
+             new("EventName", new ScalarValue("ProfileRemindersSent")),
+             new("ActorId", new ScalarValue(actorId)),
+             new("Sent", new ScalarValue(19)),
+             new("Skipped", new ScalarValue(2)),
+             new("Failed", new ScalarValue(1)),
+             new("Recipient", new ScalarValue("private@example.com"))]);
+        var safe = Assert.IsType<LogEvent>(SafeOperationalLogSink.Sanitize(source));
+        Assert.Contains("19 sent, 2 skipped, 1 failed", safe.RenderMessage());
+        Assert.DoesNotContain("private", string.Join(" ", safe.Properties));
+    }
+
+    [Fact]
+    public void Subject_lifecycle_events_reach_external_sink_with_subject_identifiers()
+    {
+        var eventId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var source = new LogEvent(DateTimeOffset.UtcNow, LogEventLevel.Information, null,
+            new MessageTemplateParser().Parse("Lifecycle {EventName} for {SubjectKind} {SubjectId} by actor {ActorId}"),
+            [new("SourceContext", new ScalarValue(LifecycleEvents.Category)),
+             new("EventName", new ScalarValue("EventApproved")),
+             new("SubjectKind", new ScalarValue("event")),
+             new("SubjectId", new ScalarValue(eventId)),
+             new("ActorId", new ScalarValue(actorId)),
+             new("Title", new ScalarValue("private-title"))]);
+        var safe = Assert.IsType<LogEvent>(SafeOperationalLogSink.Sanitize(source));
+        Assert.Contains($"EventApproved\" for \"event\" {eventId}", safe.RenderMessage());
+        Assert.DoesNotContain("private", string.Join(" ", safe.Properties));
+    }
+
     private static IConfiguration Config(params (string Key, string? Value)[] values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values.ToDictionary(v => v.Key, v => v.Value)).Build();
 

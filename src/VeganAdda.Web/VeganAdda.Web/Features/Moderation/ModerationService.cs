@@ -56,7 +56,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
     }
     public async Task<BulkMemberActionResult> BulkMemberAction(BulkMemberActionInput input, CancellationToken cancellationToken = default)
     {
-        await User(admin: true);
+        var admin = await User(admin: true);
         if (input.MemberIds is null || input.MemberIds.Count is < 1 or > 100)
             throw new ApiException(400, "Select between 1 and 100 members.");
         var ids = input.MemberIds.Distinct().ToArray();
@@ -65,6 +65,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         {
             if (!emailSender.IsConfigured) throw new ApiException(503, "Profile reminder email delivery is not configured.");
             var result = await SendProfileReminders(ids, cancellationToken);
+            lifecycle.RecordProfileReminders(admin.Id, result.Sent, result.Skipped + duplicateCount, result.Failed);
             return new(input.Action, result.Sent, result.Skipped + duplicateCount, result.Failed);
         }
         if (input.Action != "verify-vegan") throw new ApiException(400, "Choose an available bulk member action.");
@@ -216,8 +217,20 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
             }
             else throw Missing();
         }
-        await db.SaveChangesAsync(); affected.UnionWith(await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync()); await changes.Changed(affected.ToArray()); return new Ok();
+        await db.SaveChangesAsync();
+        if (input.Action == "resolve") lifecycle.RecordSubject(LifecycleEvent.ReportResolved, "report", input.Id, me.Id);
+        else lifecycle.Record(ModerationEvent(input.Action), input.Id, me.Id);
+        affected.UnionWith(await db.Accounts.Where(a => a.Admin && !a.Suspended).Select(a => a.Id).ToListAsync()); await changes.Changed(affected.ToArray()); return new Ok();
     }
+    private static LifecycleEvent ModerationEvent(string action) => action switch
+    {
+        "suspend" => LifecycleEvent.MemberSuspended, "restore" => LifecycleEvent.MemberRestored,
+        "grant-admin" => LifecycleEvent.AdminGranted, "revoke-admin" => LifecycleEvent.AdminRevoked,
+        "grant-moderator" => LifecycleEvent.ModeratorGranted, "revoke-moderator" => LifecycleEvent.ModeratorRevoked,
+        "feature" => LifecycleEvent.ProfileFeatured, "unfeature" => LifecycleEvent.ProfileUnfeatured,
+        "test-profile" => LifecycleEvent.TestProfileMarked, "normal-profile" => LifecycleEvent.TestProfileCleared,
+        _ => throw new ArgumentOutOfRangeException(nameof(action))
+    };
     public async Task<Ok> RequestProfileChanges(ProfileFeedbackInput input)
     {
         var admin = await User(admin: true);
@@ -231,6 +244,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         Notice(profile.Id, "profile-changes-requested", "The community team requested changes to your profile: " + note, "/settings/profile");
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+        lifecycle.Record(LifecycleEvent.ProfileChangesRequested, profile.Id, admin.Id);
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications, new[] { profile.Id, admin.Id }.Distinct().ToArray());
         return new Ok();
     }

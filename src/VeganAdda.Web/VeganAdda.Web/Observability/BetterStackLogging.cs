@@ -41,7 +41,7 @@ public sealed class SafeOperationalLogSink(Logger destination) : ILogEventSink, 
             !(category.StartsWith("VeganAdda.", StringComparison.Ordinal) || request || source.Level == LogEventLevel.Fatal)) return null;
         var properties = source.Properties
             .Where(p => Allowed.Contains(p.Key) || (request && p.Key == "RequestPath")
-                || (lifecycle && p.Key is "EventName" or "AccountId" or "ActorId"))
+                || (lifecycle && p.Key is "EventName" or "AccountId" or "ActorId" or "Sent" or "Skipped" or "Failed" or "SubjectKind" or "SubjectId"))
             .Select(p => new LogEventProperty(p.Key, p.Value)).ToList();
         if (source.Exception is not null && !source.Properties.ContainsKey("ExceptionType"))
             properties.Add(new("ExceptionType", new ScalarValue(source.Exception.GetType().Name)));
