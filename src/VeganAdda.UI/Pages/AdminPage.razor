@@ -80,8 +80,11 @@ else {
         @if (pendingBulkAction != null && selectedMembers.Count > 0) {
             <div class="admin-bulk-confirm" role="group" aria-label="Confirm bulk member action">
                 <p>@(pendingBulkAction == "verify-vegan" ? "Verify vegan status" : "Send profile reminder") will apply to @PendingBulkActionCount of @selectedMembers.Count selected member@(selectedMembers.Count == 1 ? "" : "s"). Other selected members will be skipped. @if (pendingBulkAction == "profile-reminder") { <span>Only accounts still incomplete with a verified Firebase email will receive the email.</span> }</p>
-                <div class="actions"><button class="small-button" disabled="@Busy" @onclick="RunBulkAction">Confirm action</button><button class="secondary small-button" disabled="@Busy" @onclick="() => pendingBulkAction = null">Cancel</button></div>
+                <div class="actions"><button class="small-button" disabled="@Busy" @onclick="RunBulkAction">@(bulkRunning ? (pendingBulkAction == "profile-reminder" ? "Sending reminders…" : "Applying…") : "Confirm action")</button><button class="secondary small-button" disabled="@Busy" @onclick="() => pendingBulkAction = null">Cancel</button></div>
             </div>
+        }
+        @if (bulkResult is { } outcome) {
+            <div class="admin-bulk-result @(outcome.Ok ? "ok" : "warn")" role="status"><Icon Name="@(outcome.Ok ? "check_circle" : "error")" /><div><strong>@outcome.Title</strong>@if (outcome.Detail != "") { <span>@outcome.Detail</span> }</div><button class="text-button small-button" @onclick="() => bulkResult = null">Dismiss</button></div>
         }
         @if (data.People.Count == 0) { <Empty Icon="group" Title="No members found" Text="Choose another verification filter." /> }
         <div class="admin-rows">
@@ -159,7 +162,7 @@ else {
     }
 }
 @code {
-    string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen, bulkRunning; BulkActionSummary? bulkResult; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     IJSObjectReference? memberActionsModule; DotNetObjectReference<AdminPage>? memberActionsReference;
     bool initialized, restoring, viewStateReady;
     Guid? reviewFeedbackMember;
@@ -226,7 +229,7 @@ else {
     bool CanBulkVerify => BulkVerifyCount > 0;
     bool CanBulkSendReminder => data?.CanSendProfileReminders == true && BulkReminderCount > 0;
     int PendingBulkActionCount => pendingBulkAction == "verify-vegan" ? BulkVerifyCount : BulkReminderCount;
-    Task FilterMembers() { CancelProfileDeletion(); membersPage = 1; selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; return Run(Refresh); }
+    Task FilterMembers() { CancelProfileDeletion(); bulkResult = null; membersPage = 1; selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; return Run(Refresh); }
     void SelectMember(AdminPerson person, bool selected) {
         if (selected && selectedMembers.Count >= 100) { Error = "Select no more than 100 members at a time."; return; }
         if (selected) selectedMembers[person.Id] = person; else selectedMembers.Remove(person.Id);
@@ -246,7 +249,7 @@ else {
     void ClearSelection() { selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; }
     void ToggleMemberActions(Guid id) { bulkActionsOpen = false; openMemberActions = openMemberActions == id ? null : id; }
     void ToggleBulkActions() { openMemberActions = null; bulkActionsOpen = !bulkActionsOpen; }
-    void ChooseBulkAction(string action) { pendingBulkAction = action; bulkActionsOpen = false; }
+    void ChooseBulkAction(string action) { pendingBulkAction = action; bulkActionsOpen = false; bulkResult = null; }
     Task ModerateFromMenu(Guid id, string action) { openMemberActions = null; return Moderate(id, action); }
     void BeginProfileDeletion(Guid id) {
         openMemberActions = null;
@@ -280,14 +283,22 @@ else {
             Error = "";
         }
     }
-    Task RunBulkAction() => Run(async () => {
-        var action = pendingBulkAction ?? throw new ApiException(400, "Choose a bulk action first.");
-        var result = await Api.Send<BulkMemberActionResult>("admin/members/bulk-action", new BulkMemberActionInput(selectedMembers.Keys.ToList(), action));
-        selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; await Refresh();
-        Success = result.Action == "verify-vegan"
-            ? $"Verified {result.Affected} member{(result.Affected == 1 ? "" : "s")}; skipped {result.Skipped}."
-            : $"Sent {result.Affected} profile reminder{(result.Affected == 1 ? "" : "s")}; skipped {result.Skipped}; failed {result.Failed}.";
-    });
+    async Task RunBulkAction() {
+        if (Busy) return;
+        bulkRunning = true; bulkResult = null; Success = "";
+        await Run(async () => {
+            var action = pendingBulkAction ?? throw new ApiException(400, "Choose a bulk action first.");
+            var result = await Api.Send<BulkMemberActionResult>("admin/members/bulk-action", new BulkMemberActionInput(selectedMembers.Keys.ToList(), action));
+            // Show the outcome before refreshing so a refresh failure can't hide what was sent.
+            bulkResult = BulkActionSummary.From(result);
+            selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false;
+            try { await Refresh(); }
+            catch (Exception ex) when (ex is ApiException or HttpRequestException) {
+                Error = "The action finished, but the member list couldn’t refresh. Reload the page to see the latest status.";
+            }
+        });
+        bulkRunning = false;
+    }
     Task ToggleMember(Guid id) => Run(async () => {
         if (expandedMember == id) { expandedMember = null; memberProfile = null; }
         else { var profile = await Api.Get<ProfileReview>($"admin/members/{id}"); memberProfile = profile; expandedMember = id; }

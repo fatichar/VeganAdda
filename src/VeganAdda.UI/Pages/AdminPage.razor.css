@@ -17,6 +17,11 @@
 .admin-select-page input, .admin-member-identity > input { width: 20px; height: 20px; min-height: 20px; }
 .admin-bulk-confirm { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin: 0 0 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
 .admin-bulk-confirm p { margin: 0; font-size: .88rem; }
+.admin-bulk-result { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 18px; padding: 14px 18px; border-radius: 14px; font-size: .88rem; }
+.admin-bulk-result > div { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.admin-bulk-result.ok { background: var(--green-50); color: var(--forest); border: 1px solid var(--green-200); }
+.admin-bulk-result.warn { background: var(--error-50); color: var(--error); border: 1px solid var(--error-100); }
+.admin-bulk-result .text-button { color: inherit; padding: 0 .3rem; min-height: 0; }
 .admin-member-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .admin-member-identity > div { min-width: 0; }
 .admin-member-actions { flex-shrink: 0; }
