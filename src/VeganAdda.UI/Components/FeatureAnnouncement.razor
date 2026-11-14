@@ -3,7 +3,7 @@
 
 @if (NextAnnouncement is { } announcement && checkedStorage.Contains(announcement.Id))
 {
-    <aside class="feature-announcement" aria-label="What's new">
+    <aside class="feature-announcement" aria-label="What's new" data-announcement="@announcement.Id">
         <div class="announcement-copy" aria-live="polite">
             <strong>New: @announcement.Title</strong>
             <p>@announcement.Message</p>

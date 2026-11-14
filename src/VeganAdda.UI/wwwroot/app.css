@@ -494,3 +494,7 @@ img[data-photo-x][data-photo-y]{object-position:var(--photo-x,50%) var(--photo-y
 /* Theme toggle shows the theme it switches to. */
 .theme-toggle .theme-to-light,:root[data-theme=dark] .theme-toggle .theme-to-dark{display:none}
 :root[data-theme=dark] .theme-toggle .theme-to-light{display:inline-block}
+/* While the dark-mode announcement is visible, point at the header toggle. */
+body:has(.feature-announcement[data-announcement=dark-mode]) .theme-toggle{outline:2px solid var(--clay);outline-offset:2px;animation:theme-toggle-pulse 1.6s ease-in-out 3}
+@keyframes theme-toggle-pulse{50%{outline-color:transparent}}
+@media(prefers-reduced-motion:reduce){body:has(.feature-announcement[data-announcement=dark-mode]) .theme-toggle{animation:none}}
