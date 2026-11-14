@@ -30,6 +30,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         if (input.PhotoFocus is { } focus && (focus.X is < 0 or > 100 || focus.Y is < 0 or > 100))
             throw new ApiException(400, "Choose a photo position within the image.");
         await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
+        // Queried before tracked changes are saved, so this reflects the stored profile.
+        var wasAwaitingReview = await VerificationReview.IsAwaiting(db, me.Id);
         var p = await db.Profiles.FindAsync(me.Id);
         var isNewProfile = p == null;
         if (p == null) { p = new Profile { Id = me.Id, AdultConfirmedAt = DateTimeOffset.UtcNow }; db.Profiles.Add(p); }
@@ -63,9 +65,17 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         me.Name = name;
         await db.Notifications.Where(n => n.UserId == me.Id && n.Kind == "profile-gender-required" && !n.Read)
             .ExecuteUpdateAsync(set => set.SetProperty(n => n.Read, true));
-        await db.SaveChangesAsync(); await tx.CommitAsync();
+        await db.SaveChangesAsync();
+        // Adding Instagram or LinkedIn can make a pending referral-only request reviewable.
+        List<Guid> reviewers = [];
+        if (!wasAwaitingReview && await VerificationReview.IsAwaiting(db, me.Id))
+        {
+            reviewers = await VerificationReview.NotifyReviewers(db, "A member requested vegan verification.");
+            await db.SaveChangesAsync();
+        }
+        await tx.CommitAsync();
         lifecycle.Record(isNewProfile ? LifecycleEvent.ProfileCreated : LifecycleEvent.ProfileUpdated, me.Id);
-        await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications, me.Id);
+        await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications, [.. reviewers.Append(me.Id).Distinct()]);
         return new Ok();
     }
     public async Task<Ok> DeleteAccount()

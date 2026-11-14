@@ -432,4 +432,22 @@ public class VerificationTests(DatabaseFixture f)
         await f.Call(moderator, "moderation/profile-review", new VeganVerificationInput(applicant, true, RequestId: request.Id), "POST");
         Assert.Equal(VerificationState.Verified, (await As(applicant, s => s.GetVerification())).Status);
     }
+
+    [Fact]
+    public async Task Adding_a_social_profile_to_a_referral_only_request_notifies_reviewers_once()
+    {
+        var applicant = await Applicant(); var referrer = await f.Member(); var admin = await f.Member(admin: true);
+        await As(applicant, s => s.SubmitVerification(Input(referrer)));
+        async Task<int> Notices() { await using var db = f.Db(); return await db.Notifications.CountAsync(n => n.UserId == admin && n.Kind == "verification-request"); }
+        Assert.Equal(0, await Notices());
+        var profile = (ProfileInput)await f.Call(applicant, "profile"); profile.Instagram = "https://instagram.com/example";
+        await f.Call(applicant, "profile", profile, "POST");
+        Assert.True((await As(applicant, s => s.GetVerification())).Request!.ReadyForReview);
+        Assert.Equal(1, await Notices());
+        profile.Bio = "Still vegan.";
+        await f.Call(applicant, "profile", profile, "POST");
+        var request = (await As(applicant, s => s.GetVerification())).Request!;
+        await As(referrer, s => s.RespondToReferral(request.Id, new(true)));
+        Assert.Equal(1, await Notices());
+    }
 }

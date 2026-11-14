@@ -17,10 +17,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
 
     internal Task<bool> Eligible(Guid applicant, Guid referrer) => EligibleReferrers(applicant).AnyAsync(p => p.Id == referrer);
 
-    internal Task<List<Guid>> Reviewers(bool testProfile = false) => db.Accounts
-        .Where(a => !a.Suspended && (a.Admin || (!testProfile && a.Moderator && db.Profiles.Where(BasicProfile.Complete)
-            .Any(p => p.Id == a.Id && p.IsVegan == true && p.VeganVerified && !p.TestProfile))))
-        .Select(a => a.Id).ToListAsync();
+    internal Task<List<Guid>> Reviewers(bool testProfile = false) => VerificationReview.Reviewers(db, testProfile);
 
     internal async Task<VerificationDetails?> Details(Guid applicant)
     {
@@ -34,7 +31,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
             r.ReferrerId.HasValue ? names.GetValueOrDefault(r.ReferrerId.Value) : null,
             ReferralStatus(r.Status, r.ReferrerId.HasValue && eligible.Contains(r.ReferrerId.Value)))).ToArray();
         var first = referrers.FirstOrDefault();
-        var ready = row.Status == VerificationState.UnderReview && await VerificationReview.Awaiting(db).AnyAsync(p => p.Id == applicant);
+        var ready = row.Status == VerificationState.UnderReview && await VerificationReview.IsAwaiting(db, applicant);
         return new(row.Id, row.Status, row.Explanation, row.EvidenceUrls, first?.Id, first?.Name,
             first?.Status ?? ReferralState.NotRequested, row.Feedback, row.Submitted, referrers, ready);
     }
@@ -87,12 +84,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         db.VerificationRequests.Add(new() { ApplicantId = me.Id, ClientId = input.ClientId, Explanation = explanation,
             EvidenceUrls = urls, Referrers = referrers.Select(id => new VerificationReferral { ReferrerId = id }).ToList() });
         var recipients = new List<Guid>();
-        if (social)
-        {
-            recipients.AddRange(await Reviewers());
-            foreach (var recipient in recipients)
-                Notice(recipient, "verification-request", "A member requested vegan verification.", "/moderation");
-        }
+        if (social) recipients.AddRange(await VerificationReview.NotifyReviewers(db, "A member requested vegan verification."));
         foreach (var target in referrers)
         {
             var key = Pair(me.Id, target);
@@ -181,12 +173,11 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         if (referral.Status == response) return new Ok();
         if (referral.Status != ReferralState.AwaitingConfirmation) throw new ApiException(409, "You have already responded to this request.");
         // Notify reviewers when this confirmation is what puts the request in their queue.
-        var enteringReview = input.Confirm && !await VerificationReview.Awaiting(db).AnyAsync(p => p.Id == applicant);
+        var enteringReview = input.Confirm && !await VerificationReview.IsAwaiting(db, applicant);
         referral.Status = response; referral.Responded = DateTimeOffset.UtcNow;
-        var recipients = await Reviewers();
-        if (enteringReview)
-            foreach (var recipient in recipients)
-                Notice(recipient, "verification-request", "A verified vegan confirmed a member. Their verification request is ready for review.", "/moderation");
+        var recipients = enteringReview
+            ? await VerificationReview.NotifyReviewers(db, "A verified vegan confirmed a member. Their verification request is ready for review.")
+            : await Reviewers();
         Notice(applicant, "referral-response", input.Confirm ? "Your referrer confirmed you are vegan. A moderator will review your request." : "A referrer declined to confirm your vegan status.", "/settings/profile#verification");
         await db.SaveChangesAsync(); await tx.CommitAsync();
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(applicant).Append(me.Id).Distinct().ToArray());
