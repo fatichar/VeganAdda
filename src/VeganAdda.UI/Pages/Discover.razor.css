@@ -4,7 +4,7 @@
 .search-open .discovery-controls{flex:1;min-width:0}
 .search-open .discovery-heading{flex:0 1 auto;max-width:35%}
 .discovery .discovery-search{display:flex;align-items:center;flex:1;min-width:0;margin:0;border:1px solid var(--control);border-radius:12px;background:var(--surface)}
-.discovery-search:focus-within{outline:3px solid #bb6748;outline-offset:2px}
+.discovery-search:focus-within{outline:3px solid var(--focus);outline-offset:2px}
 .discovery-search input{flex:1;width:0;min-width:0;min-height:48px;border:0;background:transparent;padding:8px 10px;font-size:1rem}
 .discovery-search input:focus-visible{outline:none}
 .discovery-search .icon-button{border:0;background:transparent}
@@ -13,7 +13,7 @@
 .discovery-controls .icon-button{position:relative;border-radius:12px;width:48px;min-width:48px;height:48px;padding:0}
 .discovery-sort-options{display:grid;gap:10px}
 .discovery-sort-options button{justify-content:space-between;min-height:48px;text-align:left;background:var(--surface);color:var(--forest);border-color:var(--control)}
-.discovery-sort-options button:not(:disabled):hover{background:#e9eee7}
+.discovery-sort-options button:not(:disabled):hover{background:var(--green-50)}
 .discovery-sort-options button:disabled{opacity:.5;cursor:default}
 .discovery-sort-options button[aria-pressed=true]{border-color:var(--forest);background:var(--green-100)}
 .discovery-sort-order{margin-top:24px}
@@ -21,8 +21,8 @@
 .discovery-sort-directions{display:flex;border:1px solid var(--control);border-radius:var(--r-pill);overflow:hidden}
 .discovery-sort-directions button{flex:1;min-width:0;min-height:48px;padding:10px 12px;border:0;border-radius:0;background:transparent;color:var(--forest);font-size:.85rem}
 .discovery-sort-directions button+button{border-left:1px solid var(--control)}
-.discovery-sort-directions button[aria-pressed=true]{background:var(--forest);color:var(--surface)}
-.discovery-sort-directions button:not(:disabled):not([aria-pressed=true]):hover{background:#e9eee7}
+.discovery-sort-directions button[aria-pressed=true]{background:var(--forest);color:var(--on-accent)}
+.discovery-sort-directions button:not(:disabled):not([aria-pressed=true]):hover{background:var(--green-50)}
 .discovery-sort-directions button:focus-visible{outline-offset:-4px}
 .discovery-sort-directions button:disabled{opacity:.5;cursor:default}
 .discovery-sort-hint{margin:20px 0 4px}

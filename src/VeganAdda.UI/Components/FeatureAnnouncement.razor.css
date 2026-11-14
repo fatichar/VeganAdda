@@ -5,9 +5,9 @@
     gap: .25rem 1rem;
     margin-bottom: 1rem;
     padding: .65rem .75rem .65rem 1rem;
-    border: 1px solid #d5e3d8;
+    border: 1px solid var(--line);
     border-radius: 14px;
-    background: #eef5ef;
+    background: var(--green-50);
     color: var(--forest);
     font-size: .875rem;
     line-height: 1.45;
@@ -35,7 +35,7 @@
 }
 
 .announcement-dismiss:hover {
-    background: #dcebe0;
+    background: var(--green-100);
 }
 
 @media (max-width: 600px) {
