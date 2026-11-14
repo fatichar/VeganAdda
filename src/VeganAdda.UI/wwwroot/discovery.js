@@ -40,6 +40,25 @@ export async function currentPosition() {
     } finally {clearTimeout(timer);}
 }
 
+const searchListeners = new Map();
+export function watchSearch(form, dotNetHelper) {
+    unwatchSearch(form);
+    if (!form) return;
+    const listener = event => {
+        if (event.composedPath().includes(form)) return;
+        unwatchSearch(form);
+        dotNetHelper.invokeMethodAsync('CloseSearchOnOutsideClick').catch(() => {});
+    };
+    searchListeners.set(form, listener);
+    document.addEventListener('click', listener, true);
+}
+export function unwatchSearch(form) {
+    const listener = searchListeners.get(form);
+    if (!listener) return;
+    document.removeEventListener('click', listener, true);
+    searchListeners.delete(form);
+}
+
 const scrollObservers = new Map();
 export function observeScroll(element, dotNetHelper, enabled = true) {
     unobserveScroll(element);

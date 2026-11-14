@@ -28,15 +28,18 @@
         <div class="discovery-controls">
             @if (searchOpen)
             {
-                <form id="discovery-search" class="discovery-search" role="search" @onsubmit="Search" @onsubmit:preventDefault @onkeydown="SearchKeyDown">
+                <form @ref="searchForm" id="discovery-search" class="discovery-search" role="search" @onsubmit="Search" @onsubmit:preventDefault @onkeydown="SearchKeyDown">
                     <label class="sr-only" for="people-search">Search people and interests</label>
-                    <input @ref="searchInput" id="people-search" type="search" enterkeyhint="search" placeholder="Search" maxlength="200" @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
-                    <button type="button" class="icon-button" aria-label="Collapse search" @onclick="ToggleSearch"><Icon Name="close" /></button>
+                    <input @ref="searchInput" id="people-search" type="text" enterkeyhint="search" placeholder="Search" maxlength="200" @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
+                    @if (search.Length > 0)
+                    {
+                        <button type="button" class="icon-button clear-search" aria-label="Clear search" @onclick="ClearSearch"><Icon Name="close" /></button>
+                    }
                 </form>
             }
             else
             {
-                <button @ref="searchToggle" type="button" class="icon-button secondary search-toggle" aria-label="Search people" aria-expanded="false" aria-controls="discovery-search" @onclick="ToggleSearch"><Icon Name="search" />@if (search != "") { <span class="filter-dot"></span> }</button>
+                <button @ref="searchToggle" type="button" class="icon-button secondary search-toggle" aria-label='@(search == "" ? "Search people" : "Search people (search active)")' aria-expanded="false" @onclick="OpenSearch"><Icon Name="search" />@if (search != "") { <span class="filter-dot"></span> }</button>
             }
             <button type="button" class="icon-button secondary sort-toggle" aria-label="Sort: @SortLabel(sort)" title="Sort: @SortLabel(sort)" aria-haspopup="dialog" @onclick='() => OpenPanel("sort")'><Icon Name="sort" />@if (sort != DiscoverySort.Age) { <span class="filter-dot"></span> }</button>
             <button type="button" class="icon-button secondary filter-toggle" aria-label="Filters" aria-haspopup="dialog" @onclick="OpenFilters"><Icon Name="tune" />@if (HasFilters) { <span class="filter-dot"></span> }</button>
@@ -159,7 +162,7 @@
     bool connectionsOnly;
     string sort = DiscoverySort.Age;
     bool searchOpen, focusSearch, focusSearchToggle;
-    ElementReference searchInput, searchToggle;
+    ElementReference searchForm, searchInput, searchToggle;
     bool dating, includeNonVegan, draftNonVegan, nearby, locating; int page = 1, total, radius = 25, draftRadius = 25;
     int? minAge, maxAge, draftMinAge, draftMaxAge;
     double? latitude, longitude;
@@ -201,7 +204,13 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!initialized || disposed) return;
-        if (focusSearch) { focusSearch = false; await searchInput.FocusAsync(); }
+        if (focusSearch && locationReady)
+        {
+            focusSearch = false;
+            if (discoveryModule != null)
+                await discoveryModule.InvokeVoidAsync("watchSearch", searchForm, scrollReference);
+            await searchInput.FocusAsync();
+        }
         if (focusSearchToggle) { focusSearchToggle = false; await searchToggle.FocusAsync(); }
         if (restoring) return;
         if (locationReady)
@@ -220,8 +229,7 @@
             if (filters != null)
             {
                 connectionsOnly = Session?.Id != null && filters.ConnectionsOnly;
-                search = filters.Search; interest = filters.Interest; intent = filters.Intent;
-                searchOpen = search != "";
+                interest = filters.Interest; intent = filters.Intent;
                 sort = DiscoverySort.IsValid(filters.Sort) && !DiscoverySort.IsDistance(filters.Sort) ? filters.Sort : DiscoverySort.Age;
                 genders = filters.Genders; verifiedVegansOnly = filters.VerifiedVegansOnly;
                 includeNonVegan = filters.IncludeNonVegan; minAge = filters.MinAge; maxAge = filters.MaxAge;
@@ -258,7 +266,7 @@
         if (locationReady && discoveryModule != null)
             await discoveryModule.InvokeVoidAsync("saveViewState", "discover", Session?.Id, new DiscoveryInput
             {
-                Event = eventId, Country = country, State = state, City = city, Search = search, Interest = interest, Intent = intent,
+                Event = eventId, Country = country, State = state, City = city, Interest = interest, Intent = intent,
                 ConnectionsOnly = connectionsOnly, Sort = sort,
                 Genders = genders, VerifiedVegansOnly = verifiedVegansOnly, IncludeNonVegan = includeNonVegan,
                 MinAge = minAge, MaxAge = maxAge, RadiusKm = nearby ? radius : null
@@ -314,8 +322,35 @@
         finally { loadingMore = false; }
     }
     void OpenPanel(string value) { panelError = ""; panel = value; }
-    void ToggleSearch() { searchOpen = !searchOpen; focusSearch = searchOpen; focusSearchToggle = !searchOpen; }
-    void SearchKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") ToggleSearch(); }
+    void OpenSearch() { searchOpen = true; focusSearch = true; }
+    [JSInvokable]
+    public Task CloseSearchOnOutsideClick() => InvokeAsync(async () =>
+    {
+        if (!disposed && searchOpen)
+        {
+            await CloseSearch();
+            if (!disposed) StateHasChanged();
+        }
+    });
+    async Task CloseSearch()
+    {
+        searchOpen = false;
+        focusSearch = false;
+        if (discoveryModule != null)
+            await discoveryModule.InvokeVoidAsync("unwatchSearch", searchForm);
+    }
+    Task SearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return Task.CompletedTask;
+        focusSearchToggle = true;
+        return CloseSearch();
+    }
+    async Task ClearSearch()
+    {
+        search = "";
+        await searchInput.FocusAsync();
+        await SearchChanged();
+    }
     protected async Task SearchChanged()
     {
         CancelPendingSearch();
@@ -459,6 +494,8 @@
         {
             if (discoveryModule != null)
             {
+                if (searchOpen)
+                    await discoveryModule.InvokeVoidAsync("unwatchSearch", searchForm);
                 await discoveryModule.InvokeVoidAsync("unobserveScroll", loadMoreTrigger);
                 await discoveryModule.DisposeAsync();
             }
