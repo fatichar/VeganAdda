@@ -4,9 +4,13 @@
     const key = 'veganadda-theme', root = document.documentElement;
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const colors = { light: '#fffdf9', dark: '#121b16' };
-    const saved = () => { try { const v = localStorage.getItem(key); return v === 'light' || v === 'dark' ? v : null; } catch { return null; } };
+    const valid = v => v === 'light' || v === 'dark' ? v : null;
+    const saved = () => { try { return valid(localStorage.getItem(key)); } catch { return null; } };
+    // The in-memory choice is authoritative; persistence is best-effort so the toggle
+    // still works for this page when storage is blocked or a write fails.
+    let choice = saved();
     const store = v => { try { v ? localStorage.setItem(key, v) : localStorage.removeItem(key); } catch { } };
-    const current = () => saved() ?? (media.matches ? 'dark' : 'light');
+    const current = () => choice ?? (media.matches ? 'dark' : 'light');
     function apply() {
         const theme = current();
         if (root.dataset.theme !== theme) root.dataset.theme = theme;
@@ -18,12 +22,13 @@
     }
     apply();
     media.addEventListener('change', apply);
-    window.addEventListener('storage', e => { if (e.key === key) apply(); });
+    window.addEventListener('storage', e => { if (e.key === key) { choice = valid(e.newValue); apply(); } });
     document.addEventListener('click', e => {
         if (!e.target.closest?.('[data-theme-toggle]')) return;
         const next = current() === 'dark' ? 'light' : 'dark';
         // Choosing the OS theme again returns to following the OS.
-        store(next === (media.matches ? 'dark' : 'light') ? null : next);
+        choice = next === (media.matches ? 'dark' : 'light') ? null : next;
+        store(choice);
         apply();
     });
     // Blazor rendering and enhanced navigation can replace the attribute, metas or button; re-apply.
