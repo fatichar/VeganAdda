@@ -130,8 +130,8 @@ else {
                     var profile = memberProfile;
                     <div id="member-profile-@p.Id" class="admin-member-details">
                         <h2 class="sr-only">Profile details for @profile.Name</h2>
-                        <div class="admin-profile-summary"><Avatar Name="@profile.Name" Photo="@profile.Photo" VeganVerified="@profile.VeganVerified" /><small>@string.Join(", ", new[] { profile.City, profile.State, profile.Country }.Where(x => !string.IsNullOrWhiteSpace(x)))</small></div>
-                        @if (profile.VeganVerificationPending) { <p class="notice">A verification request is under review. Review the private evidence and connection confirmation.</p> }
+                        <div class="admin-profile-summary"><Avatar Name="@profile.Name" Photo="@profile.Photo" VeganVerified="@profile.VeganVerified" Size="large" /><div><small>@string.Join(", ", new[] { profile.City, profile.State, profile.Country }.Where(x => !string.IsNullOrWhiteSpace(x)))</small>@if (p.BasicProfileComplete && !p.Suspended) { <a class="button secondary small-button" href="@($"/people/{profile.Id}")" target="_blank" rel="noopener">Open full profile <Icon Name="open_in_new" /></a> }</div></div>
+                        @if (profile.VeganVerificationPending) { <p class="notice">@(profile.Verification?.ReadyForReview == true ? "A verification request is ready for review. Check the social profile, evidence and referral confirmations." : "Verification requested; waiting for a verified vegan to confirm.")</p> }
                         @if (!string.IsNullOrWhiteSpace(profile.Profession)) { <p class="profile-profession">@profile.Profession</p> }
                         <p class="profile-bio">@(string.IsNullOrWhiteSpace(profile.Bio) ? "No bio provided." : profile.Bio)</p>
                         <p class="small">Interests: @(profile.Interests.Length == 0 ? "None" : string.Join(", ", profile.Interests)) · Looking for: @string.Join(", ", profile.LookingFor)</p>

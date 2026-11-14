@@ -17,10 +17,7 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
 
     internal Task<bool> Eligible(Guid applicant, Guid referrer) => EligibleReferrers(applicant).AnyAsync(p => p.Id == referrer);
 
-    internal Task<List<Guid>> Reviewers(bool testProfile = false) => db.Accounts
-        .Where(a => !a.Suspended && (a.Admin || (!testProfile && a.Moderator && db.Profiles.Where(BasicProfile.Complete)
-            .Any(p => p.Id == a.Id && p.IsVegan == true && p.VeganVerified && !p.TestProfile))))
-        .Select(a => a.Id).ToListAsync();
+    internal Task<List<Guid>> Reviewers(bool testProfile = false) => VerificationReview.Reviewers(db, testProfile);
 
     internal async Task<VerificationDetails?> Details(Guid applicant)
     {
@@ -34,8 +31,9 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
             r.ReferrerId.HasValue ? names.GetValueOrDefault(r.ReferrerId.Value) : null,
             ReferralStatus(r.Status, r.ReferrerId.HasValue && eligible.Contains(r.ReferrerId.Value)))).ToArray();
         var first = referrers.FirstOrDefault();
+        var ready = row.Status == VerificationState.UnderReview && await VerificationReview.IsAwaiting(db, applicant);
         return new(row.Id, row.Status, row.Explanation, row.EvidenceUrls, first?.Id, first?.Name,
-            first?.Status ?? ReferralState.NotRequested, row.Feedback, row.Submitted, referrers);
+            first?.Status ?? ReferralState.NotRequested, row.Feedback, row.Submitted, referrers, ready);
     }
 
     public async Task<VerificationStatus> GetVerification()
@@ -66,8 +64,6 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var referrers = (input.ReferrerIds ?? []).Concat(input.ReferrerId.HasValue ? [input.ReferrerId.Value] : []).Distinct().Order().ToArray();
         if (referrers.Length > 10 || referrers.Contains(Guid.Empty)) throw new ApiException(400, "Choose up to ten verified vegans.");
         var urls = input.EvidenceUrls.Select(u => Url(u)).Where(u => u != null).Cast<string>().Distinct().ToArray();
-        if (explanation.Length == 0 && urls.Length == 0 && referrers.Length == 0)
-            throw new ApiException(400, "Add verification details or choose a verified vegan who can refer you.");
         await using var tx = await db.Database.BeginTransactionAsync();
         foreach (var key in referrers.Select(id => Pair(me.Id, id)).Order()) await PairLock(key);
         await UserLock(me.Id);
@@ -81,11 +77,14 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         {
             if (!await Eligible(me.Id, referrer)) throw new ApiException(409, "Choose an active verified vegan member.");
         }
+        // Reviewers need something to check: a social profile, or a verified vegan who can confirm.
+        var social = VerificationReview.HasSocialProfile(profile, explanation, urls);
+        if (!social && referrers.Length == 0)
+            throw new ApiException(400, "Add your Instagram or LinkedIn profile, or choose a verified vegan who can confirm you are vegan.");
         db.VerificationRequests.Add(new() { ApplicantId = me.Id, ClientId = input.ClientId, Explanation = explanation,
             EvidenceUrls = urls, Referrers = referrers.Select(id => new VerificationReferral { ReferrerId = id }).ToList() });
-        var recipients = await Reviewers();
-        foreach (var recipient in recipients)
-            Notice(recipient, "verification-request", "A member requested vegan verification.", "/moderation");
+        var recipients = new List<Guid>();
+        if (social) recipients.AddRange(await VerificationReview.NotifyReviewers(db, "A member requested vegan verification."));
         foreach (var target in referrers)
         {
             var key = Pair(me.Id, target);
@@ -173,11 +172,13 @@ public sealed class VerificationService(FeatureContext context) : FeatureService
         var response = input.Confirm ? ReferralState.Confirmed : ReferralState.Declined;
         if (referral.Status == response) return new Ok();
         if (referral.Status != ReferralState.AwaitingConfirmation) throw new ApiException(409, "You have already responded to this request.");
+        // Notify reviewers when this confirmation is what puts the request in their queue.
+        var enteringReview = input.Confirm && !await VerificationReview.IsAwaiting(db, applicant);
         referral.Status = response; referral.Responded = DateTimeOffset.UtcNow;
-        var recipients = await Reviewers();
-        foreach (var recipient in recipients)
-            Notice(recipient, "referral-response", "A member responded to a vegan verification request.", "/moderation");
-        Notice(applicant, "referral-response", input.Confirm ? "Your referrer confirmed you are vegan. A moderator will review your request." : "Your referrer declined to confirm your vegan status. Your request remains under review.", "/settings/profile#verification");
+        var recipients = enteringReview
+            ? await VerificationReview.NotifyReviewers(db, "A verified vegan confirmed a member. Their verification request is ready for review.")
+            : await Reviewers();
+        Notice(applicant, "referral-response", input.Confirm ? "Your referrer confirmed you are vegan. A moderator will review your request." : "A referrer declined to confirm your vegan status.", "/settings/profile#verification");
         await db.SaveChangesAsync(); await tx.CommitAsync();
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(applicant).Append(me.Id).Distinct().ToArray());
         return new Ok();

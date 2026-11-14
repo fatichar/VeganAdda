@@ -50,7 +50,7 @@ public record VerificationCandidate(Guid Id, string Name);
 public record VerificationResponse(bool Confirm);
 public record VerificationRequestAction(Guid Id);
 public record VerificationDetails(Guid Id, VerificationState Status, string Explanation, string[] EvidenceUrls,
-    Guid? ReferrerId, string? ReferrerName, ReferralState ReferralStatus, string? Feedback, DateTimeOffset Submitted, VerificationReferrer[]? Referrers = null);
+    Guid? ReferrerId, string? ReferrerName, ReferralState ReferralStatus, string? Feedback, DateTimeOffset Submitted, VerificationReferrer[]? Referrers = null, bool ReadyForReview = false);
 public record VerificationReferrer(Guid? Id, string? Name, ReferralState Status);
 public record VerificationStatus(VerificationState Status, VerificationDetails? Request);
 // Participant projection deliberately excludes evidence and moderator feedback.
