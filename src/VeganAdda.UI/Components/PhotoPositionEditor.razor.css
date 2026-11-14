@@ -41,4 +41,4 @@
 .photo-previews figure { min-width: 0; margin: 0; }
 .photo-previews figcaption { margin-bottom: 6px; font-size: .78rem; font-weight: 600; }
 .photo-previews .discovery-person-media, .photo-banner-preview { border-radius: 10px; overflow: hidden; }
-.photo-banner-preview { aspect-ratio: 8 / 5; background: #d7e9db; }
+.photo-banner-preview { aspect-ratio: 8 / 5; background: var(--green-100); }
