@@ -1,0 +1,30 @@
+.sent-requests-toggle {
+    width: 100%;
+    min-height: 44px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 8px 19px;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    background: var(--surface);
+    color: var(--green);
+    font-size: .83rem;
+    text-align: left;
+}
+
+.sent-requests-toggle > span:not([aria-hidden]) {
+    flex: 1;
+}
+
+.sent-requests-toggle:hover,
+.sent-requests-toggle[aria-expanded="true"] {
+    background: var(--green-50);
+}
+
+.inbox-more {
+    display: flex;
+    margin: 8px auto;
+    min-height: 38px;
+    font-size: .75rem;
+}

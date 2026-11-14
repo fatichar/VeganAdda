@@ -1,6 +1,22 @@
 const preference = "veganadda.enterToSend";
 const listeners = new WeakMap();
+const inboxObservers = new WeakMap();
 let menuOutsideClickHandler;
+
+export function observeInbox(inbox) {
+    if (!inbox || typeof IntersectionObserver === "undefined") return;
+    inboxObservers.get(inbox)?.disconnect();
+    const buttons = inbox.querySelectorAll("[data-inbox-more]:not(:disabled)");
+    if (!buttons.length) return;
+    const observer = new IntersectionObserver(entries => {
+        const button = entries.find(entry => entry.isIntersecting && !entry.target.disabled)?.target;
+        if (!button?.isConnected || inboxObservers.get(inbox) !== observer) return;
+        observer.disconnect();
+        button.click();
+    }, { root: inbox, rootMargin: "0px 0px 96px" });
+    inboxObservers.set(inbox, observer);
+    buttons.forEach(button => observer.observe(button));
+}
 
 export function scrollToLatest(history) {
     if (history) history.scrollTop = history.scrollHeight;

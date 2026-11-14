@@ -15,27 +15,50 @@
 else
 {
         <div class="chat-layout @(Key != null ? "has-conversation" : "")">
-            <aside class="conversation-list" aria-label="Messages">
-                @if (conversations.Count == 0 && Requests.Count == 0)
+            <aside class="conversation-list" aria-label="Messages" @ref="inboxElement">
+                @if (inboxLoaded && conversations.Count == 0 && connections.Count == 0)
                 {
                     <Empty Icon="chat_bubble" Title="No messages yet" Text="Connect with someone to start chatting."><a href="/" class="button secondary">Discover people</a></Empty>
                 }
-                @foreach (var request in VisibleRequests)
+                @foreach (var request in connections.Where(request => request.Incoming))
                 {
-                    <a class="conversation conversation-request @(request.Incoming ? "incoming-request" : "sent-request") @(request.Key == Key ? "selected" : "")" href="/messages/@request.Key" aria-current="@(request.Key == Key ? "page" : null)" @key="request.Key">
-                        <Avatar Name="@request.Person.Name" Photo="@request.Person.Photo" VeganVerified="@request.Person.VeganVerified" />
-                        <div><strong>@request.Person.Name</strong><span class="request-label">@(request.Incoming ? "Connection request" : "Request sent")@(request.Person.IsVegan == false ? " · Not vegan" : request.Person.VeganStatusUnverified ? " · Vegan status unverified" : request.Person.IsVegan is null ? " · Vegan status not set" : "")</span>@if (request.Introduction != "") { <p>@request.Introduction</p> }</div>
-                        <Icon Name="@(request.Incoming ? "person_add" : "schedule")" />
-                    </a>
+                    @RequestRow(request)
                 }
-                <Pagination PageNumber="@requestPage" PageSize="10" Total="@requestTotal" Busy="@Busy" PageChanged="SetRequestPage" />
-                @foreach (var c in VisibleChats)
+                @if (connections.Any(request => !request.Incoming))
+                {
+                    <button class="sent-requests-toggle" type="button" aria-expanded="@(sentRequestsOpen ? "true" : "false")" aria-controls="sent-requests" @onclick="() => sentRequestsOpen = !sentRequestsOpen">
+                        <Icon Name="schedule" />
+                        <span>Sent requests</span>
+                        <Icon Name="@(sentRequestsOpen ? "expand_less" : "expand_more")" />
+                    </button>
+                    <div id="sent-requests" hidden="@(!sentRequestsOpen)">
+                        @if (sentRequestsOpen)
+                        {
+                            @foreach (var request in connections.Where(request => !request.Incoming))
+                            {
+                                @RequestRow(request)
+                            }
+                        }
+                    </div>
+                }
+                @if (moreRequests && (sentRequestsOpen || connections.All(request => request.Incoming)))
+                {
+                    <button class="secondary inbox-more" type="button" disabled="@(Busy || refreshing || loadingInbox)" data-inbox-more="@(!requestLoadFailed ? "" : null)" @onclick="() => LoadMoreInbox(requests: true)">
+                        @(requestLoadFailed ? "Retry loading requests" : "Load more requests")
+                    </button>
+                }
+                @foreach (var c in conversations)
                 {
                     <a class="conversation @(c.Key == Key ? "selected" : "") @(c.Unread > 0 ? "has-unread" : "")" href="/messages/@c.Key" aria-current="@(c.Key == Key ? "page" : null)" @key="c.Key">
                         <Avatar Name="@c.Name" Photo="@c.Photo" VeganVerified="@c.VeganVerified" /><div class="conversation-copy"><div class="conversation-top"><strong>@c.Name</strong><small title="@Date(c.Updated)">@InboxTimestamp.Format(c.Updated, DateTimeOffset.UtcNow)</small></div><div class="conversation-preview"><p>@c.Latest</p>@if (c.Unread > 0) { <span class="count" aria-label="@($"{c.Unread} unread messages")">@c.Unread</span> }</div></div>
                     </a>
                 }
-                <Pagination PageNumber="@chatPage" PageSize="10" Total="@chatTotal" Busy="@Busy" PageChanged="SetChatPage" />
+                @if (moreChats)
+                {
+                    <button class="secondary inbox-more" type="button" disabled="@(Busy || refreshing || loadingInbox)" data-inbox-more="@(!chatLoadFailed ? "" : null)" @onclick="() => LoadMoreInbox(requests: false)">
+                        @(chatLoadFailed ? "Retry loading chats" : "Load more chats")
+                    </button>
+                }
             </aside>
             <section class="chat-panel" aria-label="Conversation">
                 @if (Key == null) { <Empty Icon="forum" Title="Choose a chat" Text="Select someone to start chatting." /> }
@@ -161,6 +184,8 @@ else
     bool sending, refreshing, refreshAgain, hasOlder, menuOpen;
     int referralRevision;
     int requestPage = 1, chatPage = 1;
+    bool moreRequests, moreChats, sentRequestsOpen, inboxLoaded, loadingInbox, requestLoadFailed, chatLoadFailed;
+    ElementReference inboxElement;
     bool scrollToLatest;
     long latestFetchedMessageId;
     ElementReference historyElement;
@@ -173,13 +198,14 @@ else
     Conversation? Selected => selectedConversation;
     Conversation? selectedConversation;
     ConnectionItem? selectedRequest;
-    int requestTotal, chatTotal;
     ConnectionItem? SelectedRequest => selectedRequest;
     Guid? SelectedPersonId => SelectedRequest?.Person.Id ?? Selected?.PersonId;
-    List<ConnectionItem> Requests => connections.Where(c => c.State == "pending").OrderByDescending(c => c.Incoming).ThenByDescending(c => c.Updated).ToList();
-    IEnumerable<Conversation> Chats => conversations;
-    IEnumerable<ConnectionItem> VisibleRequests => Requests;
-    IEnumerable<Conversation> VisibleChats => Chats;
+    RenderFragment RequestRow(ConnectionItem request) =>
+        @<a class="conversation conversation-request @(request.Incoming ? "incoming-request" : "sent-request") @(request.Key == Key ? "selected" : "")" href="/messages/@request.Key" aria-current="@(request.Key == Key ? "page" : null)" @key="request.Key">
+            <Avatar Name="@request.Person.Name" Photo="@request.Person.Photo" VeganVerified="@request.Person.VeganVerified" />
+            <div><strong>@request.Person.Name</strong><span class="request-label">@(request.Incoming ? "Connection request" : "Request sent")@(request.Person.IsVegan == false ? " · Not vegan" : request.Person.VeganStatusUnverified ? " · Vegan status unverified" : request.Person.IsVegan is null ? " · Vegan status not set" : "")</span>@if (request.Introduction != "") { <p>@request.Introduction</p> }</div>
+            <Icon Name="@(request.Incoming ? "person_add" : "schedule")" />
+        </a>;
     class PendingMessage(Guid id, string text, string key) { public Guid Id = id; public string Text = text; public string Key = key; public bool Failed; public bool Rejected; }
     protected override async Task OnParametersSetAsync()
     {
@@ -190,6 +216,11 @@ else
     {
         await base.OnAfterRenderAsync(first);
         if (first) _ = Poll();
+        if (moreChats || moreRequests)
+        {
+            messagesModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/messages.js");
+            await messagesModule.InvokeVoidAsync("observeInbox", inboxElement);
+        }
         if (menuOpen)
         {
             messagesModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/messages.js");
@@ -220,18 +251,16 @@ else
     protected override async Task Refresh()
     {
         if (Session?.Id == null) return;
-        if (refreshing) { refreshAgain = true; return; }
+        if (refreshing || loadingInbox) { refreshAgain = true; return; }
         refreshing = true; refreshAgain = false;
         try
         {
-            var inbox = await MessagingApi.GetInbox(chatPage, requestPage, Key);
-            conversations = inbox.Chats.Items; connections = inbox.Requests.Items;
-            chatPage = inbox.Chats.PageNumber; requestPage = inbox.Requests.PageNumber;
-            chatTotal = inbox.Chats.Total; requestTotal = inbox.Requests.Total;
-            selectedConversation = inbox.Selected; selectedRequest = inbox.SelectedRequest;
-            if (Key != null)
+            var key = Key;
+            await RefreshInbox(key);
+            if (Key != key) return;
+            if (key != null)
             {
-                var key = Key; MessagePage result;
+                MessagePage result;
                 if (history.Count == 0)
                 {
                     result = await Api.Get<MessagePage>($"conversations/{key}/messages");
@@ -262,16 +291,98 @@ else
                 if (history.Count > 0 && Selected?.Unread > 0)
                 {
                     await Api.Send<Ok>($"conversations/{key}/read", new ReadInput(history[^1].Id));
-                    var updated = await MessagingApi.GetInbox(chatPage, requestPage, Key);
-                    conversations = updated.Chats.Items; selectedConversation = updated.Selected;
+                    var updated = await MessagingApi.GetInbox(key: key);
+                    if (Key != key) return;
+                    selectedConversation = updated.Selected;
+                    var index = conversations.FindIndex(chat => chat.Key == key);
+                    if (index >= 0 && updated.Selected is { } selected)
+                        conversations[index] = selected;
                 }
             }
         }
         finally { refreshing = false; if (refreshAgain) await Refresh(); }
     }
-    Task SetRequestPage(int value) => Run(async () => { requestPage = value; await Refresh(); });
+    async Task RefreshInbox(string? key)
+    {
+        var first = await MessagingApi.GetInbox(key: key);
+        var chats = first.Chats;
+        var requests = first.Requests;
+        var refreshedChats = new List<Conversation>(chats.Items);
+        var refreshedRequests = new List<ConnectionItem>(requests.Items);
+        while (Key == key)
+        {
+            var nextChat = chats.PageNumber < chatPage && HasMore(chats);
+            var nextRequest = requests.PageNumber < requestPage && HasMore(requests);
+            if (!nextChat && !nextRequest) break;
+
+            var next = await MessagingApi.GetInbox(nextChat ? chats.PageNumber + 1 : 1, nextRequest ? requests.PageNumber + 1 : 1);
+            if (nextChat)
+            {
+                if (next.Chats.PageNumber <= chats.PageNumber) break;
+                chats = next.Chats;
+                refreshedChats.AddRange(chats.Items);
+            }
+            if (nextRequest)
+            {
+                if (next.Requests.PageNumber <= requests.PageNumber) break;
+                requests = next.Requests;
+                refreshedRequests.AddRange(requests.Items);
+            }
+        }
+        if (Key != key) return;
+
+        conversations = refreshedChats.DistinctBy(chat => chat.Key).ToList();
+        connections = refreshedRequests.DistinctBy(request => request.Key).ToList();
+        selectedConversation = first.Selected;
+        selectedRequest = first.SelectedRequest;
+        chatPage = chats.PageNumber;
+        requestPage = requests.PageNumber;
+        moreChats = HasMore(chats);
+        moreRequests = HasMore(requests);
+        inboxLoaded = true;
+    }
+
+    async Task LoadMoreInbox(bool requests)
+    {
+        if (Busy || refreshing || loadingInbox || !(requests ? moreRequests : moreChats)) return;
+        loadingInbox = true;
+        try
+        {
+            await Run(async () =>
+            {
+                var next = await MessagingApi.GetInbox(requests ? 1 : chatPage + 1, requests ? requestPage + 1 : 1);
+                if (requests)
+                {
+                    requestLoadFailed = false;
+                    if (next.Requests.PageNumber > requestPage)
+                        connections = connections.Concat(next.Requests.Items).DistinctBy(request => request.Key).ToList();
+                    requestPage = next.Requests.PageNumber;
+                    moreRequests = HasMore(next.Requests);
+                }
+                else
+                {
+                    chatLoadFailed = false;
+                    if (next.Chats.PageNumber > chatPage)
+                        conversations = conversations.Concat(next.Chats.Items).DistinctBy(chat => chat.Key).ToList();
+                    chatPage = next.Chats.PageNumber;
+                    moreChats = HasMore(next.Chats);
+                }
+            });
+            if (Error != "")
+            {
+                if (requests) requestLoadFailed = true;
+                else chatLoadFailed = true;
+            }
+        }
+        finally
+        {
+            loadingInbox = false;
+            if (refreshAgain) await Run(Refresh);
+        }
+    }
+
+    static bool HasMore<T>(Page<T> page) => (long)page.PageNumber * page.PageSize < page.Total;
     Task ReferralChanged() => Run(Refresh);
-    Task SetChatPage(int value) => Run(async () => { chatPage = value; await Refresh(); });
     Task Older() => Run(async () =>
     {
         var key = Key;
