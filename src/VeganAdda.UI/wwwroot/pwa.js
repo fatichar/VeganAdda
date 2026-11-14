@@ -11,6 +11,21 @@
     const listeners = new Map();
     let deferred = null, installed = false, nextId = 0;
 
+    // The install banner waits until the member returns on a second day, and stays away for a
+    // month after "Not now". Storage is best-effort: without it the banner is simply not shown.
+    const daysKey = 'veganadda-install-days', lastDayKey = 'veganadda-install-last-day';
+    const snoozeKey = 'veganadda-install-snoozed-until', snoozeMs = 30 * 24 * 60 * 60 * 1000;
+    let visitDays = 0, snoozedUntil = 0;
+    try {
+        const local = window.localStorage, today = new Date().toDateString();
+        visitDays = Number(local.getItem(daysKey)) || 0;
+        if (local.getItem(lastDayKey) !== today) {
+            local.setItem(lastDayKey, today);
+            local.setItem(daysKey, String(++visitDays));
+        }
+        snoozedUntil = Number(local.getItem(snoozeKey)) || 0;
+    } catch { visitDays = 0; }
+
     function state() {
         if (installed || standaloneQuery.matches || nav.standalone === true
             || window.matchMedia('(display-mode: minimal-ui)').matches) return 'installed';
@@ -31,6 +46,17 @@
 
     window.veganAddaInstall = {
         state,
+        // What the install banner should show: 'available', 'ios' or 'hidden'.
+        bannerState() {
+            const current = state();
+            if (current !== 'available' && current !== 'ios') return 'hidden';
+            return visitDays >= 2 && Date.now() >= snoozedUntil ? current : 'hidden';
+        },
+        snooze() {
+            snoozedUntil = Date.now() + snoozeMs;
+            try { window.localStorage.setItem(snoozeKey, String(snoozedUntil)); } catch { }
+            notify();
+        },
         async prompt() {
             const event = deferred;
             if (!event) return state();

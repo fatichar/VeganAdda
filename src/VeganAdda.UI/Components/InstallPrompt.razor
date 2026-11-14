@@ -1,0 +1,90 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@* Mobile browsers have no install button in the address bar, so returning members get one here.
+   Eligibility (second day of use, not installed, not snoozed) is decided by pwa.js. *@
+@if (state is "available" or "ios")
+{
+    <aside class="install-prompt" aria-label="Install the app">
+        <img src="icon-192.png" width="44" height="44" alt="" />
+        <div class="install-copy" aria-live="polite">
+            <strong>Get the VeganAdda app</strong>
+            @if (state == "available")
+            {
+                <p>Open it from your home screen and get chat notifications.</p>
+            }
+            else
+            {
+                <p>Tap <strong>Share</strong> <Icon Name="ios_share" /> then <strong>Add to Home Screen</strong> to install it and get chat notifications.</p>
+            }
+        </div>
+        <div class="install-actions">
+            @if (state == "available")
+            {
+                <button type="button" disabled="@busy" @onclick="Install">Install</button>
+            }
+            <button type="button" class="@(state == "available" ? "text-button" : "secondary")" disabled="@busy" @onclick="Snooze">@(state == "available" ? "Not now" : "Got it")</button>
+        </div>
+    </aside>
+}
+@code {
+    string state = "hidden";
+    bool busy;
+    DotNetObjectReference<InstallPrompt>? self;
+    int? subscription;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        try
+        {
+            self = DotNetObjectReference.Create(this);
+            subscription = await JS.InvokeAsync<int>("veganAddaInstall.subscribe", self);
+            await Reload();
+        }
+        catch (JSException) { }
+    }
+
+    // Called by pwa.js when the browser offers install, the app is installed, or the banner is snoozed.
+    [JSInvokable]
+    public Task InstallStateChanged(string _) => InvokeAsync(Reload);
+
+    async Task Reload()
+    {
+        try { state = await JS.InvokeAsync<string>("veganAddaInstall.bannerState"); }
+        catch (JSException) { state = "hidden"; }
+        StateHasChanged();
+    }
+
+    async Task Install()
+    {
+        busy = true;
+        try
+        {
+            // A declined browser dialog counts as "Not now"; the browser may offer install again later.
+            if (await JS.InvokeAsync<string>("veganAddaInstall.prompt") != "installed")
+                await JS.InvokeVoidAsync("veganAddaInstall.snooze");
+            await Reload();
+        }
+        catch (JSException) { }
+        finally { busy = false; }
+    }
+
+    async Task Snooze()
+    {
+        state = "hidden";
+        try { await JS.InvokeVoidAsync("veganAddaInstall.snooze"); }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (subscription is int id)
+        {
+            try { await JS.InvokeVoidAsync("veganAddaInstall.unsubscribe", id); }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
+        }
+        self?.Dispose();
+    }
+}

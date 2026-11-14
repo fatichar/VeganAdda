@@ -14,6 +14,7 @@
 {
     <FeatureAnnouncement Announcements="announcements" />
 }
+@if (ShowAnnouncement && session?.BasicProfileComplete == true && CurrentPath != "/settings") { <InstallPrompt /> }
 @if (session?.BasicProfileComplete == true && CurrentPath.StartsWith("/messages")) { <ChatPushSettings /> }<ErrorBoundary @ref="boundary"><ChildContent>
 @if (session == null) { <p role="status">Loading your session…</p> }
 else if (NeedsBasicProfile) { <section class="card narrow profile-completion-notice" role="status"><h1>Complete your basic profile to use VeganAdda</h1><p>Add your name, vegan status, birth month and year, and location to get started. Photos and other details can wait.</p><a class="button" href="@ProfileSetup.OnboardingUrl(Nav.ToBaseRelativePath(Nav.Uri).Insert(0, "/"))">Complete basic profile<Icon Name="arrow_forward" /></a><a class="text-button" href="/settings">Account settings</a></section> }

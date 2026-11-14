@@ -1,0 +1,48 @@
+.install-prompt {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .5rem 1rem;
+    margin-bottom: 1rem;
+    padding: .75rem .75rem .75rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--green-50);
+    color: var(--forest);
+    font-size: .875rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.install-prompt img {
+    border-radius: 10px;
+    background: #fff;
+}
+
+.install-copy p {
+    margin: .15rem 0 0;
+    color: var(--muted);
+}
+
+.install-copy ::deep .material-symbols-outlined {
+    font-size: 18px;
+    vertical-align: -3px;
+}
+
+.install-actions {
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+}
+
+@media (max-width: 600px) {
+    .install-prompt {
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .install-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+    }
+}
