@@ -48,7 +48,7 @@ else
                         <div class="chat-heading"><h2>@(SelectedRequest?.Person.Name ?? Selected?.Name ?? "Conversation")</h2><small>@(Selected?.BlockedByMe == true ? "Member blocked" : SelectedRequest is { } currentRequest ? (currentRequest.Incoming ? "Connection request" : "Request sent") : Selected?.ReferralOnly == true ? "Vegan confirmation request" : messagePage.CanMessage ? "Connected" : "Messaging unavailable · history remains available")</small></div>
                         @if (SelectedPersonId is { } personId)
                         {
-                            <div class="chat-menu" @onkeydown="MenuKeyDown">
+                            <div class="chat-menu" @ref="chatMenuElement" @onkeydown="MenuKeyDown">
                                 <button class="icon-button" aria-label="Chat options" aria-expanded="@menuOpen" aria-controls="chat-options" @onclick="() => menuOpen = !menuOpen"><Icon Name="more_vert" /></button>
                                 @if (menuOpen)
                                 {
@@ -164,6 +164,10 @@ else
     bool scrollToLatest;
     long latestFetchedMessageId;
     ElementReference historyElement;
+    ElementReference chatMenuElement;
+    IJSObjectReference? messagesModule;
+    DotNetObjectReference<Messages>? menuReference;
+    bool menuListenerAttached;
     readonly CancellationTokenSource stop = new();
     readonly Dictionary<Guid, PendingMessage> pending = new();
     Conversation? Selected => selectedConversation;
@@ -186,11 +190,26 @@ else
     {
         await base.OnAfterRenderAsync(first);
         if (first) _ = Poll();
+        if (menuOpen)
+        {
+            messagesModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/messages.js");
+            menuReference ??= DotNetObjectReference.Create(this);
+            if (!menuListenerAttached)
+            {
+                await messagesModule.InvokeVoidAsync("attachMenuOutsideClick", chatMenuElement, menuReference);
+                menuListenerAttached = true;
+            }
+        }
+        else if (menuListenerAttached && messagesModule != null)
+        {
+            await messagesModule.InvokeVoidAsync("detachMenuOutsideClick");
+            menuListenerAttached = false;
+        }
         if (scrollToLatest && messagePage != null)
         {
             scrollToLatest = false;
-            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/messages.js");
-            await module.InvokeVoidAsync("scrollToLatest", historyElement);
+            messagesModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/messages.js");
+            await messagesModule.InvokeVoidAsync("scrollToLatest", historyElement);
         }
     }
     async Task Poll()
@@ -295,6 +314,8 @@ else
         await Api.Send<Ok>("connections", new ConnectionInput(id)); await Refresh();
     });
     void MenuKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") menuOpen = false; }
+    [JSInvokable]
+    public Task CloseMenuFromOutside() => InvokeAsync(() => { menuOpen = false; StateHasChanged(); });
     Task ConfirmAction() => Act(async () =>
     {
         if (SelectedPersonId is not { } id) return;
@@ -302,5 +323,5 @@ else
         else await Api.Send<Ok>("connections/remove", new ConnectionInput(id));
         confirmAction = ""; await Refresh();
     });
-    public override void Dispose() { stop.Cancel(); stop.Dispose(); base.Dispose(); }
+    public override void Dispose() { stop.Cancel(); stop.Dispose(); menuReference?.Dispose(); base.Dispose(); }
 }

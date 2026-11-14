@@ -1,8 +1,29 @@
 const preference = "veganadda.enterToSend";
 const listeners = new WeakMap();
+let menuOutsideClickHandler;
 
 export function scrollToLatest(history) {
     if (history) history.scrollTop = history.scrollHeight;
+}
+
+export function attachMenuOutsideClick(menu, dotnet) {
+    detachMenuOutsideClick();
+    menuOutsideClickHandler = event => {
+        if (!menu.isConnected) {
+            detachMenuOutsideClick();
+            return;
+        }
+        if (event.target instanceof Node && menu.contains(event.target)) return;
+        detachMenuOutsideClick();
+        dotnet.invokeMethodAsync("CloseMenuFromOutside").catch(() => {});
+    };
+    document.addEventListener("pointerdown", menuOutsideClickHandler, true);
+}
+
+export function detachMenuOutsideClick() {
+    if (!menuOutsideClickHandler) return;
+    document.removeEventListener("pointerdown", menuOutsideClickHandler, true);
+    menuOutsideClickHandler = undefined;
 }
 
 export function attach(form) {
