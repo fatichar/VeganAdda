@@ -3,11 +3,12 @@
     min-height: 44px;
     justify-content: flex-start;
     gap: 10px;
-    padding: 8px 19px;
+    padding: 8px 19px 8px 16px;
     border: 0;
     border-top: 1px solid var(--line);
+    border-left: 3px solid var(--green-600);
     border-radius: 0;
-    background: var(--surface);
+    background: var(--green-50);
     color: var(--green);
     font-size: .83rem;
     text-align: left;
@@ -19,7 +20,7 @@
 
 .sent-requests-toggle:hover,
 .sent-requests-toggle[aria-expanded="true"] {
-    background: var(--green-50);
+    background: var(--green-100);
 }
 
 .inbox-more {
