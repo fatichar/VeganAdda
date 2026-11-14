@@ -15,8 +15,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="@Assets["favicon-16.png"]" />
     <link rel="apple-touch-icon" href="@Assets["apple-touch-icon.png"]" />
     <link rel="manifest" href="@Assets["site.webmanifest"]" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="VeganAdda" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="stylesheet" href="@Assets["_content/VeganAdda.UI/app.css"]" />
     <script src="@Assets["_content/VeganAdda.UI/theme.js"]"></script>
+    <script src="@Assets["_content/VeganAdda.UI/pwa.js"]"></script>
     <link rel="stylesheet" href="@Assets["VeganAdda.Web.styles.css"]" />
     <ImportMap AdditionalAttributes="ImportMapAttributes" />
     <HeadOutlet @rendermode="InteractiveWebAssembly" />

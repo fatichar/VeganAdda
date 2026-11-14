@@ -19,7 +19,7 @@ async function request(method, body) {
 async function setup() {
   const config = await (await fetch('/api/push/config')).json();
   if (!config.enabled) throw new Error('Push notifications are not configured yet.');
-  registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  registration = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
   const app = getApps().find(a => a.name === 'chat-push') || initializeApp(config.firebase, 'chat-push');
   messaging = getMessaging(app);

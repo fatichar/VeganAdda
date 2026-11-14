@@ -111,6 +111,29 @@ public class HttpTests : IDisposable
     }
 
     [Fact]
+    public async Task App_is_installable_with_an_offline_page()
+    {
+        using var client = Client();
+        var html = await client.GetStringAsync("/");
+        var manifestUrl = System.Text.RegularExpressions.Regex.Match(html, "<link rel=\"manifest\" href=\"([^\"]+)\"").Groups[1].Value;
+        Assert.NotEmpty(manifestUrl);
+        Assert.Contains("_content/VeganAdda.UI/pwa", html);
+        Assert.Contains("apple-mobile-web-app-title", html);
+        using var manifest = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/" + manifestUrl.TrimStart('/')));
+        var root = manifest.RootElement;
+        Assert.Equal("/", root.GetProperty("id").GetString());
+        Assert.Equal("/", root.GetProperty("start_url").GetString());
+        Assert.Equal("standalone", root.GetProperty("display").GetString());
+        var icons = root.GetProperty("icons").EnumerateArray().ToList();
+        foreach (var (size, purpose) in new[] { ("192x192", "any"), ("512x512", "any"), ("192x192", "maskable"), ("512x512", "maskable") })
+            Assert.Contains(icons, i => i.GetProperty("sizes").GetString() == size && i.GetProperty("purpose").GetString() == purpose);
+        foreach (var url in icons.Select(i => i.GetProperty("src").GetString()!)
+            .Concat(root.GetProperty("shortcuts").EnumerateArray().Select(s => s.GetProperty("url").GetString()!))
+            .Concat(["/offline.html", "/offline.css", "/offline.js", "/js/app-worker.js", "/sw.js"]))
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(url)).StatusCode);
+    }
+
+    [Fact]
     public async Task Public_sitemap_is_discoverable_and_unknown_routes_stay_not_found()
     {
         using var client = Client();
@@ -456,7 +479,13 @@ public class HttpTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, (await PostAllowFailure(first, "/api/push/device", new { token = new string('a', 2001) })).StatusCode);
         var sw = await anon.GetAsync("/firebase-messaging-sw.js");
         Assert.Equal("application/javascript", sw.Content.Headers.ContentType!.MediaType);
-        Assert.Contains("/js/push-worker.js", await sw.Content.ReadAsStringAsync());
+        var legacyWorker = await sw.Content.ReadAsStringAsync();
+        Assert.Contains("/js/push-worker.js", legacyWorker);
+        // Push and the installed-app worker share scope "/", so both URLs serve the same script.
+        var appWorker = await anon.GetAsync("/sw.js");
+        Assert.Equal("application/javascript", appWorker.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(legacyWorker, await appWorker.Content.ReadAsStringAsync());
+        Assert.Contains("/js/app-worker.js", legacyWorker);
     }
     [Fact] public async Task Firebase_login_requires_csrf_rejects_invalid_tokens_and_creates_one_account_per_uid()
     {

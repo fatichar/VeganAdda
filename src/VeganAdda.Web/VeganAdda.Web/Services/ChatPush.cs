@@ -21,7 +21,13 @@ public static class ChatPushEndpoints
         var enabled = !string.IsNullOrWhiteSpace(sender) && !string.IsNullOrWhiteSpace(vapid);
         object FirebaseConfig() => new { apiKey = config["Authentication:Firebase:ApiKey"], projectId = config["Authentication:Firebase:ProjectId"], appId = config["Authentication:Firebase:AppId"], messagingSenderId = sender };
         app.MapGet("/api/push/config", () => Results.Json(new { enabled, vapidKey = vapid, firebase = FirebaseConfig() }));
-        app.MapGet("/firebase-messaging-sw.js", () => Results.Text("self.firebaseConfig=" + JsonSerializer.Serialize(FirebaseConfig()) + ";importScripts('/js/push-worker.js');", "application/javascript"));
+        // One worker owns scope "/": the installed-app offline page plus, when configured, push.
+        // The legacy push URL serves the same script so existing registrations update in place.
+        var worker = enabled
+            ? "self.firebaseConfig=" + JsonSerializer.Serialize(FirebaseConfig()) + ";importScripts('/js/app-worker.js','/js/push-worker.js');"
+            : "importScripts('/js/app-worker.js');";
+        app.MapGet("/sw.js", () => Results.Text(worker, "application/javascript"));
+        app.MapGet("/firebase-messaging-sw.js", () => Results.Text(worker, "application/javascript"));
         app.MapGet("/api/push/device", async (HttpContext ctx, CommunityDb db) =>
         {
             var id = Guid.Parse(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!);

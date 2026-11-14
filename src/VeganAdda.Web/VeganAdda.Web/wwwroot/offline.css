@@ -1,0 +1,12 @@
+/* Mirrors the app's light and dark tokens in app.css; this page loads without the app styles. */
+:root { color-scheme: light dark; --bg: #f4efe6; --text: #1c1c18; --muted: #545d56; --green: #0f3d2a; --on-green: #fff; --focus: #b5532f; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0a120e; --text: #e9ece8; --muted: #a3ada6; --green: #8fd3ac; --on-green: #0b1a12; --focus: #e48a63; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 26rem; text-align: center; }
+img { border-radius: 18px; }
+h1 { font-size: 1.5rem; margin: 16px 0 8px; }
+p { color: var(--muted); margin: 0 0 24px; }
+.button { display: inline-block; padding: 12px 22px; border-radius: 999px; background: var(--green); color: var(--on-green); font-weight: 600; text-decoration: none; }
+.button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }

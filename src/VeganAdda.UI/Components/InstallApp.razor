@@ -1,0 +1,68 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@if (state is "available" or "ios" or "mac-safari")
+{
+    <span class="eyebrow">App</span>
+    <section class="settings-group" aria-label="Install the app">
+        @if (state == "available")
+        {
+            <button class="settings-row" disabled="@busy" @onclick="Install"><Icon Name="install_desktop" /><span><strong>Install VeganAdda</strong><small>Open it from your home screen, dock or start menu like any other app.</small></span><Icon Name="chevron_right" /></button>
+        }
+        else
+        {
+            <details class="settings-details">
+                <summary><Icon Name="@(state == "ios" ? "install_mobile" : "install_desktop")" />Install VeganAdda</summary>
+                @if (state == "ios")
+                {
+                    <p class="small">Tap <strong>Share</strong> <Icon Name="ios_share" /> in your browser, then <strong>Add to Home Screen</strong>. Open VeganAdda from your Home Screen to get chat notifications.</p>
+                }
+                else
+                {
+                    <p class="small">In Safari, choose <strong>File</strong> › <strong>Add to Dock</strong>.</p>
+                }
+            </details>
+        }
+    </section>
+}
+@code {
+    string state = "";
+    bool busy;
+    DotNetObjectReference<InstallApp>? self;
+    int? subscription;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        try
+        {
+            self = DotNetObjectReference.Create(this);
+            subscription = await JS.InvokeAsync<int>("veganAddaInstall.subscribe", self);
+            state = await JS.InvokeAsync<string>("veganAddaInstall.state");
+            StateHasChanged();
+        }
+        catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public Task InstallStateChanged(string current) => InvokeAsync(() => { state = current; StateHasChanged(); });
+
+    async Task Install()
+    {
+        busy = true;
+        try { state = await JS.InvokeAsync<string>("veganAddaInstall.prompt"); }
+        catch (JSException) { }
+        finally { busy = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (subscription is int id)
+        {
+            try { await JS.InvokeVoidAsync("veganAddaInstall.unsubscribe", id); }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
+        }
+        self?.Dispose();
+    }
+}
