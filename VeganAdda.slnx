@@ -1,0 +1,18 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/VeganAdda.Contracts/VeganAdda.Contracts.csproj" />
+    <Project Path="src/VeganAdda.UI/VeganAdda.UI.csproj" />
+  </Folder>
+  <Folder Name="/src/VeganAdda.Web/">
+    <Project Path="src/VeganAdda.Web/VeganAdda.Web.Client/VeganAdda.Web.Client.csproj" />
+    <Project Path="src/VeganAdda.Web/VeganAdda.Web/VeganAdda.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VeganAdda.Tests/VeganAdda.Tests.csproj" />
+  </Folder>
+</Solution>
