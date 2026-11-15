@@ -20,7 +20,7 @@ Keep one deployment and one database until measured constraints justify more.
 Read [the architecture map](docs/ARCHITECTURE.md) for dependency rules. Prefer
 targeted symbol queries or `rg` over reading all features, generated migrations,
 bundled JavaScript, fonts, or location datasets. The canonical solution is the
-root `VeganAdda.sln`; confirm the loaded Roslyn project paths before using results.
+root `VeganAdda.slnx`; confirm the loaded Roslyn project paths before using results.
 
 ## Change rules
 
@@ -46,7 +46,7 @@ root `VeganAdda.sln`; confirm the loaded Roslyn project paths before using resul
 ## Verify
 
 ```powershell
-dotnet build VeganAdda.sln --no-restore -m:1 /nr:false
+dotnet build VeganAdda.slnx --no-restore -m:1 /nr:false
 dotnet test tests/VeganAdda.Tests --no-build --no-restore
 node --test tests/analytics.test.mjs
 git diff --check

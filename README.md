@@ -103,7 +103,7 @@ Ekatva is an **unpublished development draft** until the owner provides verified
 Tests create a uniquely named PostgreSQL database, apply migrations, and drop only that test database afterward. By default, the test fixture starts one PostgreSQL 18 Testcontainer shared by the suite, so running tests from Rider or `dotnet test` is one step when Docker Desktop is running. Set `TEST_DATABASE` only when you want to use an already-running dedicated test PostgreSQL server; it must connect to the maintenance database, and the role needs `CREATEDB`. Never point it at production.
 
 ```powershell
-dotnet restore VeganAdda.sln
+dotnet restore VeganAdda.slnx
 dotnet test tests/VeganAdda.Tests -m:1 /nr:false
 dotnet publish src/VeganAdda.Web/VeganAdda.Web -c Release -m:1 /nr:false -o artifacts/publish
 docker compose --env-file .env.example config --quiet

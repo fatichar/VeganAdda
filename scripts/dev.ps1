@@ -6,9 +6,9 @@ $env:Development__Enabled = $Fixtures.IsPresent.ToString().ToLowerInvariant()
 $env:Development__Seed = $Fixtures.IsPresent.ToString().ToLowerInvariant()
 $env:Monitoring__Aspire__Endpoint = if ($Aspire) { 'http://localhost:4317' } else { '' }
 $env:MSBUILDDISABLENODEREUSE = '1'
-dotnet restore VeganAdda.sln
+dotnet restore VeganAdda.slnx
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
-dotnet build VeganAdda.sln --no-restore -m:1 /nr:false
+dotnet build VeganAdda.slnx --no-restore -m:1 /nr:false
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 if ($Aspire) {
     docker compose -f compose.dev.yaml --profile observability up -d aspire-dashboard
