@@ -45,7 +45,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         foreach (var a in accounts)
         {
             var profile = await db.Profiles.FindAsync(a.Id);
-            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.Featured ?? false, profile?.VeganVerified ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null, a.Admin, BasicProfile.IsComplete(profile)));
+            people.Add(new(a.Id, a.Name, a.Suspended, profile?.Public ?? false, profile?.Featured ?? false, profile?.VeganVerified ?? false, profile?.TestProfile ?? false, a.Moderator, profile?.IsVegan, profile != null, a.Admin, BasicProfile.IsComplete(profile), profile?.Photo ?? ""));
         }
         var profilesTotal = await ReviewableProfiles().CountAsync();
         var profiles = await ReviewableProfiles().OrderBy(p => p.Name).ThenBy(p => p.Id).Take(pageSize).ToListAsync();

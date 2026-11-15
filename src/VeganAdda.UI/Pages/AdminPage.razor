@@ -92,6 +92,7 @@ else {
             <article class="card admin-member" @key="p.Id">
                 <div class="admin-row"><div class="admin-member-identity">
                     <input type="checkbox" aria-label="Select @p.Name" checked="@selectedMembers.ContainsKey(p.Id)" disabled="@Busy" @onchange="e => SelectMember(p, e.Value is bool selected && selected)" />
+                    <Avatar Name="@p.Name" Photo="@p.Photo" VeganVerified="@p.VeganVerified" Size="member-thumbnail" />
                     <div>
                         @if (p.HasProfile) { <button class="admin-member-name" disabled="@Busy" aria-expanded="@(expandedMember == p.Id ? "true" : "false")" aria-controls="member-profile-@p.Id" @onclick="() => ToggleMember(p.Id)">@p.Name<Icon Name="@(expandedMember == p.Id ? "expand_less" : "expand_more")" /></button> }
                         else { <strong>@p.Name</strong> }
@@ -338,6 +339,3 @@ else {
         base.Dispose();
     }
 }
-
-
-
