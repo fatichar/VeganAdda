@@ -104,6 +104,42 @@ public class StatsTests
     }
 
     [Fact]
+    public async Task Connection_counters_skip_when_either_participant_is_excluded()
+    {
+        var f = await Isolated();
+        try
+        {
+            var real = await f.Member(); var other = await f.Member(); var test = await f.Member();
+            await Mark(f, test, (_, p) => p.TestProfile = true);
+            await f.Feature<ActivityRecorder, int>(null, async r => { await r.Count(ActivityKind.ConnectionRequested, real, test); await r.Count(ActivityKind.ConnectionRequested, test, real); await r.Count(ActivityKind.ConnectionRequested, real, other); return 0; });
+            await using var db = f.Db();
+            Assert.Equal(1L, (await db.ActivityCounters.SingleAsync()).Count);
+        }
+        finally { await f.DisposeAsync(); }
+    }
+
+    [Fact]
+    public async Task Reports_exclude_rows_involving_excluded_accounts()
+    {
+        var f = await Isolated();
+        try
+        {
+            var admin = await f.Member(admin: true); var a = await f.Member(); var test = await f.Member(); var demo = await f.Member();
+            await Mark(f, test, (_, p) => p.TestProfile = true);
+            await Mark(f, demo, (x, _) => x.Demo = true);
+            await using (var db = f.Db())
+            {
+                db.Reports.AddRange(new Report { ReporterId = a, SubjectId = admin, Reason = "x" }, new Report { ReporterId = test, SubjectId = admin, Reason = "x" },
+                    new Report { ReporterId = admin, SubjectId = test, Reason = "x" }, new Report { ReporterId = a, SubjectId = demo, Reason = "x" });
+                await db.SaveChangesAsync();
+            }
+            var s = await f.Feature<StatsService, StatsReport>(admin, x => x.GetStats(7));
+            Assert.Equal(1, s.Series.Single(x => x.Key == "reports").Total);
+        }
+        finally { await f.DisposeAsync(); }
+    }
+
+    [Fact]
     public async Task Signups_and_messages_exclude_rows_involving_test_members()
     {
         var f = await Isolated();
@@ -160,6 +196,28 @@ public class StatsTests
             Assert.Equal(0.0, cohort.Day7);
             Assert.Null(cohort.Day30);
             Assert.Null(s.Retention.Single(c => c.Size == 1).Day1);
+        }
+        finally { await f.DisposeAsync(); }
+    }
+
+    [Fact]
+    public async Task Retention_waits_for_the_observation_day_to_finish()
+    {
+        var f = await Isolated();
+        try
+        {
+            var admin = await f.Member(admin: true); var yesterday = await f.Member();
+            await using (var db = f.Db())
+            {
+                await db.Accounts.Where(x => x.Id == admin).ExecuteUpdateAsync(u => u.SetProperty(x => x.Created, DateTimeOffset.UtcNow.AddYears(-1)));
+                await db.Accounts.Where(x => x.Id == yesterday).ExecuteUpdateAsync(u => u.SetProperty(x => x.Created, DateTimeOffset.UtcNow.AddDays(-1)));
+                db.AccountActivity.AddRange(new AccountActivity { AccountId = admin, Day = Today.AddDays(-3) }, new AccountActivity { AccountId = yesterday, Day = Today });
+                await db.SaveChangesAsync();
+            }
+            // Day 1 for a member created yesterday is today, which has not finished: no rate, even though they are active today.
+            var cohort = Assert.Single((await f.Feature<StatsService, StatsReport>(admin, x => x.GetStats(30))).Retention);
+            Assert.Equal(1, cohort.Size);
+            Assert.Null(cohort.Day1);
         }
         finally { await f.DisposeAsync(); }
     }

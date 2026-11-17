@@ -86,8 +86,8 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         r!.Updated = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(); await tx.CommitAsync();
         lifecycle.Record(transition, me.Id);
-        if (transition == LifecycleEvent.ConnectionRequested) await activity.Count(ActivityKind.ConnectionRequested, me.Id);
-        else if (transition == LifecycleEvent.ConnectionAccepted) await activity.Count(ActivityKind.ConnectionAccepted, me.Id);
+        if (transition == LifecycleEvent.ConnectionRequested) await activity.Count(ActivityKind.ConnectionRequested, me.Id, input.PersonId);
+        else if (transition == LifecycleEvent.ConnectionAccepted) await activity.Count(ActivityKind.ConnectionAccepted, me.Id, input.PersonId);
         await changes.Changed(ChangeArea.Connections, me.Id, input.PersonId); return new Ok();
     }
     private void CopyIntroduction(Relationship relationship)

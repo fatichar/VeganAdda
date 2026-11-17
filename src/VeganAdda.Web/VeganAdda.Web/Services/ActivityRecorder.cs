@@ -50,17 +50,21 @@ public sealed class ActivityRecorder(CommunityDb db, ActivityTracker tracker, IL
         catch (Exception ex) { logger.LogWarning("Activity recording failed: {Type}", ex.GetType().Name); }
     }
 
-    /// <summary>Counts one transition by <paramref name="actor"/>; demo, suspended and test-profile actors are skipped.</summary>
-    public async Task Count(string kind, Guid actor)
+    /// <summary>
+    /// Counts one transition by <paramref name="actor"/>. Skipped when the actor or any other participant
+    /// is a demo, suspended or test-profile account; anonymous counters cannot be filtered afterwards.
+    /// </summary>
+    public async Task Count(string kind, Guid actor, params Guid[] others)
     {
         var day = Today;
+        Guid[] participants = [actor, .. others];
         try
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "ActivityCounters" ("Day", "Kind", "Count")
                 SELECT {day}, {kind}, 1
                 WHERE NOT EXISTS (SELECT 1 FROM "Accounts" a LEFT JOIN "Profiles" p ON p."Id" = a."Id"
-                                  WHERE a."Id" = {actor} AND (a."Demo" OR a."Suspended" OR COALESCE(p."TestProfile", FALSE)))
+                                  WHERE a."Id" = ANY({participants}) AND (a."Demo" OR a."Suspended" OR COALESCE(p."TestProfile", FALSE)))
                 ON CONFLICT ("Day", "Kind") DO UPDATE SET "Count" = "ActivityCounters"."Count" + 1
                 """);
         }
