@@ -45,10 +45,11 @@ public class DiscoveryScrollTests
     {
         var api = new PeopleApi(); var screen = new Harness(api);
         api.Results.Enqueue(() => Task.FromResult(new Page<Person>([Person()], 1, 1)));
+        // Yield rather than sleep: the 300 ms debounce must not race a stalled CI runner between keystrokes.
         var first = screen.Type("v");
-        await Task.Delay(50);
+        await Task.Yield();
         var second = screen.Type("ve");
-        await Task.Delay(50);
+        await Task.Yield();
         var third = screen.Type("vegan");
         Assert.Empty(api.Searches);
         await Task.WhenAll(first, second, third);
