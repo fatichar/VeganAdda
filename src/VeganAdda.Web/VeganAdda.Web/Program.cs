@@ -63,6 +63,7 @@ builder.Services.AddScoped<IMessagingApi>(s => s.GetRequiredService<ServerFeatur
 builder.Services.AddScoped<ISavedApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IVerificationApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IModerationApi>(s => s.GetRequiredService<ServerFeatures>());
+builder.Services.AddScoped<IStatsApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IProfilesApi>(s => s.GetRequiredService<ServerFeatures>()); builder.Services.AddScoped<IPlatform, ServerPlatform>();
 builder.Services.AddScoped<IChangeBus, ChangeBus>();
 builder.Services.AddSingleton<FirebaseIdentityVerifier>();
@@ -170,7 +171,7 @@ app.MapGet("/health/ready", async (CommunityDb db) =>
 });
 app.MapGet("/api/csrf", (HttpContext ctx, IAntiforgery csrf) => Results.Ok(new { token = csrf.GetAndStoreTokens(ctx).RequestToken }));
 app.MapGet("/api/auth/config", () => Results.Json(new FirebaseClientConfig(firebaseApiKey ?? "", firebaseAuthDomain ?? "", firebaseProjectId ?? "", firebaseAppId ?? "", firebaseConfigured), Wire.Json));
-app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforgery csrf, IFirebaseIdentityVerifier verifier, LifecycleEvents lifecycle, FirebaseLoginInput? input) =>
+app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforgery csrf, IFirebaseIdentityVerifier verifier, LifecycleEvents lifecycle, ActivityRecorder activity, FirebaseLoginInput? input) =>
 {
     await csrf.ValidateRequestAsync(ctx);
     if (!firebaseConfigured) return Results.Json(new { error = "Firebase Authentication is not configured for this environment." }, statusCode: StatusCodes.Status503ServiceUnavailable);
@@ -193,6 +194,7 @@ app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforge
     if (registered) lifecycle.Record(LifecycleEvent.AccountRegistered, account.Id);
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Principal(account), new AuthenticationProperties { IsPersistent = true });
     lifecycle.Record(LifecycleEvent.AccountSignedIn, account.Id);
+    await activity.Touch(account.Id); await activity.Count(ActivityKind.SignIn, account.Id);
     return Results.Ok(new Ok());
 });
 app.MapChatPush();

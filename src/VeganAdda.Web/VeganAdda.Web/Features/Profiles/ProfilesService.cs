@@ -1,3 +1,4 @@
+using VeganAdda.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
@@ -8,7 +9,7 @@ using static VeganAdda.Web.Features.Profiles.BirthDetails;
 
 namespace VeganAdda.Web.Features.Profiles;
 
-public sealed class ProfilesService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ReferralTrust trust, LifecycleEvents lifecycle) : FeatureService(context)
+public sealed class ProfilesService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ReferralTrust trust, LifecycleEvents lifecycle, ActivityRecorder activity) : FeatureService(context)
 {
     public async Task<Ok> SaveProfile(ProfileInput input)
     {
@@ -75,6 +76,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         }
         await tx.CommitAsync();
         lifecycle.Record(isNewProfile ? LifecycleEvent.ProfileCreated : LifecycleEvent.ProfileUpdated, me.Id);
+        if (isNewProfile) await activity.Count(ActivityKind.ProfileCreated, me.Id);
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications, [.. reviewers.Append(me.Id).Distinct()]);
         return new Ok();
     }

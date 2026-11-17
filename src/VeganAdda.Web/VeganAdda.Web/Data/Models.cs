@@ -344,6 +344,8 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
+    public DbSet<AccountActivity> AccountActivity => Set<AccountActivity>();
+    public DbSet<ActivityCounter> ActivityCounters => Set<ActivityCounter>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         // Preserve the existing text columns and values, including the active-request index.
@@ -406,11 +408,36 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<Report>().Property(r => r.Details).HasMaxLength(1000).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
+        b.Entity<AccountActivity>().ToTable("AccountActivity").HasKey(x => new { x.AccountId, x.Day });
+        b.Entity<AccountActivity>().HasIndex(x => x.Day);
+        b.Entity<AccountActivity>().HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ActivityCounter>().HasKey(x => new { x.Day, x.Kind });
+        b.Entity<ActivityCounter>().Property(x => x.Kind).HasMaxLength(40);
         b.Entity<PushDevice>().HasIndex(x => x.Token).IsUnique();
         b.Entity<PushDevice>().Property(x => x.Token).HasMaxLength(4096);
         b.Entity<PushDevice>().HasOne<Account>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+/// <summary>One row per account per UTC day on which the member used the app (drives DAU/WAU/MAU).</summary>
+public class AccountActivity
+{
+    /// <summary>Active member; deleting the account deletes its activity.</summary>
+    public Guid AccountId { get; set; }
+    /// <summary>UTC calendar day of activity.</summary>
+    public DateOnly Day { get; set; }
+}
+
+/// <summary>Daily count of one product transition. Holds no account identifiers.</summary>
+public class ActivityCounter
+{
+    /// <summary>UTC calendar day.</summary>
+    public DateOnly Day { get; set; }
+    /// <summary>Transition kind; see <see cref="VeganAdda.Web.Services.ActivityKind"/>.</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>Number of transitions that day.</summary>
+    public long Count { get; set; }
+}
+
 /// <summary>A member's registered device for push notifications.</summary>
 public class PushDevice
 {

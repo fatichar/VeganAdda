@@ -1,0 +1,18 @@
+@using VeganAdda.Contracts
+<figure class="bar-chart">
+    <svg viewBox="0 0 @Days.Count 40" preserveAspectRatio="none" role="img" aria-label="@Label: @Summary">
+        @for (var i = 0; i < Days.Count; i++) {
+            var h = Max == 0 ? 0 : Math.Max(Days[i].Count == 0 ? 0 : 0.8, 40.0 * Days[i].Count / Max);
+            <rect x="@(i + 0.1)" y="@(40 - h)" width="0.8" height="@h"><title>@Days[i].Day.ToString("d MMM"): @Days[i].Count</title></rect>
+        }
+    </svg>
+    <figcaption><span>@First</span><span>peak @Max</span><span>@Last</span></figcaption>
+</figure>
+@code {
+    [Parameter, EditorRequired] public List<DayCount> Days { get; set; } = [];
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    int Max => Days.Count == 0 ? 0 : Days.Max(d => d.Count);
+    string First => Days.Count == 0 ? "" : Days[0].Day.ToString("d MMM");
+    string Last => Days.Count == 0 ? "" : Days[^1].Day.ToString("d MMM");
+    string Summary => $"{Days.Sum(d => d.Count)} total from {First} to {Last}, peak {Max} in one day";
+}

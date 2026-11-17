@@ -5,7 +5,7 @@
 @inject IModerationApi Moderation
 @inherits Screen
 <PageTitle>Community administration · VeganAdda</PageTitle>
-<span class="eyebrow">Care for the community</span><h1>Community administration</h1><div class="admin-feedback"><Feedback Error="@Error" Success="@Success" /></div>
+<span class="eyebrow">Care for the community</span><h1>Community administration</h1><p><a class="text-button" href="/admin/stats">Community statistics<Icon Name="arrow_forward" /></a></p><div class="admin-feedback"><Feedback Error="@Error" Success="@Success" /></div>
 @if (!initialized) { <p class="loading" role="status">Loading administration…</p> }
 else if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
 else if (data == null) {

@@ -1,6 +1,9 @@
 # Proposal: member analytics (DAU, MAU and core product metrics)
 
-Status: draft for review. No code changes; this document only.
+Status: approach A implemented (see `docs/OBSERVABILITY.md#member-statistics`). Deviations: counters are
+incremented best-effort after commit rather than in the same transaction; results are not cached;
+the day is UTC; admin-only access; only message/event/report/signup series and funnel totals use
+existing tables. Approach B was not implemented.
 
 ## Problem
 

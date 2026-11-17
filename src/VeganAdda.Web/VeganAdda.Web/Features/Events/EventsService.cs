@@ -1,3 +1,4 @@
+using VeganAdda.Web.Services;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
@@ -8,7 +9,7 @@ using VeganAdda.Web.Observability;
 
 namespace VeganAdda.Web.Features.Events;
 
-public sealed class EventsService(FeatureContext context, EventProjection projection, LifecycleEvents lifecycle) : FeatureService(context)
+public sealed class EventsService(FeatureContext context, EventProjection projection, LifecycleEvents lifecycle, ActivityRecorder activity) : FeatureService(context)
 {
     public async Task<EventCard> GetEvent(Guid id)
     {
@@ -29,6 +30,7 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     {
         var me = await User();
         var gathering = await db.Events.SingleOrDefaultAsync(e => e.Id == id && e.Published) ?? throw Missing();
+        var joined = false;
         await using var tx = await db.Database.BeginTransactionAsync(); await UserLock(me.Id);
         if (action == "save")
         {
@@ -38,6 +40,7 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         else if (action == "attendance")
         {
             var input = Read<AttendanceInput>(body); var a = await db.Attendance.FindAsync(me.Id, id);
+            joined = input.Attending && a == null;
             if (!input.Attending && a != null) db.Attendance.Remove(a);
             if (input.Attending)
             {
@@ -62,7 +65,9 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
             else if (a != null) a.CheckedInUntil = null;
         }
         else throw Missing();
-        await db.SaveChangesAsync(); await tx.CommitAsync(); return new Ok();
+        await db.SaveChangesAsync(); await tx.CommitAsync();
+        if (joined) await activity.Count(ActivityKind.EventJoined, me.Id);
+        return new Ok();
     }
     public async Task<List<EventInput>> MyEventSubmissions()
     {

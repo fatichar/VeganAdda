@@ -2,7 +2,7 @@ using VeganAdda.Contracts;
 
 namespace VeganAdda.Web.Client;
 
-public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi
+public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi
 {
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => transport.Send<Ok>("admin/profile-feedback", input);
     public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => transport.Send<Ok>($"admin/members/{id}", input, "DELETE");
@@ -17,6 +17,7 @@ public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISave
         => transport.Get<Inbox>($"inbox?chatPage={chatPage}&requestPage={requestPage}&key={Uri.EscapeDataString(key ?? "")}");
     public Task<SavedItems> GetSaved(int peoplePage = 1, int eventsPage = 1)
         => transport.Get<SavedItems>($"saved?peoplePage={peoplePage}&eventsPage={eventsPage}");
+    public Task<StatsReport> GetStats(int days) => transport.Get<StatsReport>($"admin/stats?days={days}");
     public Task<ProfileInput> GetProfile() => transport.Get<ProfileInput>("profile");
     public Task<Person> GetPerson(Guid id) => transport.Get<Person>($"people/{id}");
     public Task<Ok> SaveProfile(ProfileInput input) => transport.Send<Ok>("profile", input);

@@ -116,6 +116,30 @@ real browser pageview visible in the Umami dashboard remain required validation 
 
 Reference: [Umami tracker configuration](https://docs.umami.is/docs/tracker-configuration).
 
+## Member statistics
+
+Admins see `/admin/stats` (API `GET /api/admin/stats?days=7..365`). It shows DAU/WAU/MAU
+and stickiness, daily trends, a member funnel and signup-week retention (day 1/7/30), all in UTC.
+Demo, suspended and test-profile accounts are excluded; a message is excluded when either
+participant is. Results are counts only.
+
+Data sources:
+
+- `AccountActivity(AccountId, Day)`: one row per account per UTC day, written at most once per
+  account per day by the authenticated API request filter and at sign-in (an in-memory
+  tracker avoids a write per request). Cascades on account deletion; `DataRetentionWorker`
+  deletes rows older than 400 days. Retention is measured only for members who joined after
+  the first recorded activity.
+- `ActivityCounters(Day, Kind, Count)`: anonymous per-day counts for sign-ins, profiles created,
+  verification requests, vegan verifications, connection requests/accepted and event
+  attendance. Incremented best-effort after the transaction commits (like lifecycle logs),
+  so an occasional miss is possible. The actor is checked against the exclusions at write
+  time. No backfill: counters start at deploy.
+- Everything else (signups, messages, reports, funnel totals) is derived from existing tables.
+
+Umami is unchanged and remains the source for public-page traffic. Real Firebase, production
+rollout and load behavior of these queries have not been verified.
+
 ## Local Aspire Dashboard
 
 The standalone Aspire Dashboard provides a browser for local structured logs without

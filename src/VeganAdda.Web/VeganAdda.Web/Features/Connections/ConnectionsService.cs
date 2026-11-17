@@ -9,7 +9,7 @@ using VeganAdda.Web.Services;
 
 namespace VeganAdda.Web.Features.Connections;
 
-public sealed class ConnectionsService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ChatContent content, LifecycleEvents lifecycle) : FeatureService(context)
+public sealed class ConnectionsService(FeatureContext context, ProfileVisibility visibility, PeopleProjection people, ChatContent content, LifecycleEvents lifecycle, ActivityRecorder activity) : FeatureService(context)
 {
     public async Task<List<ConnectionItem>> Connections() => (await ConnectionsPage(pageSize: 20)).Items;
 
@@ -86,6 +86,8 @@ public sealed class ConnectionsService(FeatureContext context, ProfileVisibility
         r!.Updated = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(); await tx.CommitAsync();
         lifecycle.Record(transition, me.Id);
+        if (transition == LifecycleEvent.ConnectionRequested) await activity.Count(ActivityKind.ConnectionRequested, me.Id);
+        else if (transition == LifecycleEvent.ConnectionAccepted) await activity.Count(ActivityKind.ConnectionAccepted, me.Id);
         await changes.Changed(ChangeArea.Connections, me.Id, input.PersonId); return new Ok();
     }
     private void CopyIntroduction(Relationship relationship)

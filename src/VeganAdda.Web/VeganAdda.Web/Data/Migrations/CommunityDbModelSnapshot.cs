@@ -61,6 +61,38 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Accounts");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.AccountActivity", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.HasKey("AccountId", "Day");
+
+                    b.HasIndex("Day");
+
+                    b.ToTable("AccountActivity", (string)null);
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.ActivityCounter", b =>
+                {
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<long>("Count")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Day", "Kind");
+
+                    b.ToTable("ActivityCounters");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.Attendance", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -718,6 +750,15 @@ namespace VeganAdda.Web.Data.Migrations
                     b.HasIndex("Status", "Submitted");
 
                     b.ToTable("VerificationRequests");
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.AccountActivity", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.Attendance", b =>
