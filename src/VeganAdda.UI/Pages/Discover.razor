@@ -351,6 +351,8 @@
         await searchInput.FocusAsync();
         await SearchChanged();
     }
+    // Overridable so tests can control the debounce clock instead of sleeping.
+    protected virtual Task Wait(TimeSpan delay, CancellationToken token) => Task.Delay(delay, token);
     protected async Task SearchChanged()
     {
         CancelPendingSearch();
@@ -360,9 +362,9 @@
         pendingSearch = delay;
         try
         {
-            await Task.Delay(300, delay.Token);
+            await Wait(TimeSpan.FromMilliseconds(300), delay.Token);
             // Let an in-flight search finish before starting the latest query.
-            while (Busy) await Task.Delay(50, delay.Token);
+            while (Busy) await Wait(TimeSpan.FromMilliseconds(50), delay.Token);
             if (!disposed) await Search();
         }
         catch (OperationCanceledException) when (delay.IsCancellationRequested) { }

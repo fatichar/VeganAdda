@@ -43,14 +43,14 @@ public class DiscoveryScrollTests
     [Fact]
     public async Task Typing_groups_keystrokes_and_clearing_search_reloads_the_first_page()
     {
-        var api = new PeopleApi(); var screen = new Harness(api);
+        var api = new PeopleApi(); var screen = new Harness(api) { ManualDebounce = true };
         api.Results.Enqueue(() => Task.FromResult(new Page<Person>([Person()], 1, 1)));
+        // The debounce clock is controlled: no search can run until it is released, however slow the runner.
         var first = screen.Type("v");
-        await Task.Delay(50);
         var second = screen.Type("ve");
-        await Task.Delay(50);
         var third = screen.Type("vegan");
         Assert.Empty(api.Searches);
+        screen.ReleaseDebounce();
         await Task.WhenAll(first, second, third);
         Assert.Equal(new[] { "vegan" }, api.Searches);
 
@@ -155,6 +155,15 @@ public class DiscoveryScrollTests
             if (signedIn) Session = new Session(Guid.NewGuid(), "Member", true, false, false, true, BasicProfileComplete: true);
             typeof(Discover).GetField("locationReady", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(this, true);
         }
+        public bool ManualDebounce;
+        TaskCompletionSource? debounce;
+        protected override Task Wait(TimeSpan delay, CancellationToken token)
+        {
+            if (!ManualDebounce || delay != TimeSpan.FromMilliseconds(300)) return base.Wait(delay, token);
+            debounce ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return debounce.Task.WaitAsync(token);
+        }
+        public void ReleaseDebounce() => debounce?.TrySetResult();
         public Task Reload() => Refresh();
         public Task Submit() => Run(Refresh);
         public Task Type(string text)
