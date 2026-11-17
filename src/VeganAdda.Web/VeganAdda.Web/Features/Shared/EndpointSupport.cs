@@ -17,13 +17,14 @@ public static class EndpointSupport
 }
 
 // Applied to explicit feature routes, including prerender-compatible authorization rules.
-public sealed class FeatureRequestFilter(IAntiforgery csrf, FeatureContext context) : IEndpointFilter
+public sealed class FeatureRequestFilter(IAntiforgery csrf, FeatureContext context, VeganAdda.Web.Services.ActivityRecorder activity) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext invocation, EndpointFilterDelegate next)
     {
         var ctx = invocation.HttpContext;
         if (context.Actor.Id is { } id && !await context.Db.Accounts.AnyAsync(a => a.Id == id && !a.Suspended, ctx.RequestAborted))
             throw new ApiException(403, "Your account is suspended. Contact the community team for help.");
+        if (context.Actor.Id is { } active) await activity.Touch(active);
         if (ctx.Request.Method != "GET")
         {
             await csrf.ValidateRequestAsync(ctx);

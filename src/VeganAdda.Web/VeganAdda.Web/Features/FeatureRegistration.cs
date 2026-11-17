@@ -12,6 +12,7 @@ using VeganAdda.Web.Features.Moderation;
 using VeganAdda.Web.Features.Notifications;
 using VeganAdda.Web.Features.Accounts;
 using VeganAdda.Web.Features.Saved;
+using VeganAdda.Web.Features.Stats;
 using VeganAdda.Web.Observability;
 
 namespace VeganAdda.Web.Features;
@@ -32,6 +33,7 @@ public static class FeatureRegistration
         NotificationsEndpoints.Map(api);
         ReferralsEndpoints.Map(api);
         SavedEndpoints.Map(api);
+        StatsEndpoints.Map(api);
     }
 
     public static IServiceCollection AddCommunityFeatures(this IServiceCollection services)
@@ -57,6 +59,9 @@ public static class FeatureRegistration
         services.AddScoped<ModerationService>();
         services.AddScoped<NotificationsService>();
         services.AddScoped<ReferralsService>();
+        services.AddScoped<StatsService>();
+        services.AddSingleton<ActivityTracker>();
+        services.AddScoped<ActivityRecorder>();
         return services;
     }
 }

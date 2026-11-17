@@ -95,6 +95,7 @@ legacy trust or earlier consent choices.
 | Referrals | Historical referral context and eligibility; retired invitation endpoint |
 | Verification | Explicit requests, private evidence, eligible referrer search and confirmations |
 | Notifications | Notices and unread projections |
+| Stats | Admin-only aggregate metrics (DAU/WAU/MAU, trends, funnel, retention); reads existing tables plus `AccountActivity`/`ActivityCounters`; no member identity in results |
 | Saved | Paged saved profiles/events; uses their visibility/projection policies |
 | Shared | Request context, common guards/validation, transaction locks, endpoint support |
 

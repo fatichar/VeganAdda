@@ -10,7 +10,7 @@ using VeganAdda.Web.Services;
 
 namespace VeganAdda.Web.Features.Moderation;
 
-public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle, VerificationService verification, IFirebaseUserEmailLookup emailLookup, IProfileReminderEmailSender emailSender, ILogger<ModerationService> logger) : FeatureService(context)
+public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle, ActivityRecorder activity, VerificationService verification, IFirebaseUserEmailLookup emailLookup, IProfileReminderEmailSender emailSender, ILogger<ModerationService> logger) : FeatureService(context)
 {
     private IQueryable<Profile> ReviewableProfiles() => VerificationReview.Awaiting(db);
 
@@ -282,6 +282,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         await db.SaveChangesAsync();
         await tx.CommitAsync();
         lifecycle.Record(input.Confirm ? LifecycleEvent.VeganConfirmed : wasVerified ? LifecycleEvent.VeganVerificationRemoved : LifecycleEvent.VeganVerificationFeedback, profile.Id, reviewer.Id);
+        if (input.Confirm && !wasVerified) await activity.Count(ActivityKind.VeganVerified, profile.Id);
         var recipients = await verification.Reviewers(profile.TestProfile);
         if (request != null) recipients.AddRange(await db.VerificationReferrals.Where(r => r.RequestId == request.Id && r.ReferrerId != null).Select(r => r.ReferrerId!.Value).ToListAsync());
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(input.Id).Distinct().ToArray());

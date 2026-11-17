@@ -1,0 +1,50 @@
+@page "/admin/stats"
+@inject IStatsApi Stats
+@inherits Screen
+<PageTitle>Community statistics · VeganAdda</PageTitle>
+<span class="eyebrow">Care for the community</span><h1>Community statistics</h1><Feedback Error="@Error" Success="@Success" />
+@if (!Loaded) { <p class="loading" role="status">Loading statistics…</p> }
+else if (Session?.IsAdmin != true) { <Empty Icon="lock" Title="Community team access" Text="This page is available only to authorized administrators." /> }
+else if (report != null) {
+    <div class="stats-toolbar">
+        <div class="tab-row" role="group" aria-label="Date range">@foreach (var d in ranges) { <button class="chip @(days == d ? "active" : "")" aria-pressed="@(days == d)" disabled="@Busy" @onclick="() => SetDays(d)">@d days</button> }</div>
+        <a class="text-button" href="/admin">Back to administration</a>
+    </div>
+    <p class="small muted">UTC days, @report.From.ToString("d MMM yyyy") – @report.To.ToString("d MMM yyyy"). Excludes demo, test-profile and suspended accounts. Member activity is counted from @(report.ActivitySince?.ToString("d MMM yyyy") ?? "the first recorded visit")@(report.CountersSince is { } c ? $"; transition counts from {c:d MMM yyyy}" : "").</p>
+    <section class="stats-kpis" aria-label="Active members">
+        <article class="card"><span class="muted">DAU</span><strong>@report.Engagement.Dau</strong><small>active today</small></article>
+        <article class="card"><span class="muted">WAU</span><strong>@report.Engagement.Wau</strong><small>last 7 days</small></article>
+        <article class="card"><span class="muted">MAU</span><strong>@report.Engagement.Mau</strong><small>last 30 days</small></article>
+        <article class="card"><span class="muted">Stickiness</span><strong>@(report.Engagement.Stickiness is { } ratio ? ratio.ToString("P0") : "–")</strong><small>DAU ÷ MAU</small></article>
+        <article class="card"><span class="muted">Members</span><strong>@report.Engagement.Members</strong><small>real accounts</small></article>
+    </section>
+    <section class="card stats-wide"><div><h2>Daily active members</h2><BarChart Days="report.DailyActive" Label="Daily active members" /></div></section>
+    <section class="stats-grid" aria-label="Activity trends">
+        @foreach (var s in report.Series) {
+            <article class="card"><div class="section-heading"><h2>@s.Label</h2><strong>@s.Total</strong></div><BarChart Days="s.Days" Label="@s.Label" /></article>
+        }
+    </section>
+    <section class="card stats-wide"><h2>Member funnel</h2><p class="small muted">Current totals, all time.</p>
+        @foreach (var step in report.Funnel) {
+            <div class="funnel-row"><span>@step.Label</span><progress class="funnel-bar" max="100" value="@Percent(step.Count)" aria-label="@step.Label share of accounts">@Percent(step.Count)%</progress><strong>@step.Count</strong></div>
+        }
+    </section>
+    <section class="card stats-wide"><h2>Retention by signup week</h2>
+        @if (report.Retention.Count == 0) { <p class="small muted">Cohorts appear once members who joined after activity tracking began have been active.</p> }
+        else {
+            <div class="stats-table"><table><thead><tr><th scope="col">Week of</th><th scope="col">Members</th><th scope="col">Day 1</th><th scope="col">Day 7</th><th scope="col">Day 30</th></tr></thead>
+            <tbody>@foreach (var r in report.Retention) { <tr><th scope="row">@r.WeekStart.ToString("d MMM yyyy")</th><td>@r.Size</td><td>@Rate(r.Day1)</td><td>@Rate(r.Day7)</td><td>@Rate(r.Day30)</td></tr> }</tbody></table></div>
+            <p class="small muted">A rate appears once every member of the cohort is old enough to be measured.</p>
+        }
+    </section>
+}
+else if (Error != "") { <button class="secondary" @onclick="() => Run(Load)">Retry</button> }
+@code {
+    static readonly int[] ranges = [7, 30, 90, 365];
+    StatsReport? report; int days = 30;
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.IsAdmin == true) await Run(Load); }
+    async Task Load() => report = await Stats.GetStats(days);
+    async Task SetDays(int value) { days = value; await Run(Load); }
+    double Percent(int count) => report!.Funnel[0].Count == 0 ? 0 : Math.Round(100.0 * count / report.Funnel[0].Count, 1);
+    static string Rate(double? value) => value is { } v ? v.ToString("P0") : "–";
+}

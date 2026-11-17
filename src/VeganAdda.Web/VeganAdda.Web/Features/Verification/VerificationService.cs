@@ -1,3 +1,4 @@
+using VeganAdda.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
@@ -7,7 +8,7 @@ using VeganAdda.Web.Observability;
 
 namespace VeganAdda.Web.Features.Verification;
 
-public sealed class VerificationService(FeatureContext context, LifecycleEvents lifecycle) : FeatureService(context)
+public sealed class VerificationService(FeatureContext context, LifecycleEvents lifecycle, ActivityRecorder activity) : FeatureService(context)
 {
     private static ReferralState ReferralStatus(ReferralState response, bool eligible) =>
         !eligible && response is ReferralState.AwaitingConfirmation or ReferralState.Confirmed ? ReferralState.Unavailable : response;
@@ -106,6 +107,7 @@ public sealed class VerificationService(FeatureContext context, LifecycleEvents 
         profile.ReviewNote = null;
         await db.SaveChangesAsync(); await tx.CommitAsync();
         lifecycle.Record(LifecycleEvent.VerificationRequested, me.Id);
+        await activity.Count(ActivityKind.VerificationRequested, me.Id);
         await changes.Changed(ChangeArea.Profiles | ChangeArea.Notifications | ChangeArea.Messaging, recipients.Append(me.Id).Distinct().ToArray());
         return new Ok();
     }

@@ -680,6 +680,23 @@ public class HttpTests : IDisposable
         var entry = Assert.Single(safe);
         Assert.Equal(actorId, ((ScalarValue)entry.Properties["ActorId"]).Value);
     }
+    [Fact]
+    public async Task Authenticated_api_requests_record_one_activity_day_and_stats_route_is_admin_only()
+    {
+        var admin = await f.Member(admin: true); var member = await f.Member();
+        var anonymous = Client();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/admin/stats")).StatusCode);
+        var memberClient = Client(member);
+        for (var i = 0; i < 3; i++) Assert.Equal(HttpStatusCode.OK, (await memberClient.GetAsync("/api/unread")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await memberClient.GetAsync("/api/admin/stats")).StatusCode);
+        var response = await Client(admin).GetAsync("/api/admin/stats?days=7");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var report = await response.Content.ReadFromJsonAsync<StatsReport>(Wire.Json);
+        Assert.Equal(7, report!.DailyActive.Count);
+        await using var db = f.Db();
+        Assert.Equal(1, await db.AccountActivity.CountAsync(x => x.AccountId == member));
+        Assert.Equal(0, await db.AccountActivity.CountAsync(x => x.AccountId == Guid.Empty));
+    }
     static string CommunityServicePair(Guid a, Guid b) => VeganAdda.Web.Features.Shared.FeatureService.Pair(a,b);
     public void Dispose() { factory.Dispose(); foreach (var item in oldFirebaseEnvironment) Environment.SetEnvironmentVariable(item.Key, item.Value); if (Directory.Exists(storage)) Directory.Delete(storage, true); }
     record Csrf(string Token);

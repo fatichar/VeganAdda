@@ -15,6 +15,7 @@ public sealed class DataRetentionWorker(IServiceScopeFactory scopes, ILogger<Dat
             try
             {
                 await DeleteExpiredReports(stoppingToken);
+                await DeleteExpiredActivity(stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
@@ -30,6 +31,19 @@ public sealed class DataRetentionWorker(IServiceScopeFactory scopes, ILogger<Dat
                 break;
             }
         }
+    }
+
+    // Per-member activity days are kept 400 days; anonymous daily counters are tiny and kept.
+    public static async Task DeleteExpiredActivity(CommunityDb db, CancellationToken stoppingToken)
+    {
+        var cutoff = ActivityRecorder.Today.AddDays(-ActivityRetentionDays);
+        await db.AccountActivity.Where(a => a.Day < cutoff).ExecuteDeleteAsync(stoppingToken);
+    }
+    public const int ActivityRetentionDays = 400;
+    private async Task DeleteExpiredActivity(CancellationToken stoppingToken)
+    {
+        using var scope = scopes.CreateScope();
+        await DeleteExpiredActivity(scope.ServiceProvider.GetRequiredService<CommunityDb>(), stoppingToken);
     }
 
     private async Task DeleteExpiredReports(CancellationToken stoppingToken)
