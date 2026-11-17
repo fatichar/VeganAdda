@@ -57,7 +57,11 @@ public sealed class StatsService(FeatureContext context) : FeatureService(contex
             """).ToListAsync();
         var reports = await db.Database.SqlQuery<DayRow>($"""
             SELECT (r."Created" AT TIME ZONE 'UTC')::date AS "Day", count(*)::int AS "Count"
-            FROM "Reports" r WHERE r."Created" >= {fromTime} AND r."Created" < {toTime} GROUP BY 1
+            FROM "Reports" r
+            WHERE r."Created" >= {fromTime} AND r."Created" < {toTime}
+              AND NOT EXISTS (SELECT 1 FROM "Accounts" a LEFT JOIN "Profiles" p ON p."Id" = a."Id"
+                              WHERE a."Id" IN (r."ReporterId", r."SubjectId") AND (a."Demo" OR a."Suspended" OR COALESCE(p."TestProfile", FALSE)))
+            GROUP BY 1
             """).ToListAsync();
         var counters = await db.ActivityCounters.Where(c => c.Day >= from && c.Day <= to)
             .Select(c => new { c.Day, c.Kind, c.Count }).ToListAsync();
@@ -102,7 +106,7 @@ public sealed class StatsService(FeatureContext context) : FeatureService(contex
     }
 
     // Signup-week cohorts retained on exactly day 1, 7 and 30 after signup. Only cohorts created after
-    // activity tracking began are measured; a day-n rate appears once every member in the cohort is n days old.
+    // activity tracking began are measured; a day-n rate appears once the observation day has fully ended for every member.
     private async Task<List<RetentionCohort>> Retention(DateOnly today, DateOnly? trackingStart)
     {
         if (trackingStart is not { } begin) return [];
@@ -112,11 +116,11 @@ public sealed class StatsService(FeatureContext context) : FeatureService(contex
         var rows = await db.Database.SqlQuery<RetentionRow>($"""
             SELECT date_trunc('week', a."Created" AT TIME ZONE 'UTC')::date AS "Week",
                    count(*)::int AS "Size",
-                   (count(*) FILTER (WHERE (a."Created" AT TIME ZONE 'UTC')::date + 1 <= {today}))::int AS "Eligible1",
+                   (count(*) FILTER (WHERE (a."Created" AT TIME ZONE 'UTC')::date + 1 < {today}))::int AS "Eligible1",
                    (count(*) FILTER (WHERE EXISTS (SELECT 1 FROM "AccountActivity" x WHERE x."AccountId" = a."Id" AND x."Day" = (a."Created" AT TIME ZONE 'UTC')::date + 1)))::int AS "Retained1",
-                   (count(*) FILTER (WHERE (a."Created" AT TIME ZONE 'UTC')::date + 7 <= {today}))::int AS "Eligible7",
+                   (count(*) FILTER (WHERE (a."Created" AT TIME ZONE 'UTC')::date + 7 < {today}))::int AS "Eligible7",
                    (count(*) FILTER (WHERE EXISTS (SELECT 1 FROM "AccountActivity" x WHERE x."AccountId" = a."Id" AND x."Day" = (a."Created" AT TIME ZONE 'UTC')::date + 7)))::int AS "Retained7",
-                   (count(*) FILTER (WHERE (a."Created" AT TIME ZONE 'UTC')::date + 30 <= {today}))::int AS "Eligible30",
+                   (count(*) FILTER (WHERE (a."Created" AT TIME ZONE 'UTC')::date + 30 < {today}))::int AS "Eligible30",
                    (count(*) FILTER (WHERE EXISTS (SELECT 1 FROM "AccountActivity" x WHERE x."AccountId" = a."Id" AND x."Day" = (a."Created" AT TIME ZONE 'UTC')::date + 30)))::int AS "Retained30"
             FROM "Accounts" a
             WHERE a."Created" >= {since} AND NOT a."Demo" AND NOT a."Suspended"
