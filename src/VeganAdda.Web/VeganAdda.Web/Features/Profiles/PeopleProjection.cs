@@ -41,7 +41,7 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
             return new Person(p.Id, member ? p.Name : FirstName(p.Name), p.City, member ? p.Bio : "", member ? p.Photo : PreviewUrl(p.Photo), p.Interests,
                 p.LookingFor.Where(x => x != "Dating" || dating).ToArray(), Viewer.HasValue ? p.Instagram : null, Viewer.HasValue ? p.LinkedIn : null, Viewer.HasValue ? p.Website : null,
                 p.Featured && p.Public && p.FeatureConsent, saved.Contains(p.Id), p.Id == Viewer ? "self" : state,
-                demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), member ? p.Profession : "", GetPhotoFocus(p));
+                demos[p.Id], p.Country, p.State, p.IsVegan, p.IsVegan == true && p.VeganVerified, Age(p.BirthDate), BirthdayToday(p.BirthDate, p.HasExactBirthDate), member ? p.Profession : "", GetPhotoFocus(p), member ? p.Gender : "");
         }).ToList();
     }
 }
