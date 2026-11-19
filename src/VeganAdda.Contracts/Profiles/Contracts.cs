@@ -8,7 +8,7 @@ public record PhotoFocus(int X, int Y)
 // Public/member projection: never include private birth details, coordinates, or identity credentials.
 public record Person(Guid Id, string Name, string City, string Bio, string Photo, string[] Interests,
     string[] LookingFor, string? Instagram, string? LinkedIn, string? Website, bool Featured,
-    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerified = false, int? Age = null, bool IsBirthday = false, string Profession = "", PhotoFocus? PhotoFocus = null)
+    bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerified = false, int? Age = null, bool IsBirthday = false, string Profession = "", PhotoFocus? PhotoFocus = null, string Gender = "")
 {
     public bool VeganStatusUnverified => IsVegan == true && !VeganVerified;
 }
