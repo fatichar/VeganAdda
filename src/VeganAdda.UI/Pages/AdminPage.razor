@@ -13,7 +13,7 @@ else if (data == null) {
     else { <button class="secondary" @onclick="() => Run(Refresh)">Retry</button> }
 }
 else {
-    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => SwitchTab(t)">@t@if (t == "Members" && data.ProfilesTotal > 0) { <span class="badge" aria-label="Vegans awaiting verification">@data.ProfilesTotal</span> }</button> }</div>
+    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => SwitchTab(t)">@t@if (t == "Members" && data.ProfilesTotal > 0) { <span class="badge" aria-label="Vegans awaiting verification">@data.ProfilesTotal</span> }</button> }<label class="admin-page-size"><span>Per page</span><select aria-label="Rows per page" @bind="pageSize" @bind:after="ChangePageSize" disabled="@Busy">@foreach (var size in AdminPaging.PageSizes) { <option value="@size">@size</option> }</select></label></div>
     @if (tab == "Events") {
         <div class="admin-event-toolbar"><EventLocationFilter Country="@country" State="@state" City="@city" Profile="adminProfile" Selected="FilterEvents" /><button @onclick="NewEvent"><Icon Name="add" />Create event</button></div>
         <div class="admin-events @(edit != null ? "editing" : "")"><section class="admin-event-list" aria-label="Events">
@@ -48,7 +48,7 @@ else {
                 <div class="actions"><button disabled="@(Busy || locationBusy)">Save event</button></div>
             </fieldset></form>
         }</div>
-        <Pagination PageNumber="@eventsPage" PageSize="20" Total="@data.EventsTotal" Busy="@Busy" PageChanged="SetPage" />
+        <Pagination PageNumber="@eventsPage" PageSize="@pageSize" Total="@data.EventsTotal" Busy="@Busy" PageChanged="SetPage" />
     }
     else if (tab == "Members") {
         <div class="admin-member-toolbar">
@@ -151,7 +151,7 @@ else {
                 }
             </article>
         }</div>
-        <Pagination PageNumber="@membersPage" PageSize="20" Total="@data.MembersTotal" Busy="@Busy" PageChanged="SetPage" />
+        <Pagination PageNumber="@membersPage" PageSize="@pageSize" Total="@data.MembersTotal" Busy="@Busy" PageChanged="SetPage" />
     }
     else {
         @if (data.Reports.Count == 0) { <Empty Icon="shield" Title="No reports to review" Text="Member reports will appear here." /> }
@@ -159,11 +159,11 @@ else {
             <article class="card"><div class="section-heading"><h3>@report.Subject</h3><span class="badge">@(report.Resolved ? "Resolved" : "Needs review")</span></div><p><strong>@report.Reason</strong></p>@if (report.Details != "") { <p style="white-space: pre-wrap">@report.Details</p> }@if (report.Screenshot != null) { <a href="@report.Screenshot" target="_blank" rel="noopener">View screenshot</a> }<small>@Date(report.Created)</small>
             @if (!report.Resolved) { <div class="actions"><button class="secondary" @onclick='() => Moderate(report.Id, "resolve")'>Mark reviewed</button>@if (report.SubjectId != Guid.Empty) { <button class="danger-button" @onclick='() => Moderate(report.SubjectId, "suspend")'>Suspend member</button> }</div> }</article>
         }
-        <Pagination PageNumber="@reportsPage" PageSize="20" Total="@data.ReportsTotal" Busy="@Busy" PageChanged="SetPage" />
+        <Pagination PageNumber="@reportsPage" PageSize="@pageSize" Total="@data.ReportsTotal" Busy="@Busy" PageChanged="SetPage" />
     }
 }
 @code {
-    string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen, bulkRunning; BulkActionSummary? bulkResult; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
+    string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen, bulkRunning; BulkActionSummary? bulkResult; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1, pageSize = 20; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     IJSObjectReference? memberActionsModule; DotNetObjectReference<AdminPage>? memberActionsReference;
     bool initialized, restoring, viewStateReady;
     Guid? reviewFeedbackMember;
@@ -173,7 +173,7 @@ else {
     string deleteConfirmation = "", deleteError = "";
     ElementReference deleteInput;
     bool focusDeleteInput;
-    public record AdminViewState(string Tab, string Verification, string Country, string State, string City, int EventsPage, int MembersPage, int ReportsPage);
+    public record AdminViewState(string Tab, string Verification, string Country, string State, string City, int EventsPage, int MembersPage, int ReportsPage, int PageSize = AdminPaging.DefaultPageSize);
     protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); initialized = true; }
     protected override async Task OnAfterRenderAsync(bool firstRender) {
         if (!initialized || restoring) return;
@@ -195,6 +195,7 @@ else {
                     memberVerification = saved.Verification is "pending" or "all" or "verified" or "unverified" or "no-profile" ? saved.Verification : "pending";
                     country = saved.Country; state = saved.State; city = saved.City;
                     eventsPage = Math.Max(1, saved.EventsPage); membersPage = Math.Max(1, saved.MembersPage); reportsPage = Math.Max(1, saved.ReportsPage);
+                    pageSize = AdminPaging.PageSizes.Contains(saved.PageSize) ? saved.PageSize : AdminPaging.DefaultPageSize;
                 }
                 viewStateReady = true;
                 await Run(Refresh);
@@ -212,8 +213,8 @@ else {
         if (!viewStateReady || Session?.IsAdmin != true) return;
         if (memberActionsModule != null)
             await memberActionsModule.InvokeVoidAsync("saveViewState", "admin", Session.Id,
-                new AdminViewState(tab, memberVerification, country, state, city, eventsPage, membersPage, reportsPage));
-        data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}&country={E(country)}&state={E(state)}&city={E(city)}");
+                new AdminViewState(tab, memberVerification, country, state, city, eventsPage, membersPage, reportsPage, pageSize));
+        data = await Api.Get<AdminData>($"admin?verification={E(memberVerification)}&section={E(tab)}&page={CurrentPage}&country={E(country)}&state={E(state)}&city={E(city)}&pageSize={pageSize}");
         if (deletingMember is { } deleting && !data.People.Any(p => p.Id == deleting && p.HasProfile && !p.Admin)) CancelProfileDeletion();
         foreach (var person in data.People) if (selectedMembers.ContainsKey(person.Id)) selectedMembers[person.Id] = person;
         if (tab == "Events") eventsPage = data.PageNumber; else if (tab == "Reports") reportsPage = data.PageNumber; else membersPage = data.PageNumber;
@@ -222,6 +223,7 @@ else {
         if (tab == "Events" && adminProfile == null) adminProfile = await Api.Get<ProfileInput>("profile");
     }
     int CurrentPage => tab == "Events" ? eventsPage : tab == "Reports" ? reportsPage : membersPage;
+    Task ChangePageSize() { CancelProfileDeletion(); eventsPage = membersPage = reportsPage = 1; return Run(Refresh); }
     Task SwitchTab(string value) { CancelProfileDeletion(); tab = value; return Run(Refresh); }
     Task SetPage(int value) { CancelProfileDeletion(); if (tab == "Events") eventsPage = value; else if (tab == "Reports") reportsPage = value; else membersPage = value; return Run(Refresh); }
     int BulkVerifyCount => selectedMembers.Values.Count(p => !p.Suspended && p.BasicProfileComplete && p.IsVegan == true && !p.VeganVerified);
