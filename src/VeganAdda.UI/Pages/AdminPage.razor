@@ -287,18 +287,28 @@ else {
     async Task RunBulkAction() {
         if (Busy) return;
         bulkRunning = true; bulkResult = null; Success = "";
-        await Run(async () => {
-            var action = pendingBulkAction ?? throw new ApiException(400, "Choose a bulk action first.");
-            var result = await Api.Send<BulkMemberActionResult>("admin/members/bulk-action", new BulkMemberActionInput(selectedMembers.Keys.ToList(), action));
-            // Show the outcome before refreshing so a refresh failure can't hide what was sent.
-            bulkResult = BulkActionSummary.From(result);
-            selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false;
-            try { await Refresh(); }
-            catch (Exception ex) when (ex is ApiException or HttpRequestException) {
-                Error = "The action finished, but the member list couldn’t refresh. Reload the page to see the latest status.";
-            }
-        });
-        bulkRunning = false;
+        try
+        {
+            await Run(async () => {
+                var action = pendingBulkAction ?? throw new ApiException(400, "Choose a bulk action first.");
+                var result = await Api.Send<BulkMemberActionResult>("admin/members/bulk-action", new BulkMemberActionInput(selectedMembers.Keys.ToList(), action));
+                // Show the outcome before refreshing so a refresh failure can't hide what was sent.
+                bulkResult = BulkActionSummary.From(result);
+                selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false;
+                try { await Refresh(); }
+                catch (Exception ex) when (ex is ApiException or HttpRequestException or TaskCanceledException) {
+                    Error = "The action finished, but the member list couldn’t refresh. Reload the page to see the latest status.";
+                }
+            });
+        }
+        catch (TaskCanceledException)
+        {
+            // The browser gave up waiting (HttpClient timeout). The server may still have completed the action.
+            Error = pendingBulkAction == "profile-reminder"
+                ? "The request timed out before the server reported back. Some reminders may already have been sent, so check before sending again."
+                : "The request timed out before the server reported back. Check the member list before retrying.";
+        }
+        finally { bulkRunning = false; }
     }
     Task ToggleMember(Guid id) => Run(async () => {
         if (expandedMember == id) { expandedMember = null; memberProfile = null; }
