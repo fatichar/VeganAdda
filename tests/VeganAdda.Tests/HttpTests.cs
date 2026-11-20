@@ -582,6 +582,23 @@ public class HttpTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await Post(c, "/api/profile", saved)).StatusCode);
         Assert.Null((await c.GetFromJsonAsync<ProfileInput>("/api/profile"))!.PhotoFocus);
     }
+    [Theory]
+    [InlineData("", HttpStatusCode.OK, AdminPaging.DefaultPageSize)]
+    [InlineData("?pageSize=50", HttpStatusCode.OK, 50)]
+    [InlineData("?pageSize=7", HttpStatusCode.BadRequest)]
+    [InlineData("?pageSize=abc", HttpStatusCode.BadRequest)]
+    [InlineData("?pageSize=2147483648", HttpStatusCode.BadRequest)]
+    [InlineData("?pageSize=", HttpStatusCode.BadRequest)]
+    public async Task Admin_validates_explicit_page_size(string query, HttpStatusCode status, int? expectedSize = null)
+    {
+        using var admin = Client(await f.Member(admin: true));
+        using var response = await admin.GetAsync("/api/admin" + query);
+
+        Assert.Equal(status, response.StatusCode);
+        if (expectedSize.HasValue)
+            Assert.Equal(expectedSize.Value, (await response.Content.ReadFromJsonAsync<AdminData>())!.PageSize);
+    }
+
     [Fact] public async Task Reports_validate_reasons_and_keep_screenshots_private_and_owned()
     {
         var reporter = await f.Member(); var subject = await f.Member(); var stranger = await f.Member();
