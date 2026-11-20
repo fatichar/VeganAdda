@@ -200,6 +200,9 @@ public class AdminMemberTests(DatabaseFixture f)
     [Theory]
     [InlineData("7")]
     [InlineData("1000")]
+    [InlineData("abc")]
+    [InlineData("2147483648")]
+    [InlineData("")]
     public async Task Admin_rejects_unsupported_page_sizes(string size)
     {
         var admin = await f.Member(admin: true);

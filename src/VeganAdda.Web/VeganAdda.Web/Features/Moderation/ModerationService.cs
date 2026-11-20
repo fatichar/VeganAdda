@@ -14,10 +14,13 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
 {
     private IQueryable<Profile> ReviewableProfiles() => VerificationReview.Awaiting(db);
 
-    public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1, string country = "", string state = "", string city = "", int pageSize = AdminPaging.DefaultPageSize)
+    public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1, string country = "", string state = "", string city = "", string? requestedPageSize = null)
     {
         await User(admin: true);
-        if (!AdminPaging.PageSizes.Contains(pageSize)) throw new ApiException(400, "Choose a supported page size.");
+        var pageSize = AdminPaging.DefaultPageSize;
+        if (requestedPageSize != null &&
+            (!int.TryParse(requestedPageSize, out pageSize) || !AdminPaging.PageSizes.Contains(pageSize)))
+            throw new ApiException(400, "Choose a supported page size.");
         if (section is not ("Events" or "Members" or "Reports")) throw new ApiException(400, "Choose a supported administration section.");
         var eventsQuery = EventLocationCatalog.Filter(db.Events, Text(country, 80), Text(state, 80), Text(city, 80));
         var eventsTotal = await eventsQuery.CountAsync();
