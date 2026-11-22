@@ -1,5 +1,12 @@
 namespace VeganAdda.Contracts;
 
+/// <summary>Page sizes the admin console offers; the server rejects anything else.</summary>
+public static class AdminPaging
+{
+    public const int DefaultPageSize = 20;
+    public static readonly int[] PageSizes = [10, 20, 50, 100];
+}
+
 public record ModerationData(List<ProfileReview> Profiles, List<EventReview> Events, int ProfilesTotal = 0, int EventsTotal = 0, int PageNumber = 1, int PageSize = 20);
 public record ReportView(Guid Id, string Reporter, Guid SubjectId, string Subject, string Reason, bool Resolved, DateTimeOffset Created, string Details = "", string? Screenshot = null);
 public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People, List<ProfileReview> Profiles, int EventsTotal = 0, int ReportsTotal = 0, int MembersTotal = 0, int ProfilesTotal = 0, int PageNumber = 1, int PageSize = 20, bool CanSendProfileReminders = false);

@@ -186,6 +186,30 @@ public class AdminMemberTests(DatabaseFixture f)
         }
     }
 
+    [Theory]
+    [InlineData(10)]
+    [InlineData(50)]
+    public async Task Admin_members_use_the_requested_supported_page_size(int size)
+    {
+        var admin = await f.Member(admin: true);
+        var data = Assert.IsType<AdminData>(await f.Call(admin, $"admin?verification=all&section=Members&page=1&pageSize={size}"));
+        Assert.Equal(size, data.PageSize);
+        Assert.Equal(Math.Min(size, data.MembersTotal), data.People.Count);
+    }
+
+    [Theory]
+    [InlineData("7")]
+    [InlineData("1000")]
+    [InlineData("abc")]
+    [InlineData("2147483648")]
+    [InlineData("")]
+    public async Task Admin_rejects_unsupported_page_sizes(string size)
+    {
+        var admin = await f.Member(admin: true);
+        var error = await Assert.ThrowsAsync<ApiException>(() => f.Call(admin, $"admin?verification=all&section=Members&page=1&pageSize={size}"));
+        Assert.Equal(400, error.Status);
+    }
+
     private async Task<AdminData> AllMembers(Guid admin, string approval)
     {
         var first = Assert.IsType<AdminData>(await f.Call(admin, $"admin?verification={approval}&section=Members&page=1"));
