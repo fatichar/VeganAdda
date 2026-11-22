@@ -466,6 +466,68 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Profiles");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.ProfileReminderBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AdminId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("Completed")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("Created")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RetryVersion")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Completed");
+
+                    b.HasIndex("AdminId", "Created");
+
+                    b.HasIndex("AdminId", "RequestId")
+                        .IsUnique();
+
+                    b.ToTable("ProfileReminderBatches");
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.ProfileReminderDelivery", b =>
+                {
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("BatchId", "MemberId");
+
+                    b.HasIndex("MemberId", "Status");
+
+                    b.HasIndex("Status", "AvailableAt");
+
+                    b.ToTable("ProfileReminderDeliveries");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.PushDelivery", b =>
                 {
                     b.Property<long>("MessageId")
@@ -826,6 +888,24 @@ namespace VeganAdda.Web.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.ProfileReminderBatch", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AdminId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.ProfileReminderDelivery", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.ProfileReminderBatch", null)
+                        .WithMany("Deliveries")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.PushDelivery", b =>
                 {
                     b.HasOne("VeganAdda.Web.Data.PushDevice", null)
@@ -917,6 +997,11 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasForeignKey("ApplicantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.ProfileReminderBatch", b =>
+                {
+                    b.Navigation("Deliveries");
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.VerificationRequest", b =>

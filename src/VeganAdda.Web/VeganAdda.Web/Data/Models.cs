@@ -329,6 +329,8 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
 {
     public DbSet<VerificationReferral> VerificationReferrals => Set<VerificationReferral>();
     public DbSet<VerificationRequest> VerificationRequests => Set<VerificationRequest>();
+    public DbSet<ProfileReminderBatch> ProfileReminderBatches => Set<ProfileReminderBatch>();
+    public DbSet<ProfileReminderDelivery> ProfileReminderDeliveries => Set<ProfileReminderDelivery>();
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<ChatKeyRepair> ChatKeyRepairs => Set<ChatKeyRepair>();
     public DbSet<PushDevice> PushDevices => Set<PushDevice>();
@@ -373,6 +375,14 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ChatMessage>().HasIndex(x => new { x.SenderId, x.ClientId }).IsUnique();
         b.Entity<ChatMessage>().HasIndex(x => new { x.Conversation, x.Id });
         b.Entity<ChatMessage>().HasIndex(x => x.Id).HasDatabaseName("IX_Messages_PendingPush").HasFilter("\"PushPending\" = TRUE");
+        b.Entity<ProfileReminderBatch>().HasOne<Account>().WithMany().HasForeignKey(x => x.AdminId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ProfileReminderBatch>().HasIndex(x => new { x.AdminId, x.RequestId }).IsUnique();
+        b.Entity<ProfileReminderBatch>().HasIndex(x => new { x.AdminId, x.Created });
+        b.Entity<ProfileReminderBatch>().HasIndex(x => x.Completed);
+        b.Entity<ProfileReminderDelivery>().HasKey(x => new { x.BatchId, x.MemberId });
+        b.Entity<ProfileReminderBatch>().HasMany(x => x.Deliveries).WithOne().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ProfileReminderDelivery>().HasIndex(x => new { x.Status, x.AvailableAt });
+        b.Entity<ProfileReminderDelivery>().HasIndex(x => new { x.MemberId, x.Status });
         b.Entity<PushDelivery>().HasKey(x => new { x.MessageId, x.DeviceId });
         b.Entity<PushDelivery>().HasOne<ChatMessage>().WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<PushDelivery>().HasOne<PushDevice>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);

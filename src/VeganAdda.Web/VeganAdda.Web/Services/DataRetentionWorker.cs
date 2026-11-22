@@ -16,6 +16,10 @@ public sealed class DataRetentionWorker(IServiceScopeFactory scopes, ILogger<Dat
             {
                 await DeleteExpiredReports(stoppingToken);
                 await DeleteExpiredActivity(stoppingToken);
+                using var scope = scopes.CreateScope();
+                var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
+                await scope.ServiceProvider.GetRequiredService<CommunityDb>().ProfileReminderBatches
+                    .Where(batch => batch.Completed < cutoff).ExecuteDeleteAsync(stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

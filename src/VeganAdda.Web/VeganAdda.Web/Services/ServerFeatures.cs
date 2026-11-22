@@ -16,6 +16,14 @@ public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi,
     public Task<StatsReport> GetStats(int days) => Call<StatsService, StatsReport>(service => service.GetStats(days));
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => Call<ModerationService, Ok>(service => service.RequestProfileChanges(input));
     public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => Call<ProfilesService, Ok>(service => service.DeleteMemberProfile(id, input));
+    public Task<ProfileReminderReceipt> QueueProfileReminders(ProfileReminderInput input)
+        => Call<ProfileReminderService, ProfileReminderReceipt>(service => service.Queue(input));
+    public Task<List<ProfileReminderBatchSummary>> GetProfileReminderBatches()
+        => Call<ProfileReminderService, List<ProfileReminderBatchSummary>>(service => service.Recent());
+    public Task<ProfileReminderBatchResult> GetProfileReminderBatch(Guid id)
+        => Call<ProfileReminderService, ProfileReminderBatchResult>(service => service.Get(id));
+    public Task<ProfileReminderReceipt> RetryProfileReminders(Guid id, ProfileReminderRetry input)
+        => Call<ProfileReminderService, ProfileReminderReceipt>(service => service.Retry(id, input));
     private async Task<T> Call<TService, T>(Func<TService, Task<T>> operation) where TService : notnull
     {
         await using var scope = scopes.CreateAsyncScope();

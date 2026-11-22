@@ -15,6 +15,7 @@ using VeganAdda.Web.Components;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Services;
 using VeganAdda.Web.Features;
+using VeganAdda.Web.Features.Moderation;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console(new CompactJsonFormatter())
@@ -71,6 +72,7 @@ builder.Services.AddSingleton<IFirebaseIdentityVerifier>(s => s.GetRequiredServi
 builder.Services.AddSingleton<IFirebaseUserEmailLookup>(s => s.GetRequiredService<FirebaseIdentityVerifier>());
 builder.Services.AddSingleton<IProfileReminderEmailSender, ProfileReminderEmailSender>();
 builder.Services.AddHostedService<ChatPushWorker>();
+builder.Services.AddHostedService<ProfileReminderWorker>();
 builder.Services.AddHostedService<DataRetentionWorker>();
 builder.Services.AddSingleton<IChatPushSender, FirebaseChatPushSender>();
 builder.Services.AddRazorComponents().AddInteractiveWebAssemblyComponents();

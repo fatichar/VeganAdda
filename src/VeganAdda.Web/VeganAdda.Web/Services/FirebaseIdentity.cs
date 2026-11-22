@@ -15,7 +15,7 @@ public interface IFirebaseIdentityVerifier
 
 public interface IFirebaseUserEmailLookup
 {
-    Task<string?> GetVerifiedEmail(string uid);
+    Task<string?> GetVerifiedEmail(string uid, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Verifies Firebase client tokens against the configured project using the Admin SDK.</summary>
@@ -64,12 +64,12 @@ public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebH
         return new(uid, name, provider);
     }
 
-    public async Task<string?> GetVerifiedEmail(string uid)
+    public async Task<string?> GetVerifiedEmail(string uid, CancellationToken cancellationToken = default)
     {
         var projectId = configuration["Authentication:Firebase:ProjectId"];
         if (string.IsNullOrWhiteSpace(projectId)) throw new ApiException(503, "Firebase project ID is not configured.");
-        var user = await FirebaseAuth.GetAuth(GetFirebaseApp(projectId)).GetUserAsync(uid);
-        return user.EmailVerified && !string.IsNullOrWhiteSpace(user.Email) ? user.Email : null;
+        var user = await FirebaseAuth.GetAuth(GetFirebaseApp(projectId)).GetUserAsync(uid, cancellationToken);
+        return !user.Disabled && user.EmailVerified && !string.IsNullOrWhiteSpace(user.Email) ? user.Email : null;
     }
 
     private FirebaseApp GetFirebaseApp(string projectId)

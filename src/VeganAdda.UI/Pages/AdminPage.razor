@@ -80,12 +80,13 @@ else {
         @if (pendingBulkAction != null && selectedMembers.Count > 0) {
             <div class="admin-bulk-confirm" role="group" aria-label="Confirm bulk member action">
                 <p>@(pendingBulkAction == "verify-vegan" ? "Verify vegan status" : "Send profile reminder") will apply to @PendingBulkActionCount of @selectedMembers.Count selected member@(selectedMembers.Count == 1 ? "" : "s"). Other selected members will be skipped. @if (pendingBulkAction == "profile-reminder") { <span>Only accounts still incomplete with a verified Firebase email will receive the email.</span> }</p>
-                <div class="actions"><button class="small-button" disabled="@Busy" @onclick="RunBulkAction">@(bulkRunning ? (pendingBulkAction == "profile-reminder" ? "Sending reminders…" : "Applying…") : "Confirm action")</button><button class="secondary small-button" disabled="@Busy" @onclick="() => pendingBulkAction = null">Cancel</button></div>
+                <div class="actions"><button class="small-button" disabled="@Busy" @onclick="RunBulkAction">@(bulkRunning ? (pendingBulkAction == "profile-reminder" ? "Queuing reminders…" : "Applying…") : "Confirm action")</button><button class="secondary small-button" disabled="@Busy" @onclick="() => pendingBulkAction = null">Cancel</button></div>
             </div>
         }
         @if (bulkResult is { } outcome) {
             <div class="admin-bulk-result @(outcome.Ok ? "ok" : "warn")" role="status"><Icon Name="@(outcome.Ok ? "check_circle" : "error")" /><div><strong>@outcome.Title</strong>@if (outcome.Detail != "") { <span>@outcome.Detail</span> }</div><button class="text-button small-button" @onclick="() => bulkResult = null">Dismiss</button></div>
         }
+        <ProfileReminderResults @key="reminderBatchId" BatchId="reminderBatchId" />
         @if (data.People.Count == 0) { <Empty Icon="group" Title="No members found" Text="Choose another verification filter." /> }
         <div class="admin-rows">
         @foreach (var p in data.People) {
@@ -166,6 +167,8 @@ else {
     string country = "", state = "", city = ""; ProfileInput eventPlace = new(); ProfileInput? adminProfile; bool locationBusy, bulkActionsOpen, bulkRunning; BulkActionSummary? bulkResult; string? pendingBulkAction; Guid? openMemberActions; Dictionary<Guid, AdminPerson> selectedMembers = []; AdminData? data; EventInput? edit; string tab = "Members", memberVerification = "pending"; int eventsPage = 1, membersPage = 1, reportsPage = 1, pageSize = 20; Guid? expandedMember; ProfileReview? memberProfile; DateTime? start, end; Dictionary<Guid, string> reviewNotes = [];
     IJSObjectReference? memberActionsModule; DotNetObjectReference<AdminPage>? memberActionsReference;
     bool initialized, restoring, viewStateReady;
+    Guid reminderRequestId;
+    Guid? reminderBatchId;
     Guid? reviewFeedbackMember;
     bool reviewSending;
     string reviewError = "", reviewSuccess = "";
@@ -252,7 +255,12 @@ else {
     void ClearSelection() { selectedMembers.Clear(); pendingBulkAction = null; bulkActionsOpen = false; }
     void ToggleMemberActions(Guid id) { bulkActionsOpen = false; openMemberActions = openMemberActions == id ? null : id; }
     void ToggleBulkActions() { openMemberActions = null; bulkActionsOpen = !bulkActionsOpen; }
-    void ChooseBulkAction(string action) { pendingBulkAction = action; bulkActionsOpen = false; bulkResult = null; }
+    void ChooseBulkAction(string action) {
+        pendingBulkAction = action;
+        if (action == "profile-reminder") reminderRequestId = Guid.NewGuid();
+        bulkActionsOpen = false;
+        bulkResult = null;
+    }
     Task ModerateFromMenu(Guid id, string action) { openMemberActions = null; return Moderate(id, action); }
     void BeginProfileDeletion(Guid id) {
         openMemberActions = null;
@@ -293,6 +301,12 @@ else {
         {
             await Run(async () => {
                 var action = pendingBulkAction ?? throw new ApiException(400, "Choose a bulk action first.");
+                if (action == "profile-reminder") {
+                    var receipt = await Moderation.QueueProfileReminders(new(reminderRequestId, selectedMembers.Keys.ToList()));
+                    reminderBatchId = receipt.BatchId;
+                    ClearSelection();
+                    return;
+                }
                 var result = await Api.Send<BulkMemberActionResult>("admin/members/bulk-action", new BulkMemberActionInput(selectedMembers.Keys.ToList(), action));
                 // Show the outcome before refreshing so a refresh failure can't hide what was sent.
                 bulkResult = BulkActionSummary.From(result);
@@ -305,9 +319,8 @@ else {
         }
         catch (TaskCanceledException)
         {
-            // The browser gave up waiting (HttpClient timeout). The server may still have completed the action.
             Error = pendingBulkAction == "profile-reminder"
-                ? "The request timed out before the server reported back. Some reminders may already have been sent, so check before sending again."
+                ? "The server did not confirm the batch. Confirm again to check or queue the same request."
                 : "The request timed out before the server reported back. Check the member list before retrying.";
         }
         finally { bulkRunning = false; }

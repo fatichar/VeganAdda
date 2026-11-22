@@ -57,6 +57,7 @@ public static class FeatureRegistration
         services.AddScoped<MessagingService>();
         services.AddScoped<EventsService>();
         services.AddScoped<ModerationService>();
+        services.AddScoped<ProfileReminderService>();
         services.AddScoped<NotificationsService>();
         services.AddScoped<ReferralsService>();
         services.AddScoped<StatsService>();
