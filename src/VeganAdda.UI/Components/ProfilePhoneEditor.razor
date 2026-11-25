@@ -21,16 +21,16 @@
         }
         <button type="button" class="secondary small-button" disabled="@Disabled" @onclick="Remove">Remove from profile</button>
     }
-    @if (status?.CanVerify == true)
+    else if (status?.CanVerify == true)
     {
-        <label for="profile-phone-number">@(status.Number == null ? "Mobile number (optional)" : "New mobile number")</label>
+        <label for="profile-phone-number">Mobile number (optional)</label>
         <input id="profile-phone-number" type="tel" form="profile-phone-verification" autocomplete="tel" placeholder="+91" maxlength="32"
                @bind="number" @bind:event="oninput" disabled="@(Disabled || verificationId != null)" />
         <p class="small muted">Firebase sends a one-time code and stores numbers for abuse prevention. Your verified number is private until you share it.</p>
         <div @ref="captcha"></div>
         @if (verificationId == null)
         {
-            <button type="button" class="secondary small-button" disabled="@(Disabled || string.IsNullOrWhiteSpace(number))" @onclick="Send">Send verification code</button>
+            <button type="button" class="secondary small-button" disabled="@(Disabled || waitingToResend || string.IsNullOrWhiteSpace(number))" @onclick="Send">Send verification code</button>
         }
         else
         {
@@ -39,8 +39,13 @@
                    @bind="code" @bind:event="oninput" disabled="@(Disabled || proof != null)" />
             <div class="actions">
                 <button type="button" disabled="@(Disabled || (code.Trim().Length != 6 && proof == null))" @onclick="Verify">Verify number</button>
+                <button type="button" class="secondary" disabled="@(Disabled || waitingToResend)" @onclick="Send">Resend code</button>
                 <button type="button" class="secondary" disabled="@Disabled" @onclick="Reset">Cancel</button>
             </div>
+        }
+        @if (waitingToResend)
+        {
+            <p class="small muted">You can request another code @ResendDelaySeconds seconds after the last text.</p>
         }
     }
     else if (status != null)
@@ -51,12 +56,14 @@
 </fieldset>
 
 @code {
+    const int ResendDelaySeconds = 30;
+    readonly CancellationTokenSource lifetime = new();
     ProfilePhone? status;
     IJSObjectReference? firebase;
     ElementReference captcha;
     string number = "", code = "", error = "", success = "";
     string? uid, verificationId, proof;
-    bool busy, sharingUnknown;
+    bool busy, sharingUnknown, waitingToResend;
     int sharingVersion;
     bool Disabled => busy || !RendererInfo.IsInteractive;
 
@@ -70,16 +77,40 @@
 
     Task Send() => Run(async () =>
     {
+        if (waitingToResend) return;
         var normalized = string.Concat(number.Where(c => c is not (' ' or '(' or ')' or '-')));
         if (normalized.Length == 10 && normalized.All(char.IsAsciiDigit)) normalized = "+91" + normalized;
         if (normalized.Length is < 8 or > 16 || !normalized.StartsWith('+') || !normalized.Skip(1).All(char.IsAsciiDigit))
             throw new ApiException(400, "Enter a valid mobile number with its country code.");
         firebase ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/firebase-auth.js");
         var token = await firebase.InvokeAsync<string>("profilePhoneToken");
-        uid = (await PhoneApi.AuthorizePhone(new(token))).Uid;
-        verificationId = await firebase.InvokeAsync<string>("sendProfilePhoneCode", uid, normalized, captcha);
-        success = "Verification code sent.";
+        var currentUid = (await PhoneApi.AuthorizePhone(new(token))).Uid;
+        var challenge = await firebase.InvokeAsync<string>("sendProfilePhoneCode", currentUid, normalized, captcha);
+        if (lifetime.IsCancellationRequested) return;
+
+        success = verificationId == null ? "Verification code sent." : "A new verification code was sent. Use the latest text.";
+        uid = currentUid;
+        verificationId = challenge;
+        proof = null;
+        code = "";
+        waitingToResend = true;
+        _ = EndResendCooldown(lifetime.Token);
     });
+
+    async Task EndResendCooldown(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(ResendDelaySeconds), token);
+            await InvokeAsync(() =>
+            {
+                if (token.IsCancellationRequested) return;
+                waitingToResend = false;
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
 
     Task Verify() => Run(async () =>
     {
@@ -146,7 +177,7 @@
             error = message switch
             {
                 _ when message.Contains("auth/invalid-verification-code") => "That code didn’t match. Try again.",
-                _ when message.Contains("auth/code-expired") || message.Contains("auth/session-expired") => "The code expired. Cancel and request a new one.",
+                _ when message.Contains("auth/code-expired") || message.Contains("auth/session-expired") => "The code expired. Use Resend code to get a new one.",
                 _ when message.Contains("auth/too-many-requests") => "Too many verification attempts. Wait a few minutes and try again.",
                 _ when message.Contains("auth/quota-exceeded") => "SMS verification is temporarily unavailable. Try again later.",
                 _ when message.Contains("Sign in with Google again") || message.Contains("auth/requires-recent-login") => "Sign in with Google again to verify your number.",
@@ -158,6 +189,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        lifetime.Cancel();
+        lifetime.Dispose();
         if (firebase != null) await firebase.DisposeAsync();
     }
 }
