@@ -2,8 +2,14 @@ using VeganAdda.Contracts;
 
 namespace VeganAdda.Web.Client;
 
-public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi, IEventsApi
+public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi, IEventsApi, IProfilePhoneApi
 {
+    public Task<ProfilePhone> GetPhone() => transport.Get<ProfilePhone>("profile/phone");
+    public Task<ProfilePhoneAuthorization> AuthorizePhone(FirebaseLoginInput proof)
+        => transport.Send<ProfilePhoneAuthorization>("profile/phone/authorize", proof);
+    public Task<ProfilePhone> VerifyPhone(ProfilePhoneProof proof) => transport.Send<ProfilePhone>("profile/phone/verify", proof);
+    public Task<ProfilePhone> SharePhone(ProfilePhoneVisibility visibility) => transport.Send<ProfilePhone>("profile/phone/visibility", visibility);
+    public Task<ProfilePhone> RemovePhone() => transport.Send<ProfilePhone>("profile/phone", method: "DELETE");
     public Task<Page<ScheduledEvent>> GetSchedule(string country, string state, string city, int page)
         => transport.Get<Page<ScheduledEvent>>($"events/schedule?country={Uri.EscapeDataString(country)}&state={Uri.EscapeDataString(state)}&city={Uri.EscapeDataString(city)}&page={page}");
     public Task<List<EventContact>> SearchEventContacts(string search)

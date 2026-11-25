@@ -6,11 +6,12 @@ using VeganAdda.Contracts;
 
 namespace VeganAdda.Web.Services;
 
-public sealed record VerifiedFirebaseIdentity(string Uid, string Name, string Provider);
+public sealed record VerifiedFirebaseIdentity(string Uid, string Name, string Provider, string? PhoneNumber = null, long AuthenticatedAt = 0);
 
 public interface IFirebaseIdentityVerifier
 {
     Task<VerifiedFirebaseIdentity?> Verify(string idToken);
+    Task<string?> GetCurrentPhoneNumber(string uid);
 }
 
 public interface IFirebaseUserEmailLookup
@@ -61,7 +62,15 @@ public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebH
             throw Rejected("Firebase verified the token but returned an invalid UID.");
         }
         var name = token.Claims.TryGetValue("name", out var rawName) ? StringValue(rawName) : "";
-        return new(uid, name, provider);
+        var phoneNumber = token.Claims.TryGetValue("phone_number", out var rawPhoneNumber) ? StringValue(rawPhoneNumber) : null;
+        var authenticatedAt = token.Claims.GetValueOrDefault("auth_time") switch
+        {
+            long seconds => seconds,
+            int seconds => seconds,
+            JsonElement { ValueKind: JsonValueKind.Number } json when json.TryGetInt64(out var seconds) => seconds,
+            _ => 0
+        };
+        return new(uid, name, provider, phoneNumber, authenticatedAt);
     }
 
     public async Task<string?> GetVerifiedEmail(string uid)
@@ -70,6 +79,22 @@ public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebH
         if (string.IsNullOrWhiteSpace(projectId)) throw new ApiException(503, "Firebase project ID is not configured.");
         var user = await FirebaseAuth.GetAuth(GetFirebaseApp(projectId)).GetUserAsync(uid);
         return user.EmailVerified && !string.IsNullOrWhiteSpace(user.Email) ? user.Email : null;
+    }
+
+    public async Task<string?> GetCurrentPhoneNumber(string uid)
+    {
+        var projectId = configuration["Authentication:Firebase:ProjectId"];
+        if (string.IsNullOrWhiteSpace(projectId)) throw new ApiException(503, "Firebase project ID is not configured.");
+        try
+        {
+            var user = await FirebaseAuth.GetAuth(GetFirebaseApp(projectId)).GetUserAsync(uid);
+            return user.Disabled ? null : user.PhoneNumber;
+        }
+        catch (FirebaseAuthException ex)
+        {
+            logger.LogWarning("Firebase phone lookup failed with code {FirebaseErrorCode}.", ex.AuthErrorCode);
+            throw new ApiException(503, "Couldn’t confirm the phone number with Firebase. Try again.");
+        }
     }
 
     private FirebaseApp GetFirebaseApp(string projectId)

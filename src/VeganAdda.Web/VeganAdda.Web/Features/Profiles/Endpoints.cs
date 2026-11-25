@@ -12,6 +12,15 @@ public static class ProfilesEndpoints
         api.MapGet("/people/{id}", (string id, ProfilesService service) => Json(service.GetPerson(Guid.Parse(id)))).WithName("Profiles_Get_0").AllowAnonymous();
         api.MapGet("/profile", (ProfilesService service) => Json(service.GetProfile())).WithName("Profiles_Get_1").RequireAuthorization();
         api.MapPost("/profile", (HttpContext ctx, ProfilesService service) => Json(service.SaveProfile(Body<ProfileInput>(ctx)))).WithName("Profiles_Post_2").RequireAuthorization();
+        var phone = api.MapGroup("/profile/phone").RequireAuthorization();
+        phone.MapGet("", (ProfilePhoneService service) => Json(service.GetPhone())).WithName("Profiles_GetPhone");
+        phone.MapPost("/authorize", (HttpContext ctx, ProfilePhoneService service) =>
+            Json(service.Authorize(Body<FirebaseLoginInput>(ctx)))).WithName("Profiles_AuthorizePhone");
+        phone.MapPost("/verify", (HttpContext ctx, ProfilePhoneService service) =>
+            Json(service.Verify(Body<ProfilePhoneProof>(ctx)))).WithName("Profiles_VerifyPhone");
+        phone.MapPost("/visibility", (HttpContext ctx, ProfilePhoneService service) =>
+            Json(service.Share(Body<ProfilePhoneVisibility>(ctx)))).WithName("Profiles_SharePhone");
+        phone.MapDelete("", (ProfilePhoneService service) => Json(service.Remove())).WithName("Profiles_RemovePhone");
         api.MapDelete("/account", async (HttpContext ctx, ProfilesService service) => { if (Body<DeleteInput>(ctx).Confirm != "DELETE") throw new ApiException(400, "Confirm permanent deletion by typing DELETE."); var result = await service.DeleteAccount(); await ctx.SignOutAsync(); return Results.Json(result, Wire.Json); }).WithName("Profiles_Delete_3").RequireAuthorization();
         api.MapDelete("/admin/members/{id:guid}", (Guid id, HttpContext ctx, ProfilesService service) =>
             Json(service.DeleteMemberProfile(id, Body<DeleteInput>(ctx), ctx.RequestAborted)))

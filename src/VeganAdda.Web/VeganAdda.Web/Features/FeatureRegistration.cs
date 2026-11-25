@@ -46,6 +46,7 @@ public static class FeatureRegistration
         services.AddScoped<CommunityService>();
         services.AddScoped<InboxService>();
         services.AddScoped<ProfileVisibility>();
+        services.AddScoped<ProfilePhoneService>();
         services.AddScoped<PeopleProjection>();
         services.AddScoped<ReferralTrust>();
         services.AddScoped<EventProjection>();

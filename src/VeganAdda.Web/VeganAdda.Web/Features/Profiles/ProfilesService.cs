@@ -133,7 +133,9 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         await ActiveViewer();
         if (!Viewer.HasValue) throw new ApiException(401, "Sign in to view member profiles.");
         var person = await visibility.Query(true).SingleOrDefaultAsync(p => p.Id == id) ?? throw Missing();
-        return await people.One(person);
+        var projected = await people.One(person);
+        var phone = await db.ProfilePhones.Where(p => p.ProfileId == id && p.Shared).Select(p => p.Number).SingleOrDefaultAsync();
+        return projected with { PhoneNumber = phone };
     }
 
     public static string ValidateName(string? value)

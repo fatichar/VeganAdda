@@ -12,8 +12,15 @@ namespace VeganAdda.Web.Services;
 
 // Each overlapping prerender operation has an independent DbContext. Typed results
 // need no serialization round-trip through the path-based compatibility adapter.
-public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi, IEventsApi
+public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi, IEventsApi, IProfilePhoneApi
 {
+    public Task<ProfilePhone> GetPhone() => Call<ProfilePhoneService, ProfilePhone>(service => service.GetPhone());
+    public Task<ProfilePhoneAuthorization> AuthorizePhone(FirebaseLoginInput proof)
+        => Call<ProfilePhoneService, ProfilePhoneAuthorization>(service => service.Authorize(proof));
+    public Task<ProfilePhone> VerifyPhone(ProfilePhoneProof proof) => Call<ProfilePhoneService, ProfilePhone>(service => service.Verify(proof));
+    public Task<ProfilePhone> SharePhone(ProfilePhoneVisibility visibility)
+        => Call<ProfilePhoneService, ProfilePhone>(service => service.Share(visibility));
+    public Task<ProfilePhone> RemovePhone() => Call<ProfilePhoneService, ProfilePhone>(service => service.Remove());
     public Task<Page<ScheduledEvent>> GetSchedule(string country, string state, string city, int page)
         => Call<EventsService, Page<ScheduledEvent>>(service => service.GetSchedule(country, state, city, page));
     public Task<List<EventContact>> SearchEventContacts(string search)

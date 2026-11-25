@@ -36,6 +36,7 @@ public class HttpTests : IDisposable
         SetFirebaseEnvironment("Authentication__Firebase__ApiKey", "public-test-key");
         SetFirebaseEnvironment("Authentication__Firebase__AuthDomain", "test-firebase.firebaseapp.com");
         SetFirebaseEnvironment("Authentication__Firebase__AppId", "1:test:web:test");
+        SetFirebaseEnvironment("Authentication__Firebase__ProfilePhoneVerificationEnabled", "true");
         factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
@@ -495,6 +496,7 @@ public class HttpTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/auth/firebase", new FirebaseLoginInput("good-google"))).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostAllowFailure(c, "/auth/firebase", new FirebaseLoginInput("bad-token"))).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await PostAllowFailure(c, "/auth/firebase", new FirebaseLoginInput("other-provider"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await PostAllowFailure(c, "/auth/firebase", new FirebaseLoginInput("phone-proof"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Post(c, "/auth/firebase", new FirebaseLoginInput("good-google"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Post(c, "/auth/firebase", new FirebaseLoginInput("good-google"))).StatusCode);
         using (var scope = factory.Services.CreateScope())
@@ -512,6 +514,46 @@ public class HttpTests : IDisposable
         var token = await c.GetFromJsonAsync<Csrf>("/api/csrf");
         using var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
         request.Headers.Add("X-CSRF-TOKEN", token!.Token); return await c.SendAsync(request);
+    }
+
+    [Fact]
+    public async Task Profile_phone_requires_the_owners_current_firebase_number_and_shares_only_on_request()
+    {
+        const string profilePhone = "/api/profile/phone";
+        const string verifiedNumber = "+12025550105";
+        var owner = await f.Member();
+        var viewer = await f.Member();
+        await using (var db = f.Db())
+        {
+            (await db.Accounts.FindAsync(owner))!.Subject = "firebase:test-firebase:profile-phone-uid";
+            await db.SaveChangesAsync();
+        }
+        using var me = Client(owner);
+        using var other = Client(viewer);
+        var details = $"/api/people/{owner}";
+        Assert.True((await me.GetFromJsonAsync<ProfilePhone>(profilePhone))!.CanVerify);
+        Assert.Equal(HttpStatusCode.Forbidden, (await PostAllowFailure(me, profilePhone + "/verify", new ProfilePhoneProof("good-google", "phone-proof"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostAllowFailure(me, profilePhone + "/verify", new ProfilePhoneProof("profile-google", "stale-phone-proof"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(me, profilePhone + "/authorize", new FirebaseLoginInput("profile-google"))).StatusCode);
+
+        var saved = await (await Post(me, profilePhone + "/verify", new ProfilePhoneProof("profile-google", "phone-proof"))).Content.ReadFromJsonAsync<ProfilePhone>();
+        Assert.Equal(verifiedNumber, saved!.Number);
+        Assert.False(saved.Shared);
+        Assert.Null((await other.GetFromJsonAsync<Person>(details))!.PhoneNumber);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostAllowFailure(me, profilePhone + "/visibility", new ProfilePhoneVisibility(true, "+12025550106"))).StatusCode);
+        await Post(me, profilePhone + "/visibility", new ProfilePhoneVisibility(true, verifiedNumber));
+        Assert.Equal(verifiedNumber, (await other.GetFromJsonAsync<Person>(details))!.PhoneNumber);
+        using var anon = Client();
+        Assert.DoesNotContain(verifiedNumber, await anon.GetStringAsync("/api/people"));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anon.GetAsync(details)).StatusCode);
+
+        await Post(me, $"/api/people/{viewer}/block", new { });
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync(details)).StatusCode);
+        using var remove = new HttpRequestMessage(HttpMethod.Delete, profilePhone);
+        remove.Headers.Add("X-CSRF-TOKEN", (await me.GetFromJsonAsync<Csrf>("/api/csrf"))!.Token);
+        var removed = await (await me.SendAsync(remove)).Content.ReadFromJsonAsync<ProfilePhone>();
+        Assert.Null(removed!.Number);
+        Assert.False(removed.Shared);
     }
     [Fact] public async Task Static_downloads_do_not_exhaust_api_limits_but_connection_requests_are_limited()
     {
@@ -736,9 +778,13 @@ public class HttpTests : IDisposable
         public Task<VeganAdda.Web.Services.VerifiedFirebaseIdentity?> Verify(string idToken) => Task.FromResult<VeganAdda.Web.Services.VerifiedFirebaseIdentity?>(idToken switch
         {
             "good-google" => new("test-google-uid", "Test Member", "google.com"),
+            "profile-google" => new("profile-phone-uid", "Test Member", "google.com"),
+            "phone-proof" => new("phone-only-uid", "", "phone", "+12025550105", DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
+            "stale-phone-proof" => new("phone-only-uid", "", "phone", "+12025550105", DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()),
             "other-provider" => new("test-other-uid", "Other Provider", "password"),
             _ => null
         });
+        public Task<string?> GetCurrentPhoneNumber(string uid) => Task.FromResult<string?>(uid == "phone-only-uid" ? "+12025550105" : null);
     }
     private sealed class TestAuth(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options,logger,encoder)
     {

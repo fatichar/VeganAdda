@@ -1,0 +1,121 @@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IProfilePhoneApi PhoneApi
+
+<fieldset class="profile-section">
+    <legend>Phone number</legend>
+    @if (status?.Number is { } verified)
+    {
+        <p><strong>@verified</strong> <span class="muted">· Verified</span></p>
+        <label class="check-row">
+            <input type="checkbox" checked="@status.Shared" @onchange="Share" disabled="@Disabled" />
+            <span>Show on my profile<small>Signed-in members who can view your full profile can see this number.</small></span>
+        </label>
+        <button type="button" class="secondary small-button" disabled="@Disabled" @onclick="Remove">Remove from profile</button>
+    }
+    @if (status?.CanVerify == true)
+    {
+        <label for="profile-phone-number">@(status.Number == null ? "Mobile number (optional)" : "New mobile number")</label>
+        <input id="profile-phone-number" type="tel" form="profile-phone-verification" autocomplete="tel" placeholder="+91" maxlength="32"
+               @bind="number" @bind:event="oninput" disabled="@(Disabled || verificationId != null)" />
+        <p class="small muted">Firebase sends a one-time code and stores numbers for abuse prevention. Your verified number is private until you share it.</p>
+        <div @ref="captcha"></div>
+        @if (verificationId == null)
+        {
+            <button type="button" class="secondary small-button" disabled="@(Disabled || string.IsNullOrWhiteSpace(number))" @onclick="Send">Send verification code</button>
+        }
+        else
+        {
+            <label for="profile-phone-code">Verification code</label>
+            <input id="profile-phone-code" form="profile-phone-verification" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+                   @bind="code" @bind:event="oninput" disabled="@(Disabled || proof != null)" />
+            <div class="actions">
+                <button type="button" disabled="@(Disabled || (code.Trim().Length != 6 && proof == null))" @onclick="Verify">Verify number</button>
+                <button type="button" class="secondary" disabled="@Disabled" @onclick="Reset">Cancel</button>
+            </div>
+        }
+    }
+    else if (status != null)
+    {
+        <p class="small muted">Phone verification is unavailable.</p>
+    }
+    <Feedback Error="@error" Success="@success" />
+</fieldset>
+
+@code {
+    ProfilePhone? status;
+    IJSObjectReference? firebase;
+    ElementReference captcha;
+    string number = "", code = "", error = "", success = "";
+    string? uid, verificationId, proof;
+    bool busy;
+    bool Disabled => busy || !RendererInfo.IsInteractive;
+
+    protected override Task OnInitializedAsync() => Run(async () => status = await PhoneApi.GetPhone());
+
+    Task Send() => Run(async () =>
+    {
+        var normalized = string.Concat(number.Where(c => c is not (' ' or '(' or ')' or '-')));
+        if (normalized.Length == 10 && normalized.All(char.IsAsciiDigit)) normalized = "+91" + normalized;
+        if (normalized.Length is < 8 or > 16 || !normalized.StartsWith('+') || !normalized.Skip(1).All(char.IsAsciiDigit))
+            throw new ApiException(400, "Enter a valid mobile number with its country code.");
+        firebase ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/firebase-auth.js");
+        var token = await firebase.InvokeAsync<string>("profilePhoneToken");
+        uid = (await PhoneApi.AuthorizePhone(new(token))).Uid;
+        verificationId = await firebase.InvokeAsync<string>("sendProfilePhoneCode", uid, normalized, captcha);
+        success = "Verification code sent.";
+    });
+
+    Task Verify() => Run(async () =>
+    {
+        proof ??= await firebase!.InvokeAsync<string>("confirmProfilePhoneCode", uid, verificationId, code.Trim());
+        var googleToken = await firebase!.InvokeAsync<string>("profilePhoneToken");
+        status = await PhoneApi.VerifyPhone(new(googleToken, proof));
+        Reset();
+        success = "Phone number verified.";
+    });
+
+    Task Share(ChangeEventArgs args) => Run(async () => status = await PhoneApi.SharePhone(new((bool)args.Value!, status?.Number)));
+
+    Task Remove() => Run(async () =>
+    {
+        status = await PhoneApi.RemovePhone();
+        Reset();
+        success = "Number removed from your profile.";
+    });
+
+    void Reset()
+    {
+        uid = verificationId = proof = null;
+        number = code = error = success = "";
+    }
+
+    async Task Run(Func<Task> action)
+    {
+        if (busy) return;
+        busy = true;
+        error = success = "";
+        try { await action(); }
+        catch (ApiException ex) { error = ex.Message; }
+        catch (HttpRequestException) { error = "Couldn’t reach VeganAdda. Try again."; }
+        catch (JSException ex)
+        {
+            var message = ex.Message;
+            error = message switch
+            {
+                _ when message.Contains("auth/invalid-verification-code") => "That code didn’t match. Try again.",
+                _ when message.Contains("auth/code-expired") || message.Contains("auth/session-expired") => "The code expired. Cancel and request a new one.",
+                _ when message.Contains("auth/credential-already-in-use") => "That number is already linked to a Firebase account.",
+                _ when message.Contains("Sign in with Google again") || message.Contains("auth/requires-recent-login") => "Sign in with Google again to verify your number.",
+                _ => "Phone verification couldn’t be completed. Try again."
+            };
+        }
+        finally { busy = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (firebase != null) await firebase.DisposeAsync();
+    }
+}

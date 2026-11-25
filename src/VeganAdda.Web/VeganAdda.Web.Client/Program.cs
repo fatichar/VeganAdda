@@ -10,6 +10,7 @@ builder.Services.AddScoped<IMessagingApi>(s => s.GetRequiredService<BrowserFeatu
 builder.Services.AddScoped<ISavedApi>(s => s.GetRequiredService<BrowserFeatures>());
 builder.Services.AddScoped<IVerificationApi>(s => s.GetRequiredService<BrowserFeatures>());
 builder.Services.AddScoped<IEventsApi>(s => s.GetRequiredService<BrowserFeatures>());
+builder.Services.AddScoped<IProfilePhoneApi>(s => s.GetRequiredService<BrowserFeatures>());
 builder.Services.AddScoped<IModerationApi>(s => s.GetRequiredService<BrowserFeatures>());
 builder.Services.AddScoped<IStatsApi>(s => s.GetRequiredService<BrowserFeatures>());
 builder.Services.AddScoped<IProfilesApi>(s => s.GetRequiredService<BrowserFeatures>());
