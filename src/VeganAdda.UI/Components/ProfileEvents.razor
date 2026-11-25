@@ -1,0 +1,42 @@
+@inject IEventsApi EventsApi
+
+@if (events is { Items.Count: > 0 } result)
+{
+    <section class="card" aria-label="Upcoming events">
+        <h3>Upcoming events</h3>
+        <ul class="profile-event-list">
+            @foreach (var item in result.Items)
+            {
+                var local = TimeZoneInfo.ConvertTime(item.Start, TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone));
+                <li @key="item.Id">
+                    <a href="/events/@item.Id">@item.Title</a>
+                    <small class="muted">
+                        <time datetime="@item.Start.ToString("O")">@local.ToString("ddd, d MMM yyyy · h:mm tt")</time>
+                        · @item.City
+                        @if (!item.Visible) { <span> · Only you</span> }
+                    </small>
+                </li>
+            }
+        </ul>
+        <Pagination PageNumber="@result.PageNumber" PageSize="@result.PageSize" Total="@result.Total"
+                    Busy="@(busy || !RendererInfo.IsInteractive)" PageChanged="Load" />
+        @if (failed) { <p class="small error-text" role="status">Couldn’t load that page of events.</p> }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid PersonId { get; set; }
+    Page<ProfileEvent>? events;
+    bool busy, failed;
+
+    protected override Task OnInitializedAsync() => Load(1);
+
+    async Task Load(int page)
+    {
+        busy = true;
+        failed = false;
+        try { events = await EventsApi.GetProfileEvents(PersonId, page); }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException) { failed = true; }
+        finally { busy = false; }
+    }
+}

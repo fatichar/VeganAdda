@@ -1,0 +1,4 @@
+.profile-event-list { margin: 0; padding: 0; list-style: none; }
+.profile-event-list li { padding: 10px 0; overflow-wrap: anywhere; }
+.profile-event-list li + li { border-top: 1px solid var(--line); }
+.profile-event-list a { font-weight: 700; }

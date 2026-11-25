@@ -211,6 +211,13 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
 
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Country")
                         .IsRequired()
                         .HasMaxLength(600)
@@ -290,6 +297,8 @@ namespace VeganAdda.Web.Data.Migrations
                         .HasColumnType("character varying(600)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ContactId");
 
                     b.HasIndex("SubmittedBy");
 
@@ -802,6 +811,11 @@ namespace VeganAdda.Web.Data.Migrations
 
             modelBuilder.Entity("VeganAdda.Web.Data.Gathering", b =>
                 {
+                    b.HasOne("VeganAdda.Web.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ContactId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("VeganAdda.Web.Data.Account", null)
                         .WithMany()
                         .HasForeignKey("SubmittedBy")

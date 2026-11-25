@@ -16,6 +16,8 @@ public class EventInput
     public string State { get; set; } = "";
     public string Venue { get; set; } = "";
     public string Organizer { get; set; } = "";
+    public EventContact? Contact { get; set; }
+    public string? ContactPhone { get; set; }
     public string? Registration { get; set; }
     public bool Published { get; set; }
     public bool Featured { get; set; }
@@ -26,6 +28,18 @@ public record EventReview(EventInput Details, string? SubmittedBy);
 public record EventReviewInput(Guid Id, bool Approve, string? Note = null);
 public record EventCard(Guid Id, string Title, string Cover, string Description, DateTimeOffset? Start,
     DateTimeOffset? End, string TimeZone, string City, string Venue, string Organizer, string? Registration,
-    bool Featured, bool Saved, bool Attending, bool AttendeeVisible, bool Demo, DateTimeOffset? CheckedInUntil = null);
+    bool Featured, bool Saved, bool Attending, bool AttendeeVisible, bool Demo, DateTimeOffset? CheckedInUntil = null,
+    EventContact? Contact = null, string? ContactPhone = null, EventContact? Creator = null);
+public record EventContact(Guid Id, string Name);
+public record ScheduledEvent(Guid Id, string Title, DateTimeOffset Start, string TimeZone, string City, string Venue,
+    bool Attending, bool Demo);
+public record ProfileEvent(Guid Id, string Title, DateTimeOffset Start, string TimeZone, string City, bool Visible);
 public record AttendanceInput(bool Attending, bool Visible);
 public record CheckInInput(bool CheckedIn);
+
+public interface IEventsApi
+{
+    Task<Page<ScheduledEvent>> GetSchedule(string country, string state, string city, int page);
+    Task<List<EventContact>> SearchEventContacts(string search);
+    Task<Page<ProfileEvent>> GetProfileEvents(Guid personId, int page);
+}
