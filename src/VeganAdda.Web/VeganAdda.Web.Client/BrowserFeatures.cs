@@ -2,8 +2,14 @@ using VeganAdda.Contracts;
 
 namespace VeganAdda.Web.Client;
 
-public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi
+public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi, IEventsApi
 {
+    public Task<Page<ScheduledEvent>> GetSchedule(string country, string state, string city, int page)
+        => transport.Get<Page<ScheduledEvent>>($"events/schedule?country={Uri.EscapeDataString(country)}&state={Uri.EscapeDataString(state)}&city={Uri.EscapeDataString(city)}&page={page}");
+    public Task<List<EventContact>> SearchEventContacts(string search)
+        => transport.Get<List<EventContact>>("events/contacts?search=" + Uri.EscapeDataString(search));
+    public Task<Page<ProfileEvent>> GetProfileEvents(Guid personId, int page)
+        => transport.Get<Page<ProfileEvent>>($"people/{personId}/events?page={page}");
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => transport.Send<Ok>("admin/profile-feedback", input);
     public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => transport.Send<Ok>($"admin/members/{id}", input, "DELETE");
     public Task<VerificationStatus> GetVerification() => transport.Get<VerificationStatus>("verification");

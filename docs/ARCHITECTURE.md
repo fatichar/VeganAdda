@@ -71,7 +71,7 @@ unverified members without a request start at Not requested. Evidence and resolv
 requests remain restricted until applicant account deletion (which cascades them);
 deleting a referrer removes that identity without deleting the applicant's request.
 Verification removal does not hide a complete profile or cascade to referred
-members. Active, verified, non-test vegans may provide referrals, suggest events and
+members. Active, verified, non-test vegans may provide referrals, publish events and
 become moderators. Discovery includes unverified vegans unless filtered out.
 
 Feature consent is always enabled and is no longer editable. Administrators choose

@@ -39,6 +39,9 @@ else {
                 <LocationPicker @key="edit" Model="eventPlace" ProfileLocation="false" BusyChanged="value => locationBusy = value" />
                 <label for="venue">Venue <RequiredMark /></label><input id="venue" required maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
                 <label for="organizer">Contact person <span class="muted">(optional)</span></label><input id="organizer" maxlength="150" @bind="edit.Organizer" @bind:event="oninput" />
+                <label for="admin-event-phone">Contact phone number @if (PhoneRequired) { <RequiredMark /> }</label>
+                <input id="admin-event-phone" type="tel" required="@PhoneRequired" maxlength="32" @bind="edit.ContactPhone" @bind:event="oninput" aria-describedby="admin-event-phone-help" />
+                <p id="admin-event-phone-help" class="small muted">Use a number you have permission to share with signed-in members.</p>
                 <p class="small muted">Times are local to the event venue.</p>
                 <label for="start">Start date and time <RequiredMark /></label><input id="start" type="datetime-local" required @bind="start" />
                 <label for="end">End date and time <span class="muted">(optional)</span></label><input id="end" type="datetime-local" @bind="end" />
@@ -308,6 +311,7 @@ else {
     });
     Task FilterEvents(DiscoveryInput place) { country = place.Country; state = place.State; city = place.City; eventsPage = 1; return Run(Refresh); }
     void NewEvent() { edit = new(); eventPlace = new() { Country = adminProfile?.Country ?? "India", State = adminProfile?.State ?? "", City = adminProfile?.City ?? "" }; start = end = null; }
+    bool PhoneRequired => edit?.Published == true && data?.Events.Any(e => e.Id == edit.Id && e.Published && e.ContactPhone == null) != true;
     void Edit(EventInput item) { edit = JsonSerializer.Deserialize<EventInput>(JsonSerializer.Serialize(item, Wire.Json), Wire.Json); eventPlace = new() { Country = item.Country, State = item.State, City = item.City }; var zone = TimeZoneInfo.FindSystemTimeZoneById(item.TimeZone); start = item.Start.HasValue ? TimeZoneInfo.ConvertTime(item.Start.Value, zone).DateTime : null; end = item.End.HasValue ? TimeZoneInfo.ConvertTime(item.End.Value, zone).DateTime : null; }
     Task SaveEvent() => Run(async () => { edit!.Country = eventPlace.Country; edit.State = eventPlace.State; edit.City = eventPlace.City; edit.LocalStart = start; edit.LocalEnd = end; await Api.Send<Ok>("admin/events", edit); await Refresh(); Success = "Event saved."; });
     Task Moderate(Guid id, string action) => Run(async () => { await Api.Send<Ok>("admin/moderate", new ModerateInput(id, action)); await Refresh(); Success = action == "confirm-vegan" ? "Vegan status verified." : action == "remove-vegan-verification" ? "Vegan verification removed." : "Community record updated."; });

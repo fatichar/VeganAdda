@@ -1,0 +1,4 @@
+.event-contact-picker label { display: block; }
+.event-contact-picker p { margin: 5px 0 0; }
+.event-contact-picker ul { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 4px; }
+.event-contact-picker li button { width: 100%; justify-content: flex-start; text-align: left; }

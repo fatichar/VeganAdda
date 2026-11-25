@@ -1,6 +1,7 @@
 using VeganAdda.Web.Features.Verification;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Features.Discovery;
+using VeganAdda.Web.Features.Events;
 using VeganAdda.Web.Features.Messaging;
 using VeganAdda.Web.Features.Profiles;
 using VeganAdda.Web.Features.Saved;
@@ -11,8 +12,14 @@ namespace VeganAdda.Web.Services;
 
 // Each overlapping prerender operation has an independent DbContext. Typed results
 // need no serialization round-trip through the path-based compatibility adapter.
-public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi
+public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi, ISavedApi, IProfilesApi, IVerificationApi, IModerationApi, IStatsApi, IEventsApi
 {
+    public Task<Page<ScheduledEvent>> GetSchedule(string country, string state, string city, int page)
+        => Call<EventsService, Page<ScheduledEvent>>(service => service.GetSchedule(country, state, city, page));
+    public Task<List<EventContact>> SearchEventContacts(string search)
+        => Call<EventsService, List<EventContact>>(service => service.SearchEventContacts(search));
+    public Task<Page<ProfileEvent>> GetProfileEvents(Guid personId, int page)
+        => Call<EventsService, Page<ProfileEvent>>(service => service.GetProfileEvents(personId, page));
     public Task<StatsReport> GetStats(int days) => Call<StatsService, StatsReport>(service => service.GetStats(days));
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => Call<ModerationService, Ok>(service => service.RequestProfileChanges(input));
     public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => Call<ProfilesService, Ok>(service => service.DeleteMemberProfile(id, input));

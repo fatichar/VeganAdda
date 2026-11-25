@@ -9,7 +9,7 @@ namespace VeganAdda.Tests;
 public class EventListingTests(DatabaseFixture f)
 {
     [Fact]
-    public async Task Optional_contact_description_and_end_survive_submission_review_and_editing()
+    public async Task A_member_event_publishes_immediately_and_preserves_optional_details()
     {
         var member = await f.Member(); var admin = await f.Member(admin: true);
         var title = "Gathering-" + Guid.NewGuid().ToString("N");
@@ -17,25 +17,138 @@ public class EventListingTests(DatabaseFixture f)
         var expectedStart = DateTimeOffset.UtcNow.AddMinutes(-30);
         var localStart = TimeZoneInfo.ConvertTime(expectedStart, zone).DateTime;
         var input = new EventInput { Title = title, Country = "India", State = "Maharashtra", City = "Pune", Venue = "Community hall", LocalStart = localStart };
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(member, "event-submissions", input, "POST"))).Status);
+        input.ContactPhone = "call +918123456789";
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(member, "event-submissions", input, "POST"))).Status);
+        input.ContactPhone = "+91 (81234) 56789";
         await f.Call(member, "event-submissions", input, "POST");
         var submission = Assert.Single(Assert.IsType<List<EventInput>>(await f.Call(member, "event-submissions")), e => e.Title == title);
         Assert.Null(submission.End); Assert.Equal("", submission.Organizer); Assert.Equal("", submission.Description);
         Assert.Equal("Maharashtra", submission.State); Assert.Equal("India", submission.Country);
         Assert.Equal("Asia/Kolkata", submission.TimeZone);
         Assert.InRange((submission.Start!.Value - expectedStart).Duration(), TimeSpan.Zero, TimeSpan.FromMilliseconds(1));
-        await f.Call(admin, "moderation/event-review", new EventReviewInput(submission.Id, true), "POST");
+        Assert.True(submission.Published);
+        Assert.Equal("Published", submission.SubmissionStatus);
         var listed = Assert.IsType<Page<EventCard>>(await f.Call(null, "events?country=India&state=Maharashtra&city=Pune"));
         Assert.Contains(listed.Items, e => e.Id == submission.Id);
-        submission.Published = true;
+        Assert.Null(listed.Items.Single(e => e.Id == submission.Id).ContactPhone);
         submission.LocalStart = localStart;
+        submission.Title += " updated";
+        await f.Call(member, "event-submissions", submission, "POST");
         await f.Call(admin, "admin/events", submission, "POST");
         await f.Call(member, $"events/{submission.Id}/attendance", new AttendanceInput(true, true), "POST");
         await f.Call(member, $"events/{submission.Id}/check-in", new CheckInInput(true), "POST");
         var detail = Assert.IsType<EventCard>(await f.Call(member, $"events/{submission.Id}"));
+        Assert.Equal("+918123456789", detail.ContactPhone);
+        Assert.Equal(member, detail.Creator?.Id);
+        var anonymous = Assert.IsType<EventCard>(await f.Call(null, $"events/{submission.Id}"));
+        Assert.Null(anonymous.Creator);
+        Assert.Null(anonymous.ContactPhone);
         Assert.Equal(submission.Start!.Value.AddHours(4), detail.CheckedInUntil);
         submission.LocalEnd = localStart.AddMinutes(-1);
         var error = await Assert.ThrowsAsync<ApiException>(() => f.Call(admin, "admin/events", submission, "POST"));
         Assert.Equal(400, error.Status);
+    }
+
+    [Fact]
+    public async Task Member_contacts_follow_profile_visibility_and_admin_takedowns_cannot_be_undone_by_the_owner()
+    {
+        var owner = await f.Member();
+        var contact = await f.Member(pub: false);
+        var attendee = await f.Member();
+        var admin = await f.Member(admin: true);
+        var contactName = $"Event contact {Guid.NewGuid():N}";
+        await using (var db = f.Db())
+        {
+            (await db.Profiles.FindAsync(contact))!.Name = contactName;
+            await db.SaveChangesAsync();
+        }
+        var candidates = await f.Feature<EventsService, List<EventContact>>(owner, s => s.SearchEventContacts(contactName));
+        Assert.Contains(candidates, c => c.Id == contact);
+
+        var input = new EventInput
+        {
+            Title = "Outreach", Country = "India", State = "Maharashtra", City = "Pune", Venue = "Community hall",
+            LocalStart = DateTime.UtcNow.AddDays(4), Contact = new EventContact(contact, "Client-supplied name"),
+            ContactPhone = "+918123456789"
+        };
+        await f.Call(owner, "event-submissions", input, "POST");
+        var posted = Assert.Single(Assert.IsType<List<EventInput>>(await f.Call(owner, "event-submissions")));
+        Assert.Equal(new EventContact(contact, contactName), posted.Contact);
+        Assert.Null(Assert.IsType<EventCard>(await f.Call(null, $"events/{posted.Id}")).Contact);
+        Assert.Equal(posted.Contact, Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}")).Contact);
+
+        await f.Call(contact, $"people/{attendee}/block", null, "POST");
+        var blocked = Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}"));
+        Assert.Null(blocked.Contact);
+        Assert.Null(blocked.ContactPhone);
+
+        await f.Call(contact, "account", new DeleteInput("DELETE"), "DELETE");
+        Assert.Null(Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}")).ContactPhone);
+
+        input.Id = posted.Id;
+        input.Published = false;
+        await f.Call(admin, "admin/events", input, "POST");
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => f.Call(owner, "event-submissions", input, "POST"))).Status);
+        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => f.Call(null, $"events/{posted.Id}"))).Status);
+    }
+
+    [Fact]
+    public async Task Profile_events_show_only_upcoming_published_rsvps_with_member_visibility()
+    {
+        var person = await f.Member();
+        var viewer = await f.Member();
+        var start = DateTimeOffset.UtcNow.AddDays(1);
+        var shared = new Gathering { Title = "Shared", Published = true, Start = start };
+        var privateEvent = new Gathering { Title = "Private", Published = true, Start = start.AddHours(1) };
+        var past = new Gathering { Title = "Past", Published = true, Start = start.AddDays(-2) };
+        var draft = new Gathering { Title = "Draft", Start = start };
+        await using (var db = f.Db())
+        {
+            db.Events.AddRange(shared, privateEvent, past, draft);
+            db.Attendance.AddRange(
+                new Attendance { UserId = person, EventId = shared.Id, Visible = true },
+                new Attendance { UserId = person, EventId = privateEvent.Id, Visible = false },
+                new Attendance { UserId = person, EventId = past.Id, Visible = true },
+                new Attendance { UserId = person, EventId = draft.Id, Visible = true });
+            await db.SaveChangesAsync();
+        }
+
+        Task<Page<ProfileEvent>> Read(Guid? id) => f.Feature<EventsService, Page<ProfileEvent>>(id, s => s.GetProfileEvents(person, 1));
+        Assert.Equal(shared.Id, Assert.Single((await Read(viewer)).Items).Id);
+        var ownEvents = (await Read(person)).Items;
+        Assert.Equal(new[] { shared.Id, privateEvent.Id }, ownEvents.Select(e => e.Id));
+        Assert.False(ownEvents[1].Visible);
+        Assert.Equal(401, (await Assert.ThrowsAsync<ApiException>(() => Read(null))).Status);
+
+        await f.Call(person, $"people/{viewer}/block", null, "POST");
+        Assert.Equal(404, (await Assert.ThrowsAsync<ApiException>(() => Read(viewer))).Status);
+    }
+
+    [Fact]
+    public async Task Schedule_pages_chronologically_and_projects_the_viewers_attendance()
+    {
+        var member = await f.Member();
+        var city = "Schedule-" + Guid.NewGuid().ToString("N");
+        var start = DateTimeOffset.UtcNow.AddDays(1);
+        var events = Enumerable.Range(0, 53).Select(i => new Gathering
+        {
+            Title = $"Outreach {i}", City = city, Published = true, Featured = i == 52, Start = start.AddDays(i)
+        }).ToList();
+        await using (var db = f.Db())
+        {
+            db.Events.AddRange(events);
+            db.Events.Add(new Gathering { Title = "Draft", City = city, Start = start });
+            db.Events.Add(new Gathering { Title = "Past", City = city, Published = true, Start = start.AddDays(-2) });
+            await db.SaveChangesAsync();
+        }
+        await f.Call(member, $"events/{events[1].Id}/attendance", new AttendanceInput(true, false), "POST");
+        var first = await f.Feature<EventsService, Page<ScheduledEvent>>(member, s => s.GetSchedule("", "", city, 1));
+        var second = await f.Feature<EventsService, Page<ScheduledEvent>>(member, s => s.GetSchedule("", "", city, 2));
+        Assert.Equal(53, first.Total);
+        Assert.Equal(50, first.PageSize);
+        Assert.Equal(events.Select(e => e.Id), first.Items.Concat(second.Items).Select(e => e.Id));
+        Assert.Equal(events[1].Id, Assert.Single(first.Items, e => e.Attending).Id);
     }
 
     [Fact]

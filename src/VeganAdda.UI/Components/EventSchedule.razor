@@ -1,0 +1,38 @@
+<div class="event-schedule">
+    <div class="schedule-row schedule-head small muted" aria-hidden="true">
+        <span>Date</span><span>Event</span><span>Location</span><span>Attendance</span>
+    </div>
+    <ul aria-label="Upcoming events">
+        @foreach (var ev in Items)
+        {
+            var start = TimeZoneInfo.ConvertTime(ev.Start, TimeZoneInfo.FindSystemTimeZoneById(ev.TimeZone));
+            <li class="schedule-row" @key="ev.Id">
+                <time class="schedule-date" datetime="@ev.Start.ToString("O")">
+                    <strong>@start.ToString("ddd, d MMM yyyy")</strong>
+                    <span class="small muted">@start.ToString("h:mm tt")</span>
+                </time>
+                <div class="schedule-title">
+                    <a href="/events/@ev.Id">@ev.Title</a>
+                    @if (ev.Demo) { <small class="muted">Sample event</small> }
+                </div>
+                <div class="schedule-place">
+                    @ev.Venue
+                    <small class="muted">@ev.City</small>
+                </div>
+                <button type="button" class="secondary small-button schedule-attend" disabled="@(Busy || !RendererInfo.IsInteractive)"
+                        aria-pressed="@(ev.Attending ? "true" : "false")" aria-label="@($"I’m attending {ev.Title}")"
+                        @onclick="() => Attend.InvokeAsync(ev)">
+                    <Icon Name="@(ev.Attending ? "check_circle" : "event_available")" />
+                    @(ev.Attending ? "Attending" : "I’m attending")
+                </button>
+            </li>
+        }
+    </ul>
+</div>
+<p class="small muted">Times are local to each venue. Check the event details for official registration.</p>
+
+@code {
+    [Parameter, EditorRequired] public List<ScheduledEvent> Items { get; set; } = [];
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<ScheduledEvent> Attend { get; set; }
+}

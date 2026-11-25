@@ -1,0 +1,77 @@
+@implements IDisposable
+@inject IEventsApi EventsApi
+
+<div class="event-contact-picker">
+    <label for="event-contact-search">Contact person <span class="muted">(optional)</span></label>
+    <input id="event-contact-search" type="text" form="event-contact-lookup" autocomplete="off" maxlength="150"
+           aria-describedby="event-contact-hint" value="@(Model.Contact?.Name ?? Model.Organizer)" @oninput="Search" />
+    @if (results.Count > 0)
+    {
+        <ul aria-label="Matching members">
+            @foreach (var candidate in results)
+            {
+                <li @key="candidate.Id"><button type="button" class="secondary small-button"
+                    @onclick="() => Choose(candidate)">@candidate.Name</button></li>
+            }
+        </ul>
+    }
+    @if (searching) { <small role="status">Searching…</small> }
+    else if (error) { <small role="status">Member search is unavailable. You can still use the name you typed.</small> }
+    <p id="event-contact-hint" class="small muted">
+        @(Model.Contact == null ? "Select a matching member to link their profile, or leave the name you typed." : "Linked to a VeganAdda profile. Edit the name to change the contact.")
+    </p>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public EventInput Model { get; set; } = default!;
+
+    List<EventContact> results = [];
+    bool searching, error;
+    CancellationTokenSource? searchCancellation;
+
+    async Task Search(ChangeEventArgs args)
+    {
+        Model.Contact = null;
+        Model.Organizer = args.Value?.ToString() ?? "";
+        var term = Model.Organizer.Trim();
+        ResetSearch();
+        if (term.Length is < 2 or > 80) return;
+
+        searchCancellation = new();
+        var token = searchCancellation.Token;
+        searching = true;
+        try
+        {
+            await Task.Delay(300, token);
+            var matches = await EventsApi.SearchEventContacts(term);
+            if (!token.IsCancellationRequested) results = matches;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            if (!token.IsCancellationRequested) error = true;
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested) searching = false;
+        }
+    }
+
+    void Choose(EventContact contact)
+    {
+        Model.Contact = contact;
+        Model.Organizer = "";
+        ResetSearch();
+    }
+
+    void ResetSearch()
+    {
+        searchCancellation?.Cancel();
+        searchCancellation?.Dispose();
+        searchCancellation = null;
+        results = [];
+        searching = error = false;
+    }
+
+    public void Dispose() => ResetSearch();
+}

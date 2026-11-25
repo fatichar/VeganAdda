@@ -176,6 +176,8 @@ public class Gathering
     public string Venue { get; set; } = "";
     /// <summary>Organizer name or group.</summary>
     public string Organizer { get; set; } = "";
+    public Guid? ContactId { get; set; }
+    public string? ContactPhone { get; set; }
     /// <summary>Optional registration link.</summary>
     public string? Registration { get; set; }
     /// <summary>Whether the event is published.</summary>
@@ -387,6 +389,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<Report>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReporterId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Report>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubjectId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Gathering>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubmittedBy).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<Gathering>().HasOne<Account>().WithMany().HasForeignKey(x => x.ContactId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Gathering>().HasIndex(x => new { x.PendingReview, x.Demo });
         b.Entity<Referral>().HasKey(x => x.ReferredId);
         b.Entity<Referral>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReferredId).OnDelete(DeleteBehavior.Cascade);
@@ -396,6 +399,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ReferralInvite>().HasIndex(x => x.ReferredId).IsUnique();
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
+        b.Entity<Gathering>().Property(x => x.ContactPhone).HasMaxLength(16);
         b.Entity<VerificationRequest>().Property(r => r.Explanation).HasMaxLength(4000);
         b.Entity<Relationship>().Property(r => r.IntroductionKeyId).HasMaxLength(32);
         b.Entity<ChatMessage>().Property(m => m.BodyKeyId).HasMaxLength(32);

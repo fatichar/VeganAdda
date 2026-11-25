@@ -1,0 +1,42 @@
+.event-schedule {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+}
+
+.event-schedule ul { margin: 0; padding: 0; list-style: none; }
+
+.schedule-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) minmax(0, 2.4fr) minmax(0, 1.6fr) 145px;
+    gap: 16px;
+    align-items: center;
+    padding: 10px 16px;
+    overflow-wrap: anywhere;
+}
+
+.schedule-head { font-weight: 700; }
+li.schedule-row { border-top: 1px solid var(--line); }
+.schedule-date > span, .schedule-title > small, .schedule-place > small { display: block; }
+.schedule-title a { font-weight: 700; }
+.schedule-title a:hover { text-decoration: underline; }
+.schedule-attend { justify-self: stretch; }
+.schedule-attend[aria-pressed="true"] { background: var(--green-100); color: var(--green); }
+
+@media (max-width: 640px) {
+    .schedule-head { display: none; }
+
+    li.schedule-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "date attend" "title attend" "place attend";
+        gap: 2px 8px;
+        padding: 9px 10px;
+    }
+
+    li.schedule-row:first-child { border-top: 0; }
+    .schedule-date { grid-area: date; font-size: .78rem; }
+    .schedule-date > span, .schedule-place > small { display: inline; margin-inline-start: 4px; }
+    .schedule-title { grid-area: title; }
+    .schedule-place { grid-area: place; font-size: .82rem; }
+    .schedule-attend { grid-area: attend; min-height: 44px; padding-inline: 9px; }
+}
