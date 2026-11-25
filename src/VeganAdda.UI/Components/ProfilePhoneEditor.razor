@@ -8,10 +8,17 @@
     @if (status?.Number is { } verified)
     {
         <p><strong>@verified</strong> <span class="muted">· Verified</span></p>
-        <label class="check-row">
-            <input type="checkbox" checked="@status.Shared" @onchange="Share" disabled="@Disabled" />
-            <span>Show on my profile<small>Signed-in members who can view your full profile can see this number.</small></span>
-        </label>
+        @if (sharingUnknown)
+        {
+            <button type="button" class="secondary small-button" disabled="@Disabled" @onclick="ReloadPhone">Check sharing status</button>
+        }
+        else
+        {
+            <label class="check-row">
+                <input @key="sharingVersion" type="checkbox" checked="@status.Shared" @onchange="Share" disabled="@Disabled" />
+                <span>Show on my profile<small>Signed-in members who can view your full profile can see this number.</small></span>
+            </label>
+        }
         <button type="button" class="secondary small-button" disabled="@Disabled" @onclick="Remove">Remove from profile</button>
     }
     @if (status?.CanVerify == true)
@@ -49,10 +56,17 @@
     ElementReference captcha;
     string number = "", code = "", error = "", success = "";
     string? uid, verificationId, proof;
-    bool busy;
+    bool busy, sharingUnknown;
+    int sharingVersion;
     bool Disabled => busy || !RendererInfo.IsInteractive;
 
-    protected override Task OnInitializedAsync() => Run(async () => status = await PhoneApi.GetPhone());
+    protected override Task OnInitializedAsync() => ReloadPhone();
+
+    Task ReloadPhone() => Run(async () =>
+    {
+        status = await PhoneApi.GetPhone();
+        sharingUnknown = false;
+    });
 
     Task Send() => Run(async () =>
     {
@@ -71,24 +85,51 @@
     {
         proof ??= await firebase!.InvokeAsync<string>("confirmProfilePhoneCode", uid, verificationId, code.Trim());
         var googleToken = await firebase!.InvokeAsync<string>("profilePhoneToken");
-        status = await PhoneApi.VerifyPhone(new(googleToken, proof));
+        try { status = await PhoneApi.VerifyPhone(new(googleToken, proof)); }
+        catch (ApiException ex) when (ex.Status == 400)
+        {
+            ClearVerification();
+            throw new ApiException(400, "The phone verification is no longer valid. Request a new code.");
+        }
+        sharingUnknown = false;
         Reset();
         success = "Phone number verified.";
     });
 
-    Task Share(ChangeEventArgs args) => Run(async () => status = await PhoneApi.SharePhone(new((bool)args.Value!, status?.Number)));
+    Task Share(ChangeEventArgs args) => Run(async () =>
+    {
+        try { status = await PhoneApi.SharePhone(new((bool)args.Value!, status?.Number)); }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            try { status = await PhoneApi.GetPhone(); }
+            catch (Exception refreshError) when (refreshError is ApiException or HttpRequestException)
+            {
+                sharingUnknown = true;
+                throw new ApiException(503, "Couldn’t confirm whether your number is shared. Check sharing status to try again.");
+            }
+            throw;
+        }
+        finally { sharingVersion++; }
+    });
 
     Task Remove() => Run(async () =>
     {
         status = await PhoneApi.RemovePhone();
+        sharingUnknown = false;
         Reset();
         success = "Number removed from your profile.";
     });
 
     void Reset()
     {
+        ClearVerification();
+        number = error = success = "";
+    }
+
+    void ClearVerification()
+    {
         uid = verificationId = proof = null;
-        number = code = error = success = "";
+        code = "";
     }
 
     async Task Run(Func<Task> action)
@@ -106,7 +147,8 @@
             {
                 _ when message.Contains("auth/invalid-verification-code") => "That code didn’t match. Try again.",
                 _ when message.Contains("auth/code-expired") || message.Contains("auth/session-expired") => "The code expired. Cancel and request a new one.",
-                _ when message.Contains("auth/credential-already-in-use") => "That number is already linked to a Firebase account.",
+                _ when message.Contains("auth/too-many-requests") => "Too many verification attempts. Wait a few minutes and try again.",
+                _ when message.Contains("auth/quota-exceeded") => "SMS verification is temporarily unavailable. Try again later.",
                 _ when message.Contains("Sign in with Google again") || message.Contains("auth/requires-recent-login") => "Sign in with Google again to verify your number.",
                 _ => "Phone verification couldn’t be completed. Try again."
             };

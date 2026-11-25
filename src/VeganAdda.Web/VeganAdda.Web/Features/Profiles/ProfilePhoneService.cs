@@ -41,9 +41,14 @@ public sealed class ProfilePhoneService(FeatureContext context, IFirebaseIdentit
 
         await using var tx = await db.Database.BeginTransactionAsync();
         await PairLock("profile-phone:" + number);
-        await UserLock(me.Id);
+        var previousOwner = await db.ProfilePhones.Where(p => p.ProfileId != me.Id && p.Number == number)
+            .Select(p => (Guid?)p.ProfileId).SingleOrDefaultAsync();
+        var owners = previousOwner is { } id ? new[] { me.Id, id } : [me.Id];
+        foreach (var owner in owners.Order()) await UserLock(owner);
         if (!await db.Accounts.AnyAsync(a => a.Id == me.Id && !a.Suspended)) throw Denied();
         if (!await CanVerifyProfile(me)) throw Denied();
+        var verificationSubject = $"firebase:{ProjectId}:{identity.Uid}";
+        var canDeleteVerificationUser = !await db.Accounts.AnyAsync(a => a.Subject == verificationSubject);
         // A number can be reassigned. Only the current verified holder can continue sharing it.
         await db.ProfilePhones.Where(p => p.ProfileId != me.Id && p.Number == number).ExecuteDeleteAsync();
         var phone = await db.ProfilePhones.FindAsync(me.Id);
@@ -59,6 +64,7 @@ public sealed class ProfilePhoneService(FeatureContext context, IFirebaseIdentit
         }
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+        if (canDeleteVerificationUser) await firebase.TryDeletePhoneVerificationUser(identity);
         return Result(phone, true);
     }
 

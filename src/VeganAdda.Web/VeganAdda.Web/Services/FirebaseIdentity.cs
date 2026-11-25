@@ -12,6 +12,7 @@ public interface IFirebaseIdentityVerifier
 {
     Task<VerifiedFirebaseIdentity?> Verify(string idToken);
     Task<string?> GetCurrentPhoneNumber(string uid);
+    Task TryDeletePhoneVerificationUser(VerifiedFirebaseIdentity identity);
 }
 
 public interface IFirebaseUserEmailLookup
@@ -90,10 +91,38 @@ public sealed class FirebaseIdentityVerifier(IConfiguration configuration, IWebH
             var user = await FirebaseAuth.GetAuth(GetFirebaseApp(projectId)).GetUserAsync(uid);
             return user.Disabled ? null : user.PhoneNumber;
         }
+        catch (FirebaseAuthException ex) when (ex.AuthErrorCode == AuthErrorCode.UserNotFound)
+        {
+            return null;
+        }
         catch (FirebaseAuthException ex)
         {
             logger.LogWarning("Firebase phone lookup failed with code {FirebaseErrorCode}.", ex.AuthErrorCode);
             throw new ApiException(503, "Couldn’t confirm the phone number with Firebase. Try again.");
+        }
+    }
+
+    public async Task TryDeletePhoneVerificationUser(VerifiedFirebaseIdentity identity)
+    {
+        var projectId = configuration["Authentication:Firebase:ProjectId"];
+        if (string.IsNullOrWhiteSpace(projectId) || identity.Provider != "phone") return;
+        try
+        {
+            var auth = FirebaseAuth.GetAuth(GetFirebaseApp(projectId));
+            var user = await auth.GetUserAsync(identity.Uid);
+            // Only remove a phone-only identity created by this verification, never an existing or linked user.
+            if (user.Disabled || !string.IsNullOrEmpty(user.Email) || user.PhoneNumber != identity.PhoneNumber
+                || user.ProviderData is not [{ ProviderId: "phone" }]
+                || user.UserMetaData.CreationTimestamp is not { } created)
+                return;
+            var createdAt = new DateTimeOffset(created.ToUniversalTime()).ToUnixTimeSeconds();
+            if (Math.Abs(createdAt - identity.AuthenticatedAt) > 5) return;
+            await auth.DeleteUserAsync(identity.Uid);
+        }
+        catch (FirebaseAuthException ex) when (ex.AuthErrorCode == AuthErrorCode.UserNotFound) { }
+        catch (Exception ex) when (ex is FirebaseAuthException or HttpRequestException or ApiException)
+        {
+            logger.LogWarning("Firebase phone verification identity cleanup failed.");
         }
     }
 

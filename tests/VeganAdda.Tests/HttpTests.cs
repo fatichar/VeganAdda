@@ -539,6 +539,8 @@ public class HttpTests : IDisposable
         var saved = await (await Post(me, profilePhone + "/verify", new ProfilePhoneProof("profile-google", "phone-proof"))).Content.ReadFromJsonAsync<ProfilePhone>();
         Assert.Equal(verifiedNumber, saved!.Number);
         Assert.False(saved.Shared);
+        var verifier = Assert.IsType<TestFirebaseVerifier>(factory.Services.GetRequiredService<VeganAdda.Web.Services.IFirebaseIdentityVerifier>());
+        Assert.Equal("phone-only-uid", Assert.Single(verifier.CleanedUids));
         Assert.Null((await other.GetFromJsonAsync<Person>(details))!.PhoneNumber);
         Assert.Equal(HttpStatusCode.Conflict, (await PostAllowFailure(me, profilePhone + "/visibility", new ProfilePhoneVisibility(true, "+12025550106"))).StatusCode);
         await Post(me, profilePhone + "/visibility", new ProfilePhoneVisibility(true, verifiedNumber));
@@ -775,6 +777,7 @@ public class HttpTests : IDisposable
     }
     private sealed class TestFirebaseVerifier : VeganAdda.Web.Services.IFirebaseIdentityVerifier
     {
+        public List<string> CleanedUids { get; } = [];
         public Task<VeganAdda.Web.Services.VerifiedFirebaseIdentity?> Verify(string idToken) => Task.FromResult<VeganAdda.Web.Services.VerifiedFirebaseIdentity?>(idToken switch
         {
             "good-google" => new("test-google-uid", "Test Member", "google.com"),
@@ -785,6 +788,11 @@ public class HttpTests : IDisposable
             _ => null
         });
         public Task<string?> GetCurrentPhoneNumber(string uid) => Task.FromResult<string?>(uid == "phone-only-uid" ? "+12025550105" : null);
+        public Task TryDeletePhoneVerificationUser(VeganAdda.Web.Services.VerifiedFirebaseIdentity identity)
+        {
+            CleanedUids.Add(identity.Uid);
+            return Task.CompletedTask;
+        }
     }
     private sealed class TestAuth(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options,logger,encoder)
     {

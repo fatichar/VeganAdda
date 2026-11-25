@@ -10,6 +10,15 @@ public sealed class PeopleProjection(FeatureContext context) : FeatureService(co
 {
     public async Task<Person> One(Profile profile) => (await Many([profile])).Single();
 
+    public async Task<Person> Detail(Profile profile)
+    {
+        var person = await One(profile);
+        if (!Viewer.HasValue) return person;
+        var phone = await db.ProfilePhones.Where(p => p.ProfileId == profile.Id && p.Shared)
+            .Select(p => p.Number).SingleOrDefaultAsync();
+        return person with { PhoneNumber = phone };
+    }
+
     internal static PhotoFocus? GetPhotoFocus(Profile profile) =>
         profile.PhotoFocusX is int x && profile.PhotoFocusY is int y ? new(x, y) : null;
 
