@@ -149,6 +149,14 @@ public class ChatMessage
     /// <summary>Message send time.</summary>
     public DateTimeOffset SentAt { get; set; } = DateTimeOffset.UtcNow;
 }
+/// <summary>A member's verified contact number and profile-sharing preference.</summary>
+public class VerifiedProfilePhone
+{
+    public Guid ProfileId { get; set; }
+    public string Number { get; set; } = "";
+    public bool Shared { get; set; }
+}
+
 /// <summary>A community gathering or event.</summary>
 public class Gathering
 {
@@ -344,6 +352,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<Saved> Saved => Set<Saved>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<VerifiedProfilePhone> ProfilePhones => Set<VerifiedProfilePhone>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     public DbSet<AccountActivity> AccountActivity => Set<AccountActivity>();
@@ -411,6 +420,10 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ChatKeyRepair>().Property(x => x.KeyId).HasMaxLength(32);
         b.Entity<Report>().Property(r => r.Details).HasMaxLength(1000).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
+        b.Entity<VerifiedProfilePhone>().HasKey(x => x.ProfileId);
+        b.Entity<VerifiedProfilePhone>().HasOne<Profile>().WithOne().HasForeignKey<VerifiedProfilePhone>(x => x.ProfileId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<VerifiedProfilePhone>().Property(x => x.Number).HasMaxLength(16);
+        b.Entity<VerifiedProfilePhone>().HasIndex(x => x.Number).IsUnique();
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
         b.Entity<AccountActivity>().ToTable("AccountActivity").HasKey(x => new { x.AccountId, x.Day });
         b.Entity<AccountActivity>().HasIndex(x => x.Day);

@@ -1,7 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, inMemoryPersistence, initializeAuth, PhoneAuthProvider, RecaptchaVerifier, signInWithCredential, signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
 
 let auth;
+let phoneAuth;
 
 async function getConfiguredAuth() {
   if (auth) return auth;
@@ -27,4 +28,41 @@ export async function signInWithGoogle() {
 
 export async function signOut() {
   if (auth) await firebaseSignOut(auth);
+}
+
+async function profilePhoneUser(expectedUid) {
+  const firebase = await getConfiguredAuth();
+  await firebase.authStateReady();
+  const user = firebase.currentUser;
+  if (!user || (expectedUid && user.uid !== expectedUid)) {
+    throw new Error("Sign in with Google again to verify your number.");
+  }
+  return user;
+}
+
+export async function profilePhoneToken() {
+  return (await profilePhoneUser()).getIdToken();
+}
+
+export async function sendProfilePhoneCode(uid, phoneNumber, captcha) {
+  await profilePhoneUser(uid);
+  // Keep the phone-only Firebase identity separate from the Google sign-in session.
+  phoneAuth ??= initializeAuth(initializeApp(auth.app.options, "profile-phone"), { persistence: inMemoryPersistence });
+  const verifier = new RecaptchaVerifier(phoneAuth, captcha, { size: "invisible" });
+  try {
+    return await new PhoneAuthProvider(phoneAuth).verifyPhoneNumber(phoneNumber, verifier);
+  } finally {
+    verifier.clear();
+  }
+}
+
+export async function confirmProfilePhoneCode(uid, verificationId, code) {
+  await profilePhoneUser(uid);
+  const credential = PhoneAuthProvider.credential(verificationId, code);
+  const result = await signInWithCredential(phoneAuth, credential);
+  try {
+    return await result.user.getIdToken();
+  } finally {
+    await firebaseSignOut(phoneAuth);
+  }
 }

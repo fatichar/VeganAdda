@@ -133,7 +133,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         await ActiveViewer();
         if (!Viewer.HasValue) throw new ApiException(401, "Sign in to view member profiles.");
         var person = await visibility.Query(true).SingleOrDefaultAsync(p => p.Id == id) ?? throw Missing();
-        return await people.One(person);
+        return await people.Detail(person);
     }
 
     public static string ValidateName(string? value)

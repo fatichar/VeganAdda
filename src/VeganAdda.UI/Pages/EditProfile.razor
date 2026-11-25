@@ -70,6 +70,7 @@ else if (model != null) {
 </section>
 <section id="profile-panel-1" class="profile-panel" role="tabpanel" aria-labelledby="profile-tab-1" hidden="@(activeTab != 1)">
 <h2 class="sr-only">Optional details</h2>
+@if (Session.BasicProfileComplete) { <ProfilePhoneEditor /> }
 <section class="profile-social-links profile-section" aria-labelledby="social-links-heading">
 <h3 id="social-links-heading">Social Links</h3>
 <p class="small muted">Add links you want other signed-in members to see. These details are optional. Vegan verification is requested separately.</p>

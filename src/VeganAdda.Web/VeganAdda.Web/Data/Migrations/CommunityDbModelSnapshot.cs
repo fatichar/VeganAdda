@@ -761,6 +761,27 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("VerificationRequests");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.VerifiedProfilePhone", b =>
+                {
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<bool>("Shared")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("ProfileId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.ToTable("ProfilePhones");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.AccountActivity", b =>
                 {
                     b.HasOne("VeganAdda.Web.Data.Account", null)
@@ -929,6 +950,15 @@ namespace VeganAdda.Web.Data.Migrations
                     b.HasOne("VeganAdda.Web.Data.Account", null)
                         .WithMany()
                         .HasForeignKey("ApplicantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.VerifiedProfilePhone", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Profile", null)
+                        .WithOne()
+                        .HasForeignKey("VeganAdda.Web.Data.VerifiedProfilePhone", "ProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
