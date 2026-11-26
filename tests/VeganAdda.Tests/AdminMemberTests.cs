@@ -160,13 +160,12 @@ public class AdminMemberTests(DatabaseFixture f)
     {
         var admin = await f.Member(admin: true);
         var ids = new List<Guid>();
-        var prefix = sort == AdminMemberSort.NameDescending ? "zzz" : "!";
-        var date = sort == AdminMemberSort.Oldest ? DateTimeOffset.UnixEpoch : DateTimeOffset.UtcNow.AddDays(1);
+        var date = DateTimeOffset.UnixEpoch;
         await using (var db = f.Db())
         {
             for (var i = 0; i < 22; i++)
             {
-                var name = $"{prefix}{(i % 2 == 0 ? "Pagination" : "pagination")} pending {i:00}";
+                var name = $"{(i % 2 == 0 ? "Pagination" : "pagination")} pending {i:00}";
                 var account = new Account { Name = name, Subject = Guid.NewGuid().ToString(), Created = date.AddMinutes(22 - i) };
                 ids.Add(account.Id);
                 db.Accounts.Add(account);
@@ -179,15 +178,24 @@ public class AdminMemberTests(DatabaseFixture f)
             var path = "admin?verification=unverified&section=Members";
             if (sort != "") path += $"&memberSort={sort}";
             var first = Assert.IsType<AdminData>(await f.Call(admin, $"{path}&page=1"));
-            var second = Assert.IsType<AdminData>(await f.Call(admin, $"{path}&page=2"));
-            Assert.True(first.MembersTotal >= 22);
+            Assert.True(first.MembersTotal >= ids.Count);
+            Assert.Equal(1, first.PageNumber);
             Assert.Equal(20, first.People.Count);
-            Assert.Equal(Math.Min(20, first.MembersTotal - 20), second.People.Count);
-            Assert.Equal(2, second.PageNumber);
-            Assert.Empty(first.People.Select(p => p.Id).Intersect(second.People.Select(p => p.Id)));
-            Assert.All(first.People.Concat(second.People), p => Assert.False(p.VeganVerified));
+
+            var people = first.People.ToList();
+            for (var page = 2; people.Count < first.MembersTotal; page++)
+            {
+                var result = Assert.IsType<AdminData>(await f.Call(admin, $"{path}&page={page}"));
+                Assert.Equal(page, result.PageNumber);
+                Assert.Equal(Math.Min(20, first.MembersTotal - people.Count), result.People.Count);
+                people.AddRange(result.People);
+            }
+
+            Assert.Equal(people.Count, people.Select(p => p.Id).Distinct().Count());
+            Assert.All(people, p => { Assert.True(p.IsVegan); Assert.False(p.VeganVerified); });
+            var inserted = ids.ToHashSet();
             var expected = descending ? ids.AsEnumerable().Reverse() : ids;
-            Assert.Equal(expected, first.People.Concat(second.People).Take(ids.Count).Select(p => p.Id));
+            Assert.Equal(expected, people.Select(p => p.Id).Where(inserted.Contains));
         }
         finally
         {
