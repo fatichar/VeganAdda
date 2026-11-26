@@ -21,6 +21,7 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         var contacts = await ReadEventContacts([id]);
         return card with
         {
+            CanEdit = gathering.SubmittedBy == Viewer,
             Creator = contacts.SingleOrDefault(c => c.IsCreator)?.Person,
             Contacts = contacts.Where(c => !c.IsCreator).Select(c => c.Person).ToArray()
         };

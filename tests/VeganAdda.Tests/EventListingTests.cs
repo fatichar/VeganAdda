@@ -102,9 +102,12 @@ public class EventListingTests(DatabaseFixture f)
         var detail = Assert.IsType<EventCard>(await f.Call(member, $"events/{submission.Id}"));
         Assert.Equal(member, detail.Creator?.Id);
         Assert.Empty(detail.Contacts);
+        Assert.True(detail.CanEdit);
+        Assert.False(Assert.IsType<EventCard>(await f.Call(admin, $"events/{submission.Id}")).CanEdit);
         var anonymous = Assert.IsType<EventCard>(await f.Call(null, $"events/{submission.Id}"));
         Assert.Null(anonymous.Creator);
         Assert.Empty(anonymous.Contacts);
+        Assert.False(anonymous.CanEdit);
         Assert.Equal(submission.Start!.Value.AddHours(4), detail.CheckedInUntil);
         submission.LocalEnd = localStart.AddMinutes(-1);
         var error = await Assert.ThrowsAsync<ApiException>(() => f.Call(admin, "admin/events", submission, "POST"));

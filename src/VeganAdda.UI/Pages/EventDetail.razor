@@ -6,6 +6,7 @@
 @if (ev != null) { <section class="event-detail-hero">@if (ev.Cover != "") { <img src="@ev.Cover" alt="" /> }<div class="event-detail-title"><span class="badge">@(ev.Demo ? "Fictional sample event · development only" : "Community event")</span><h1>@ev.Title</h1><div class="event-meta"><span><Icon Name="calendar_today" />@Date(ev.Start, ev.TimeZone)@if (ev.End.HasValue) { <span> – @Date(ev.End, ev.TimeZone)</span> }</span><span><Icon Name="location_on" />@ev.City · @ev.Venue</span></div><p>Times are local to the event venue.</p></div></section><div class="event-detail-grid"><section class="card"><h2>What it is</h2><p class="event-description">@ev.Description</p>
 <div class="attendance-box"><button @onclick="Attend" disabled="@Busy"><Icon Name="@(ev.Attending ? "check_circle" : "event_available")" />@(ev.Attending ? "I'm attending · undo" : "I'm attending")</button><button class="secondary" @onclick="Save" disabled="@Busy"><Icon Name="@(ev.Saved ? "bookmark" : "bookmark_border")" />@(ev.Saved ? "Saved" : "Save for later")</button>
     <ShareLink @key="ev.Id" Label="Share event" Title="@ev.Title" Path="@($"events/{ev.Id:D}")" />
+    @if (ev.CanEdit) { <a class="button secondary" href="/events/post/@ev.Id"><Icon Name="edit" />Edit event</a> }
 </div><p class="small muted">Attendance here is a community signal. It is not a ticket purchase or official organizer registration.</p>
 @if (ev.Creator != null || ev.Contacts.Length > 0)
 {
