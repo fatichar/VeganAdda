@@ -14,7 +14,7 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
 {
     private IQueryable<Profile> ReviewableProfiles() => VerificationReview.Awaiting(db);
 
-    public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1, string country = "", string state = "", string city = "", string? requestedPageSize = null)
+    public async Task<AdminData> Admin(string verification = "", string section = "Members", int page = 1, string country = "", string state = "", string city = "", string? requestedPageSize = null, string memberSort = "")
     {
         await User(admin: true);
         var pageSize = AdminPaging.DefaultPageSize;
@@ -44,7 +44,8 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         };
         var membersTotal = await members.CountAsync();
         var membersPage = section == "Members" ? Math.Min(page, Math.Max(1, (membersTotal + pageSize - 1) / pageSize)) : 1;
-        var accounts = section == "Members" ? await members.OrderBy(a => a.Name).ThenBy(a => a.Id).Skip((membersPage - 1) * pageSize).Take(pageSize).ToListAsync() : [];
+        var accounts = section == "Members" ? await SortMembers(members, memberSort)
+            .Skip((membersPage - 1) * pageSize).Take(pageSize).ToListAsync() : [];
         var people = new List<AdminPerson>();
         foreach (var a in accounts)
         {
@@ -57,6 +58,26 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         foreach (var profile in profiles) pendingProfiles.Add(await ProfileReviewDto(profile));
         var activePage = section == "Events" ? eventsPage : section == "Reports" ? reportsPage : membersPage;
         return new AdminData(events, reports, people, pendingProfiles, eventsTotal, reportsTotal, membersTotal, profilesTotal, activePage, pageSize, emailSender.IsConfigured);
+    }
+
+    private IQueryable<Account> SortMembers(IQueryable<Account> members, string sort)
+    {
+        // New profiles record their first save in AdultConfirmedAt. Older rows may lack it.
+        var datedMembers = members.Select(a => new
+        {
+            Account = a,
+            Date = db.Profiles.Where(p => p.Id == a.Id && p.AdultConfirmedAt != default)
+                .Select(p => (DateTimeOffset?)p.AdultConfirmedAt).FirstOrDefault() ?? a.Created
+        });
+
+        return sort switch
+        {
+            "" or AdminMemberSort.Newest => datedMembers.OrderByDescending(m => m.Date).ThenBy(m => m.Account.Id).Select(m => m.Account),
+            AdminMemberSort.Oldest => datedMembers.OrderBy(m => m.Date).ThenBy(m => m.Account.Id).Select(m => m.Account),
+            AdminMemberSort.NameAscending => members.OrderBy(a => a.Name.ToLower()).ThenBy(a => a.Id),
+            AdminMemberSort.NameDescending => members.OrderByDescending(a => a.Name.ToLower()).ThenBy(a => a.Id),
+            _ => throw new ApiException(400, "Choose a supported member sort order.")
+        };
     }
     public async Task<BulkMemberActionResult> BulkMemberAction(BulkMemberActionInput input, CancellationToken cancellationToken = default)
     {

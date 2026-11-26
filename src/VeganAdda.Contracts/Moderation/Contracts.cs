@@ -7,6 +7,14 @@ public static class AdminPaging
     public static readonly int[] PageSizes = [10, 20, 50, 100];
 }
 
+public static class AdminMemberSort
+{
+    public const string Newest = "newest";
+    public const string Oldest = "oldest";
+    public const string NameAscending = "name-asc";
+    public const string NameDescending = "name-desc";
+}
+
 public record ModerationData(List<ProfileReview> Profiles, List<EventReview> Events, int ProfilesTotal = 0, int EventsTotal = 0, int PageNumber = 1, int PageSize = 20);
 public record ReportView(Guid Id, string Reporter, Guid SubjectId, string Subject, string Reason, bool Resolved, DateTimeOffset Created, string Details = "", string? Screenshot = null);
 public record AdminData(List<EventInput> Events, List<ReportView> Reports, List<AdminPerson> People, List<ProfileReview> Profiles, int EventsTotal = 0, int ReportsTotal = 0, int MembersTotal = 0, int ProfilesTotal = 0, int PageNumber = 1, int PageSize = 20, bool CanSendProfileReminders = false);

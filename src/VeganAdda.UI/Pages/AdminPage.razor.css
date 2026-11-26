@@ -12,6 +12,7 @@
 .admin-event-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
 .admin-event-card .actions { margin-top: 16px; }
 .admin-event-thumb { width: 100px; height: 100px; object-fit: cover; border-radius: 12px; }
+.admin-member-toolbar .admin-member-sort { margin-inline-start: auto; min-width: 0; }
 .admin-bulk-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0 18px; }
 .admin-select-page { display: inline-flex; align-items: center; gap: 9px; margin: 0; font-size: .82rem; font-weight: 500; }
 .admin-select-page input, .admin-member-identity > input { width: 20px; height: 20px; min-height: 20px; }
