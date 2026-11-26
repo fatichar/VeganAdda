@@ -24,6 +24,26 @@ public class BirthDetailsTests(DatabaseFixture f)
     }
 
     [Fact]
+    public async Task Members_must_have_turned_18_by_today()
+    {
+        var id = await f.Member(); var input = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        async Task<bool> Saves(DateOnly birth, bool exactDay)
+        {
+            input.BirthYear = birth.Year; input.BirthMonth = birth.Month; input.BirthDay = exactDay ? birth.Day : null;
+            try { await f.Call(id, "profile", input, "POST"); return true; }
+            catch (ApiException ex) when (ex.Status == 400) { return false; }
+        }
+        var eighteenToday = today.AddYears(-18);
+        Assert.True(await Saves(eighteenToday, exactDay: true));
+        Assert.False(await Saves(eighteenToday.AddDays(1), exactDay: true));
+        // Without a day the latest possible birthday is assumed, so someone turning 18
+        // this month is accepted only once the month is over, unless they add the day.
+        Assert.Equal(today.Day == DateTime.DaysInMonth(today.Year, today.Month), await Saves(eighteenToday, exactDay: false));
+        Assert.True(await Saves(eighteenToday.AddMonths(-1), exactDay: false));
+    }
+
+    [Fact]
     public async Task Month_only_birth_details_round_trip_without_inventing_a_birthday()
     {
         var id = await f.Member(); var input = Assert.IsType<ProfileInput>(await f.Call(id, "profile"));

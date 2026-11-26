@@ -332,12 +332,37 @@ public class HttpTests : IDisposable
         Assert.Contains("id=\"gender\" required", basic);
         Assert.Contains("Fields marked", basic);
         Assert.DoesNotContain("id=\"instagram\"", basic);
+        Assert.Contains("<legend>Phone number</legend>", basic);
+        Assert.DoesNotContain("Phone number", optional);
         Assert.Contains("Social Links", optional);
         Assert.Contains("id=\"instagram\"", optional);
         Assert.Contains("id=\"linkedin\"", optional);
         Assert.Contains("id=\"website\"", optional);
         Assert.DoesNotContain("Fields marked", optional);
         Assert.DoesNotContain("(optional)", optional);
+    }
+
+    [Fact]
+    public async Task Edit_profile_keeps_social_links_editable_while_verification_is_under_review()
+    {
+        var member = await f.Member();
+        await using (var db = f.Db())
+        {
+            var profile = (await db.Profiles.FindAsync(member))!;
+            profile.VeganVerified = false; profile.Instagram = "https://www.instagram.com/vegan.member/";
+            db.VerificationRequests.Add(new() { ApplicantId = member, ClientId = Guid.NewGuid(), Explanation = "" });
+            await db.SaveChangesAsync();
+        }
+        using var client = Client(member);
+        var html = await client.GetStringAsync("/settings/profile");
+        var basic = html[html.IndexOf("id=\"profile-panel-0\"", StringComparison.Ordinal)..html.IndexOf("id=\"profile-panel-1\"", StringComparison.Ordinal)];
+        var optional = html[html.IndexOf("id=\"profile-panel-1\"", StringComparison.Ordinal)..html.IndexOf("id=\"profile-panel-2\"", StringComparison.Ordinal)];
+        Assert.Contains("Under review", basic, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Social profiles moderators can check", basic);
+        Assert.Contains("instagram.com/vegan.member", basic);
+        Assert.DoesNotContain("type=\"url\"", basic);
+        Assert.Contains("id=\"instagram\"", optional);
+        Assert.Contains("id=\"linkedin\"", optional);
     }
 
     [Fact] public async Task Http_requires_csrf_and_member_identity_and_public_html_prerenders()
@@ -674,6 +699,7 @@ public class HttpTests : IDisposable
         Assert.Equal(HttpStatusCode.Forbidden, (await Report(other, new(subject, "Spam", Screenshot: path))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Report(member, new(subject, "Harassment", "  Private details  ", path))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Report(member, new(subject, "Not a vegan"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Report(member, new(subject, "Appears to be under 18"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(path)).StatusCode);
         var cache = (await admin.GetAsync(path)).Headers.CacheControl!;
         Assert.True(cache.Private); Assert.True(cache.NoStore);
