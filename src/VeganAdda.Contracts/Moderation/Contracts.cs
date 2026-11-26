@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace VeganAdda.Contracts;
 
 /// <summary>Page sizes the admin console offers; the server rejects anything else.</summary>
@@ -29,7 +31,21 @@ public interface IModerationApi
 {
     Task<Ok> RequestProfileChanges(ProfileFeedbackInput input);
     Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input);
+    Task<ProfileReminderReceipt> QueueProfileReminders(ProfileReminderInput input);
+    Task<List<ProfileReminderBatchSummary>> GetProfileReminderBatches();
+    Task<ProfileReminderBatchResult> GetProfileReminderBatch(Guid id);
+    Task<ProfileReminderReceipt> RetryProfileReminders(Guid id, ProfileReminderRetry input);
 }
 public record ModerateInput(Guid Id, string Action);
-public record BulkMemberActionInput(List<Guid> MemberIds, string Action);
-public record BulkMemberActionResult(string Action, int Affected, int Skipped, int Failed);
+public record BulkMemberActionInput(List<Guid> MemberIds, string Action, Guid? RequestId = null);
+public record BulkMemberActionResult(string Action, int Affected, int Skipped, int Failed, Guid? BatchId = null);
+
+public record ProfileReminderInput(Guid RequestId, List<Guid> MemberIds);
+public record ProfileReminderRetry(int RetryVersion);
+public record ProfileReminderReceipt(Guid BatchId);
+public record ProfileReminderBatchSummary(Guid Id, DateTimeOffset Created, bool Complete);
+public record ProfileReminderBatchResult(Guid Id, int RetryVersion, bool Complete, List<ProfileReminderMemberResult> Members);
+public record ProfileReminderMemberResult(Guid MemberId, string Name, ProfileReminderStatus Status);
+
+[JsonConverter(typeof(JsonStringEnumConverter<ProfileReminderStatus>))]
+public enum ProfileReminderStatus { Queued = 0, Sent = 1, Skipped = 2, Failed = 3, Unconfirmed = 4 }

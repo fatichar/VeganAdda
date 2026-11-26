@@ -1,0 +1,7 @@
+.reminder-results { margin-bottom: 1rem; }
+.reminder-results label { display: flex; align-items: center; gap: .5rem; }
+.reminder-results details { margin-top: .75rem; }
+.reminder-results summary { cursor: pointer; }
+.reminder-member-results { padding-inline-start: 1.5rem; }
+.reminder-member-results li { margin-block: .25rem; }
+.reminder-member-results strong { margin-inline-start: .5rem; }

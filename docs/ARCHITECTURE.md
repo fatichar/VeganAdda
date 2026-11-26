@@ -65,6 +65,19 @@ entire conversations. Administrator accounts are protected, and the committed
 deletion records both the member and the acting administrator in lifecycle logs.
 It does not delete the Firebase identity or prevent a new registration.
 
+Bulk profile reminders queue batches of up to 100 members in PostgreSQL. HTTP
+requests return after the batch commits, and the admin console polls for
+per-member status. Four concurrent sends per web instance use separate database
+scopes and recheck member eligibility before each attempt. A failed attempt is
+retried twice, after five and twenty seconds. Retrying from the console requeues
+only failed recipients in the same batch. Queue submissions and manual retries
+are idempotent. The queue stores member IDs and outcomes, without email
+addresses, and completed results expire after 30 days.
+
+A sent status means the SMTP server accepted the message. If an in-flight
+delivery is interrupted and acceptance cannot be established, its result is
+unconfirmed. The worker does not automatically resend an unconfirmed delivery.
+
 Requests may be withdrawn or resubmitted after feedback. Account locks, a filtered
 unique index and client request IDs prevent duplicate active requests and repeated
 notifications. In-app notices link reviewers to `/moderation`, referrers to the

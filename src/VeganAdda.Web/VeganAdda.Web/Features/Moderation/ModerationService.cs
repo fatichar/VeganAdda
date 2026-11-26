@@ -10,7 +10,7 @@ using VeganAdda.Web.Services;
 
 namespace VeganAdda.Web.Features.Moderation;
 
-public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle, ActivityRecorder activity, VerificationService verification, IFirebaseUserEmailLookup emailLookup, IProfileReminderEmailSender emailSender, ILogger<ModerationService> logger) : FeatureService(context)
+public sealed class ModerationService(FeatureContext context, ReferralTrust trust, EventsService eventService, LifecycleEvents lifecycle, ActivityRecorder activity, VerificationService verification, IProfileReminderEmailSender emailSender, ProfileReminderService reminders) : FeatureService(context)
 {
     private IQueryable<Profile> ReviewableProfiles() => VerificationReview.Awaiting(db);
 
@@ -81,18 +81,16 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
     }
     public async Task<BulkMemberActionResult> BulkMemberAction(BulkMemberActionInput input, CancellationToken cancellationToken = default)
     {
-        var admin = await User(admin: true);
+        if (input.Action == "profile-reminder")
+        {
+            var receipt = await reminders.Queue(new(input.RequestId ?? Guid.NewGuid(), input.MemberIds));
+            return new(input.Action, 0, 0, 0, receipt.BatchId);
+        }
+        await User(admin: true);
         if (input.MemberIds is null || input.MemberIds.Count is < 1 or > 100)
             throw new ApiException(400, "Select between 1 and 100 members.");
         var ids = input.MemberIds.Distinct().ToArray();
         var duplicateCount = input.MemberIds.Count - ids.Length;
-        if (input.Action == "profile-reminder")
-        {
-            if (!emailSender.IsConfigured) throw new ApiException(503, "Profile reminder email delivery is not configured.");
-            var result = await SendProfileReminders(ids, cancellationToken);
-            lifecycle.RecordProfileReminders(admin.Id, result.Sent, result.Skipped + duplicateCount, result.Failed);
-            return new(input.Action, result.Sent, result.Skipped + duplicateCount, result.Failed);
-        }
         if (input.Action != "verify-vegan") throw new ApiException(400, "Choose an available bulk member action.");
 
         var verified = 0;
@@ -120,46 +118,6 @@ public sealed class ModerationService(FeatureContext context, ReferralTrust trus
         return new(input.Action, verified, skipped, 0);
     }
 
-    private async Task<(int Sent, int Skipped, int Failed)> SendProfileReminders(IReadOnlyCollection<Guid> memberIds, CancellationToken cancellationToken)
-    {
-        if (!emailSender.IsConfigured) throw new ApiException(503, "Profile reminder email delivery is not configured.");
-        var ids = memberIds.Distinct().ToArray();
-        var accounts = await db.Accounts
-            .Where(a => ids.Contains(a.Id) && !a.Suspended && !db.Profiles.Where(BasicProfile.Complete).Any(p => p.Id == a.Id))
-            .OrderBy(a => a.Id)
-            .ToListAsync(cancellationToken);
-        var skipped = ids.Length - accounts.Count;
-        var sent = 0;
-        var failed = 0;
-        var subjectPrefix = $"firebase:{config["Authentication:Firebase:ProjectId"]}:";
-        foreach (var account in accounts)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!account.Subject.StartsWith(subjectPrefix, StringComparison.Ordinal) || account.Subject.Length == subjectPrefix.Length)
-            {
-                skipped++;
-                continue;
-            }
-            try
-            {
-                var email = await emailLookup.GetVerifiedEmail(account.Subject[subjectPrefix.Length..]);
-                if (string.IsNullOrWhiteSpace(email))
-                {
-                    skipped++;
-                    continue;
-                }
-                await emailSender.Send(email, account.Name, cancellationToken);
-                sent++;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex)
-            {
-                failed++;
-                logger.LogWarning("Profile reminder email failed for account {AccountId}; error type {ErrorType}.", account.Id, ex.GetType().Name);
-            }
-        }
-        return (sent, skipped, failed);
-    }
     public async Task<ProfileReview> AdminMemberProfile(Guid id)
     {
         await User(admin: true);

@@ -20,6 +20,14 @@ public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISave
         => transport.Send<EventBatchResult>("event-submissions/batch", input);
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => transport.Send<Ok>("admin/profile-feedback", input);
     public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => transport.Send<Ok>($"admin/members/{id}", input, "DELETE");
+    public Task<ProfileReminderReceipt> QueueProfileReminders(ProfileReminderInput input)
+        => transport.Send<ProfileReminderReceipt>("admin/profile-reminders", input);
+    public Task<List<ProfileReminderBatchSummary>> GetProfileReminderBatches()
+        => transport.Get<List<ProfileReminderBatchSummary>>("admin/profile-reminders");
+    public Task<ProfileReminderBatchResult> GetProfileReminderBatch(Guid id)
+        => transport.Get<ProfileReminderBatchResult>($"admin/profile-reminders/{id}");
+    public Task<ProfileReminderReceipt> RetryProfileReminders(Guid id, ProfileReminderRetry input)
+        => transport.Send<ProfileReminderReceipt>($"admin/profile-reminders/{id}/retry", input);
     public Task<VerificationStatus> GetVerification() => transport.Get<VerificationStatus>("verification");
     public Task<Ok> SubmitVerification(VerificationSubmission input) => transport.Send<Ok>("verification", input);
     public Task<Ok> WithdrawVerification(Guid id) => transport.Send<Ok>("verification/withdraw", new VerificationRequestAction(id));

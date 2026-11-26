@@ -102,7 +102,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
     private sealed class Bus : IChangeBus { public Task Changed(params Guid[] users) => Task.CompletedTask; }
     private sealed class NoVerifiedEmailLookup : IFirebaseUserEmailLookup
     {
-        public Task<string?> GetVerifiedEmail(string uid) => Task.FromResult<string?>(null);
+        public Task<string?> GetVerifiedEmail(string uid, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
     private sealed class DisabledProfileReminderEmailSender : IProfileReminderEmailSender
     {

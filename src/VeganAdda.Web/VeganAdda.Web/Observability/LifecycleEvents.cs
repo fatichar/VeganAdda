@@ -33,9 +33,8 @@ public sealed class LifecycleEvents(ILogger<LifecycleEvents> logger)
         logger.LogInformation("Lifecycle {EventName} for {SubjectKind} {SubjectId} by actor {ActorId}",
             eventName.ToString(), subjectKind, subjectId, actorId);
 
-    // One summary per bulk run: counts only, never recipients or addresses. Sent means the SMTP
-    // server accepted the message, not that it reached the inbox.
-    public void RecordProfileReminders(Guid actorId, int sent, int skipped, int failed) =>
-        logger.LogInformation("Lifecycle {EventName} by actor {ActorId}: {Sent} sent, {Skipped} skipped, {Failed} failed",
-            "ProfileRemindersSent", actorId, sent, skipped, failed);
+    // Cumulative batch counts after each completed run. Sent means SMTP accepted the message.
+    public void RecordProfileReminders(Guid actorId, int sent, int skipped, int failed, int unconfirmed) =>
+        logger.LogInformation("Lifecycle {EventName} by actor {ActorId}: {Sent} sent, {Skipped} skipped, {Failed} failed, {Unconfirmed} unconfirmed",
+            "ProfileRemindersSent", actorId, sent, skipped, failed, unconfirmed);
 }

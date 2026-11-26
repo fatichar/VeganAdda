@@ -1,0 +1,154 @@
+@implements IDisposable
+@inject IModerationApi Moderation
+
+@if (selected is not null || error != "")
+{
+    <section class="card reminder-results" aria-labelledby="reminder-results-heading">
+        <h3 id="reminder-results-heading">Profile reminders</h3>
+        <Feedback Error="@error" />
+        <div class="actions">
+            @if (batches.Count > 1)
+            {
+                <label>Batch
+                    <select value="@selected" @onchange="SelectBatch" disabled="@loading">
+                        @foreach (var batch in batches)
+                        {
+                            <option value="@batch.Id">@batch.Created.ToLocalTime().ToString("g")@(batch.Complete ? "" : " · Sending")</option>
+                        }
+                    </select>
+                </label>
+            }
+            <button class="secondary small-button" disabled="@loading" @onclick="Refresh">Refresh results</button>
+        </div>
+        @if (result is { } current)
+        {
+            <p role="status">
+                @(current.Complete ? "Batch complete." : "Sending in the background.")
+                @Count(ProfileReminderStatus.Sent) sent · @Count(ProfileReminderStatus.Failed) failed · @Count(ProfileReminderStatus.Skipped) skipped
+                @if (!current.Complete) { <span> · @Count(ProfileReminderStatus.Queued) pending</span> }
+                @if (Count(ProfileReminderStatus.Unconfirmed) > 0) { <span> · @Count(ProfileReminderStatus.Unconfirmed) unconfirmed</span> }
+            </p>
+            @if (Count(ProfileReminderStatus.Unconfirmed) > 0)
+            {
+                <p>Delivery could not be confirmed for some members. They may already have received their reminder.</p>
+            }
+            @if (current.Complete && Count(ProfileReminderStatus.Failed) > 0)
+            {
+                <button class="secondary small-button" disabled="@loading" @onclick="RetryFailed">Retry failed reminders</button>
+            }
+            <details>
+                <summary>Results by member</summary>
+                <ul class="reminder-member-results">
+                    @foreach (var member in current.Members)
+                    {
+                        <li @key="member.MemberId">
+                            <span>@member.Name</span>
+                            @if (current.Members.Count(other => other.Name == member.Name) > 1)
+                            {
+                                <small class="muted" title="@member.MemberId">@member.MemberId.ToString()[..8]</small>
+                            }
+                            <strong>@(member.Status == ProfileReminderStatus.Queued ? "Pending" : member.Status.ToString())</strong>
+                        </li>
+                    }
+                </ul>
+            </details>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public Guid? BatchId { get; set; }
+
+    readonly CancellationTokenSource lifetime = new();
+    List<ProfileReminderBatchSummary> batches = [];
+    ProfileReminderBatchResult? result;
+    Guid? selected;
+    bool loading, disposed;
+    string error = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        selected = BatchId;
+        await Refresh();
+        if (disposed) return;
+        StateHasChanged();
+        _ = Poll(lifetime.Token);
+    }
+
+    int Count(ProfileReminderStatus status) => result?.Members.Count(member => member.Status == status) ?? 0;
+
+    Task Refresh() => Run(Load);
+
+    async Task Load()
+    {
+        batches = await Moderation.GetProfileReminderBatches();
+        if (disposed) return;
+        if (selected is not { } id || batches.All(batch => batch.Id != id))
+            selected = batches.FirstOrDefault()?.Id;
+        result = selected is { } batchId ? await Moderation.GetProfileReminderBatch(batchId) : null;
+    }
+
+    async Task SelectBatch(ChangeEventArgs args)
+    {
+        if (!Guid.TryParse(args.Value?.ToString(), out var id) || loading) return;
+        selected = id;
+        result = null;
+        await Refresh();
+    }
+
+    Task RetryFailed() => Run(async () =>
+    {
+        if (result is not { Complete: true } current || Count(ProfileReminderStatus.Failed) == 0) return;
+        await Moderation.RetryProfileReminders(current.Id, new(current.RetryVersion));
+        if (!disposed) await Load();
+    });
+
+    async Task Run(Func<Task> operation)
+    {
+        if (loading || disposed) return;
+        loading = true;
+        error = "";
+        try { await operation(); }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            if (ex.Status is 401 or 403)
+            {
+                batches = [];
+                result = null;
+                selected = null;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            error = "The reminder results could not be refreshed. Try refreshing again.";
+        }
+        finally { loading = false; }
+    }
+
+    async Task Poll(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (disposed || loading || (result is not { Complete: false } && batches.All(batch => batch.Complete))) return;
+                    await Refresh();
+                    if (!disposed) StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        lifetime.Cancel();
+        lifetime.Dispose();
+    }
+}
