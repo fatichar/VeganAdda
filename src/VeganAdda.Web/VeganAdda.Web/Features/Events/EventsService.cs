@@ -202,13 +202,12 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     public async Task<Ok> SaveEventSubmission(EventInput input)
     {
         var me = await User();
-        var title = Text(input.Title, 150, true); var description = Text(input.Description, 4000); var city = Text(input.City, 80, true); var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
-        var venue = Text(input.Venue, 200, true); var registration = Url(input.Registration); var cover = Photo(input.Cover);
-        var times = ResolveTimes(input, country, state, city);
+        var details = ValidatePublicationDetails(input.Title, input.Description, input.Registration, input.Cover);
+        var occurrence = ValidateOccurrence(new(input.Country, input.State, input.City), input.Venue, input.LocalStart, input.LocalEnd);
         var contacts = ReadContactIds(input);
         await using var tx = await db.Database.BeginTransactionAsync();
         await LockContactMembers(me.Id, contacts);
-        if (!await EventPosters().AnyAsync(p => p.Id == me.Id)) throw new ApiException(403, "Only a verified vegan member can post an event.");
+        await RequireEventPoster(me.Id);
         if (input.Id != Guid.Empty) await EventLock(input.Id);
         var e = input.Id == Guid.Empty ? null : await db.Events.SingleOrDefaultAsync(x => x.Id == input.Id && x.SubmittedBy == me.Id);
         if (input.Id != Guid.Empty && e == null) throw Missing();
@@ -217,15 +216,109 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         var wasPublished = e?.Published == true;
         e ??= new Gathering { SubmittedBy = me.Id, SubmittedAt = DateTimeOffset.UtcNow };
         if (db.Entry(e).State == EntityState.Detached) db.Events.Add(e);
-        e.Title = title; e.Description = description; e.Country = country; e.State = state; e.City = city; e.Venue = venue; e.Registration = registration;
-        e.Cover = cover; e.Start = times.Start; e.End = times.End; e.TimeZone = times.TimeZone;
+        ApplyPublication(e, details, occurrence);
         await UpdateEventContacts(e, contacts);
-        e.Published = true; e.PendingReview = false; e.ReviewNote = null;
         await db.SaveChangesAsync(); await tx.CommitAsync();
         lifecycle.RecordSubject(created ? LifecycleEvent.EventCreated : LifecycleEvent.EventUpdated, "event", e.Id, me.Id);
         if (!wasPublished) lifecycle.RecordSubject(LifecycleEvent.EventPublished, "event", e.Id, me.Id);
         return new Ok();
     }
+
+    public async Task<EventBatchResult> PublishBatch(EventBatchInput input)
+    {
+        var me = await User();
+        if (input.RequestId == Guid.Empty) throw new ApiException(400, "A publication request ID is required.");
+        if (input.Dates is not { Length: > 0 and <= EventBatchInput.MaxDates })
+            throw new ApiException(400, $"Enter between 1 and {EventBatchInput.MaxDates} event dates.");
+        if (input.ContactIds?.Contains(Guid.Empty) == true) throw new ApiException(400, "Choose contacts from VeganAdda members.");
+        var contacts = (input.ContactIds ?? []).Where(id => id != me.Id).Distinct().ToArray();
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await LockContactMembers(me.Id, contacts);
+        await RequireEventPoster(me.Id);
+        var receipt = await db.EventPublicationBatches.FindAsync(me.Id, input.RequestId);
+        if (receipt != null) return new(receipt.EventIds);
+
+        var details = ValidatePublicationDetails(input.Title, input.Description, input.Registration, input.Cover);
+        var defaultPlace = ValidatePlace(input.Place);
+        if (contacts.Length > 0 && await VisibleEventMembers().CountAsync(p => contacts.Contains(p.Id)) != contacts.Length)
+            throw new ApiException(400, "Choose available VeganAdda members as contacts.");
+
+        var events = new List<Gathering>(input.Dates.Length);
+        var occurrences = new HashSet<(EventPlace, string, DateTimeOffset)>();
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < input.Dates.Length; i++)
+        {
+            try
+            {
+                var date = input.Dates[i] ?? throw new ApiException(400, "Enter the date, start time, and venue.");
+                var occurrence = ValidateOccurrence(date.Place ?? defaultPlace, date.Venue,
+                    date.LocalStart == default ? null : date.LocalStart, end: null);
+                if (!occurrences.Add((occurrence.Place, occurrence.Venue, occurrence.Times.Start)))
+                    throw new ApiException(400, "An event with this venue and start time is already in this batch.");
+                var gathering = new Gathering { SubmittedBy = me.Id, SubmittedAt = now };
+                ApplyPublication(gathering, details, occurrence);
+                events.Add(gathering);
+            }
+            catch (ApiException ex) when (ex.Status == 400)
+            {
+                throw new ApiException(400, $"Event {i + 1} · {ex.Message}");
+            }
+        }
+
+        db.Events.AddRange(events);
+        db.EventContacts.AddRange(events.SelectMany(e => contacts.Select(id => new GatheringContact { EventId = e.Id, MemberId = id })));
+        var eventIds = events.Select(e => e.Id).ToArray();
+        db.EventPublicationBatches.Add(new() { SubmittedBy = me.Id, RequestId = input.RequestId, EventIds = eventIds });
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+        foreach (var id in eventIds)
+        {
+            lifecycle.RecordSubject(LifecycleEvent.EventCreated, "event", id, me.Id);
+            lifecycle.RecordSubject(LifecycleEvent.EventPublished, "event", id, me.Id);
+        }
+        return new(eventIds);
+    }
+
+    private async Task RequireEventPoster(Guid id)
+    {
+        if (!await EventPosters().AnyAsync(p => p.Id == id))
+            throw new ApiException(403, "Only a verified vegan member can post an event.");
+    }
+
+    private sealed record PublicationDetails(string Title, string Description, string? Registration, string Cover);
+    private sealed record PublicationOccurrence(EventPlace Place, string Venue, EventTimes Times);
+
+    private static PublicationDetails ValidatePublicationDetails(string title, string description, string? registration, string cover)
+        => new(Text(title, 150, true), Text(description, 4000), Url(registration), Photo(cover));
+
+    private static EventPlace ValidatePlace(EventPlace? place)
+        => new(Text(place?.Country, 80, true), Text(place?.State, 80, true), Text(place?.City, 80, true));
+
+    private static PublicationOccurrence ValidateOccurrence(EventPlace place, string venue, DateTime? start, DateTime? end)
+    {
+        var validPlace = ValidatePlace(place);
+        return new(validPlace, Text(venue, 200, true), ResolveTimes(start, end, validPlace.Country, validPlace.State, validPlace.City));
+    }
+
+    private static void ApplyPublication(Gathering gathering, PublicationDetails details, PublicationOccurrence occurrence)
+    {
+        gathering.Title = details.Title;
+        gathering.Description = details.Description;
+        gathering.Registration = details.Registration;
+        gathering.Cover = details.Cover;
+        gathering.Country = occurrence.Place.Country;
+        gathering.State = occurrence.Place.State;
+        gathering.City = occurrence.Place.City;
+        gathering.Venue = occurrence.Venue;
+        gathering.Start = occurrence.Times.Start;
+        gathering.End = occurrence.Times.End;
+        gathering.TimeZone = occurrence.Times.TimeZone;
+        gathering.Published = true;
+        gathering.PendingReview = false;
+        gathering.ReviewNote = null;
+    }
+
     private Task EventLock(Guid id) => PairLock("event:" + id);
 
     private static Guid[]? ReadContactIds(EventInput input)
@@ -262,15 +355,18 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     private sealed record EventTimes(string TimeZone, DateTimeOffset Start, DateTimeOffset? End);
 
     private static EventTimes ResolveTimes(EventInput input, string country, string state, string city)
+        => ResolveTimes(input.LocalStart, input.LocalEnd, country, state, city);
+
+    private static EventTimes ResolveTimes(DateTime? localStart, DateTime? localEnd, string country, string state, string city)
     {
-        if (input.LocalStart == null) throw new ApiException(400, "Enter the start date and time.");
-        if (input.LocalEnd.HasValue && input.LocalEnd <= input.LocalStart) throw new ApiException(400, "End date and time must be after the start.");
+        if (localStart == null) throw new ApiException(400, "Enter the start date and time.");
+        if (localEnd.HasValue && localEnd <= localStart) throw new ApiException(400, "End date and time must be after the start.");
         var zoneId = EventTimeZoneCatalog.Resolve(country, state, city);
         var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
         try
         {
-            var start = ToUtc(input.LocalStart.Value, zone);
-            DateTimeOffset? end = input.LocalEnd.HasValue ? ToUtc(input.LocalEnd.Value, zone) : null;
+            var start = ToUtc(localStart.Value, zone);
+            DateTimeOffset? end = localEnd.HasValue ? ToUtc(localEnd.Value, zone) : null;
             return new EventTimes(zoneId, start, end);
         }
         catch (ArgumentException)

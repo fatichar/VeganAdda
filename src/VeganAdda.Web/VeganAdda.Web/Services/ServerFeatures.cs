@@ -27,6 +27,8 @@ public sealed class ServerFeatures(IServiceScopeFactory scopes) : IMessagingApi,
         => Call<EventsService, List<EventContact>>(service => service.SearchEventContacts(search));
     public Task<Page<ProfileEvent>> GetProfileEvents(Guid personId, int page)
         => Call<EventsService, Page<ProfileEvent>>(service => service.GetProfileEvents(personId, page));
+    public Task<EventBatchResult> PublishBatch(EventBatchInput input)
+        => Call<EventsService, EventBatchResult>(service => service.PublishBatch(input));
     public Task<StatsReport> GetStats(int days) => Call<StatsService, StatsReport>(service => service.GetStats(days));
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => Call<ModerationService, Ok>(service => service.RequestProfileChanges(input));
     public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => Call<ProfilesService, Ok>(service => service.DeleteMemberProfile(id, input));

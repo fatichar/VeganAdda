@@ -17,6 +17,7 @@ public static class EventsEndpoints
         api.MapPost("/events/{id}/{action}", (string id, string action, HttpContext ctx, EventsService service) => Json(service.EventAction(Guid.Parse(id), action, RawBody(ctx)))).WithName("Events_Post_2").RequireAuthorization();
         api.MapGet("/event-submissions", (EventsService service) => Json(service.MyEventSubmissions())).WithName("Events_Get_3").RequireAuthorization();
         api.MapPost("/event-submissions", (HttpContext ctx, EventsService service) => Json(service.SaveEventSubmission(Body<EventInput>(ctx)))).WithName("Events_Post_4").RequireAuthorization();
+        api.MapPost("/event-submissions/batch", (HttpContext ctx, EventsService service) => Json(service.PublishBatch(Body<EventBatchInput>(ctx)))).WithName("Events_PublishBatch").RequireAuthorization();
         api.MapPost("/admin/events", (HttpContext ctx, EventsService service) => Json(service.SaveEvent(Body<EventInput>(ctx)))).WithName("Events_Post_5").RequireAuthorization();
         api.MapPost("/moderation/event-review", (HttpContext ctx, EventsService service) => Json(service.ReviewEvent(Body<EventReviewInput>(ctx), moderator: true))).WithName("Events_Post_6").RequireAuthorization();
     }

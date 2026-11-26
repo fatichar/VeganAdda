@@ -13,6 +13,7 @@ else if (profile?.IsVegan == false) { <Empty Title="Event posting is for verifie
 else if (profile != null && profile.IsVegan is null) { <Empty Title="Choose your vegan status first" Text="Set your status in your profile before posting an event."><a class="button secondary" href="/settings/profile">Update profile</a></Empty> }
 else if (profile?.VeganStatusUnverified == true) { <Empty Title="Vegan status is unverified" Text="Request vegan verification from your profile before posting an event."><a class="button secondary" href="/settings/profile">View profile status</a></Empty> }
 else if (profile != null) {
+    <div class="actions"><a class="button secondary" href="/events/post/batch"><Icon Name="calendar_month" />Post multiple events</a></div>
     <p class="small muted">Events publish immediately. Share public event details only.</p>
     @if (edit != null) {
         <form @key="edit" class="form-card event-submission" @onsubmit="Save" @onsubmit:preventDefault><fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive)">

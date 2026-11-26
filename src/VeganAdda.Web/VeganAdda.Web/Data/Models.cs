@@ -208,6 +208,13 @@ public class Gathering
     public Guid? ReviewedBy { get; set; }
 }
 /// <summary>An additional member contact for an event.</summary>
+public class EventPublicationBatch
+{
+    public Guid SubmittedBy { get; set; }
+    public Guid RequestId { get; set; }
+    public Guid[] EventIds { get; set; } = [];
+}
+
 public class GatheringContact
 {
     public Guid EventId { get; set; }
@@ -361,6 +368,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<VerifiedProfilePhone> ProfilePhones => Set<VerifiedProfilePhone>();
     public DbSet<GatheringContact> EventContacts => Set<GatheringContact>();
+    public DbSet<EventPublicationBatch> EventPublicationBatches => Set<EventPublicationBatch>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     public DbSet<AccountActivity> AccountActivity => Set<AccountActivity>();
@@ -410,6 +418,8 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<GatheringContact>().HasKey(x => new { x.EventId, x.MemberId });
         b.Entity<GatheringContact>().HasOne<Gathering>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<GatheringContact>().HasOne<Profile>().WithMany().HasForeignKey(x => x.MemberId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<EventPublicationBatch>().HasKey(x => new { x.SubmittedBy, x.RequestId });
+        b.Entity<EventPublicationBatch>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubmittedBy).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Gathering>().HasIndex(x => new { x.PendingReview, x.Demo });
         b.Entity<Referral>().HasKey(x => x.ReferredId);
         b.Entity<Referral>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReferredId).OnDelete(DeleteBehavior.Cascade);

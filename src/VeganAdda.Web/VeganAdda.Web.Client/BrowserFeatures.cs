@@ -16,6 +16,8 @@ public sealed class BrowserFeatures(BrowserApi transport) : IMessagingApi, ISave
         => transport.Get<List<EventContact>>("events/contacts?search=" + Uri.EscapeDataString(search));
     public Task<Page<ProfileEvent>> GetProfileEvents(Guid personId, int page)
         => transport.Get<Page<ProfileEvent>>($"people/{personId}/events?page={page}");
+    public Task<EventBatchResult> PublishBatch(EventBatchInput input)
+        => transport.Send<EventBatchResult>("event-submissions/batch", input);
     public Task<Ok> RequestProfileChanges(ProfileFeedbackInput input) => transport.Send<Ok>("admin/profile-feedback", input);
     public Task<Ok> DeleteMemberProfile(Guid id, DeleteInput input) => transport.Send<Ok>($"admin/members/{id}", input, "DELETE");
     public Task<VerificationStatus> GetVerification() => transport.Get<VerificationStatus>("verification");

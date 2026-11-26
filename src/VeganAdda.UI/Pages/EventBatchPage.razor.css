@@ -1,0 +1,61 @@
+.batch-date {
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    margin: 1rem 0;
+    padding: 0.75rem;
+    min-width: 0;
+}
+
+.batch-date legend {
+    font-weight: 600;
+    padding: 0 0.35rem;
+}
+
+.batch-date-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1.5fr);
+    gap: 0.75rem;
+}
+
+.batch-date-fields input {
+    min-width: 0;
+}
+
+.batch-optional {
+    margin: 1rem 0;
+}
+
+.batch-optional summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.batch-summary {
+    padding-inline-start: 1.4rem;
+}
+
+.batch-summary li {
+    padding: 0.55rem 0;
+    overflow-wrap: anywhere;
+}
+
+.batch-description {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+    .batch-date-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .batch-venue {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 420px) {
+    .batch-date-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

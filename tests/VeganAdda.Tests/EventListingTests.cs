@@ -10,6 +10,70 @@ namespace VeganAdda.Tests;
 public class EventListingTests(DatabaseFixture f)
 {
     [Fact]
+    public async Task Batch_publication_is_atomic_and_retries_return_the_same_events()
+    {
+        var poster = await f.Member();
+        var contact = await f.Member();
+        var unverified = await f.Member();
+        await using (var db = f.Db())
+        {
+            (await db.Profiles.FindAsync(unverified))!.VeganVerified = false;
+            await db.SaveChangesAsync();
+        }
+        var start = new DateTime(2030, 1, 5, 17, 30, 0);
+        var title = "Weekly outreach " + Guid.NewGuid().ToString("N");
+        var place = new EventPlace("India", "Maharashtra", "Pune");
+        var otherPlace = new EventPlace("United States", "California", "Los Angeles");
+        var first = new EventBatchDate(start, "Community hall");
+        var second = new EventBatchDate(start.AddDays(7).AddHours(1), "Town square", otherPlace);
+        var input = new EventBatchInput(Guid.NewGuid(), title, "Shared description", "", "https://example.com/outreach",
+            place, [poster, contact, contact], [first, second]);
+
+        Task<EventBatchResult> Publish(Guid member, EventBatchInput batch) =>
+            f.Feature<EventsService, EventBatchResult>(member, service => service.PublishBatch(batch));
+
+        Assert.Equal(403, (await Assert.ThrowsAsync<ApiException>(() => Publish(unverified, input))).Status);
+        var invalid = await Assert.ThrowsAsync<ApiException>(() => Publish(poster, input with { Dates = [first, second with { Venue = "" }] }));
+        Assert.Equal(400, invalid.Status);
+        Assert.Contains("Event 2", invalid.Message);
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => Publish(poster, input with { Dates = [first, first] }))).Status);
+        await using (var db = f.Db())
+        {
+            Assert.False(await db.Events.AnyAsync(e => e.Title == title));
+            Assert.False(await db.EventPublicationBatches.AnyAsync(batch => batch.SubmittedBy == poster));
+        }
+
+        var results = await Task.WhenAll(Publish(poster, input), Publish(poster, input));
+        var ids = results[0].EventIds;
+        Assert.Equal(2, ids.Distinct().Count());
+        Assert.Equal(ids, results[1].EventIds);
+
+        await using (var db = f.Db())
+        {
+            Assert.Equal(2, await db.Events.CountAsync(e => e.Title == title));
+            var events = await db.Events.Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
+            Assert.All(events.Values, e =>
+            {
+                Assert.True(e.Published);
+                Assert.Equal(poster, e.SubmittedBy);
+                Assert.Equal(input.Description, e.Description);
+                Assert.Equal(input.Registration, e.Registration);
+            });
+            Assert.Equal("Pune", events[ids[0]].City);
+            Assert.Equal(new DateTimeOffset(2030, 1, 5, 12, 0, 0, TimeSpan.Zero), events[ids[0]].Start);
+            Assert.Equal("Los Angeles", events[ids[1]].City);
+            Assert.Equal(new DateTimeOffset(2030, 1, 13, 2, 30, 0, TimeSpan.Zero), events[ids[1]].Start);
+            var contacts = await db.EventContacts.Where(c => ids.Contains(c.EventId)).ToListAsync();
+            Assert.Equal(2, contacts.Count);
+            Assert.All(contacts, c => Assert.Equal(contact, c.MemberId));
+        }
+
+        await f.Call(contact, $"events/{ids[0]}/attendance", new AttendanceInput(true, true), "POST");
+        Assert.True(Assert.IsType<EventCard>(await f.Call(contact, $"events/{ids[0]}")).Attending);
+        Assert.False(Assert.IsType<EventCard>(await f.Call(contact, $"events/{ids[1]}")).Attending);
+    }
+
+    [Fact]
     public async Task A_member_event_publishes_immediately_and_preserves_optional_details()
     {
         var member = await f.Member(); var admin = await f.Member(admin: true);

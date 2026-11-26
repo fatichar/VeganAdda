@@ -40,9 +40,19 @@ public record ProfileEvent(Guid Id, string Title, DateTimeOffset Start, string T
 public record AttendanceInput(bool Attending, bool Visible);
 public record CheckInInput(bool CheckedIn);
 
+public record EventPlace(string Country, string State, string City);
+public record EventBatchDate(DateTime LocalStart, string Venue, EventPlace? Place = null);
+public record EventBatchInput(Guid RequestId, string Title, string Description, string Cover, string? Registration,
+    EventPlace Place, Guid[] ContactIds, EventBatchDate[] Dates)
+{
+    public const int MaxDates = 52;
+}
+public record EventBatchResult(Guid[] EventIds);
+
 public interface IEventsApi
 {
     Task<Page<ScheduledEvent>> GetSchedule(string country, string state, string city, int page);
     Task<List<EventContact>> SearchEventContacts(string search);
     Task<Page<ProfileEvent>> GetProfileEvents(Guid personId, int page);
+    Task<EventBatchResult> PublishBatch(EventBatchInput input);
 }
