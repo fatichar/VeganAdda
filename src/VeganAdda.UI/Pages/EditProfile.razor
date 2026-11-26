@@ -5,6 +5,20 @@
 @inject IJSRuntime JS
 @inject IVerificationApi VerificationApi
 <PageTitle>Your profile · VeganAdda</PageTitle>
+@if (showProfileInvite)
+{
+    <section class="card narrow" aria-labelledby="profile-ready-heading">
+        <h1 id="profile-ready-heading" tabindex="-1" @ref="profileReadyHeading">Congratulations, your profile is ready!</h1>
+        <p>VeganAdda is more fun with friends. Invite yours to join you!</p>
+        <div class="actions">
+            <ShareLink Label="Invite friends" Title="Join VeganAdda" Message="Come join me on VeganAdda!"
+                       Path="signin?invited=true" IconName="person_add" ButtonClass="button" />
+            <button type="button" class="secondary" @onclick="ContinueAfterProfileSave">Continue</button>
+        </div>
+    </section>
+}
+else
+{
 <div class="narrow profile-editor"><header class="profile-editor-heading"><a class="back-link icon-button" href="/settings" aria-label="Back to settings"><Icon Name="arrow_back" /></a><h1>@(onboarding ? "Complete your basic profile" : "Edit profile")</h1>
 @if (model != null && Session?.Id != null) { <button type="submit" form="profile-form" disabled="@(!RendererInfo.IsInteractive || Busy || locationBusy || !HasChanges)">@(Busy ? "Saving…" : "Save")</button> }
 </header>
@@ -94,6 +108,7 @@ else if (model != null) {
 <p class="small muted">Keep private contact details out of your bio. Be kind, respect boundaries, and connect with consent.</p></div>
 @if (!string.IsNullOrEmpty(Error) || !string.IsNullOrEmpty(Success)) { <footer class="profile-save"><div class="save-feedback"><Feedback Error="@Error" Success="@Success" /></div></footer> }
 </fieldset></form> }</div>
+}
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery(Name = "ref")] public string? ReferralCode { get; set; }
@@ -102,6 +117,7 @@ else if (model != null) {
     ProfileInput? model; VerificationPanel? verification; string interests = ""; bool onboarding => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("onboarding");
     bool locationBusy, reportValidation, tabsInitialized, focusSocialLinks;
     bool adjustPhoto;
+    bool showProfileInvite, focusProfileInvite;
     string savedProfile = "", savedInterests = "";
     bool HasChanges => model != null && (onboarding || Session?.BasicProfileComplete != true || savedProfile != System.Text.Json.JsonSerializer.Serialize(model, Wire.Json) || savedInterests != interests);
     void EditSocialLinks() { activeTab = 1; focusSocialLinks = true; }
@@ -109,10 +125,20 @@ else if (model != null) {
     void ProfileEdited() { if (HasChanges) Success = ""; }
     int activeTab;
     ElementReference profileForm;
+    ElementReference profileReadyHeading;
     readonly string[] tabs = ["Basic info", "Details", "Preferences"];
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
+        if (showProfileInvite)
+        {
+            if (focusProfileInvite)
+            {
+                focusProfileInvite = false;
+                await profileReadyHeading.FocusAsync();
+            }
+            return;
+        }
         if (model == null) return;
         if (!tabsInitialized || reportValidation || focusSocialLinks)
         {
@@ -143,7 +169,7 @@ else if (model != null) {
         await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/profile-form.js");
         var invalidPanel = await module.InvokeAsync<int?>("invalidPanel", profileForm);
         if (invalidPanel.HasValue) { activeTab = invalidPanel.Value; reportValidation = true; return; }
-        await SaveProfile(null);
+        if (!Busy && !showProfileInvite) await SaveProfile(null);
     }
     async Task RequestVerification(VerificationSubmission submission)
     {
@@ -151,10 +177,11 @@ else if (model != null) {
         await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/profile-form.js");
         var invalidPanel = await module.InvokeAsync<int?>("invalidPanel", profileForm);
         if (invalidPanel.HasValue) { activeTab = invalidPanel.Value; reportValidation = true; return; }
-        await SaveProfile(submission);
+        if (!Busy && !showProfileInvite) await SaveProfile(submission);
     }
     Task SaveProfile(VerificationSubmission? submission) => Run(async () =>
     {
+        var completingProfile = Session?.BasicProfileComplete == false;
         model!.Interests = interests.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         await Profiles.SaveProfile(model!);
         if (submission != null)
@@ -162,7 +189,8 @@ else if (model != null) {
             try { await VerificationApi.SubmitVerification(submission); }
             catch (ApiException) { await ReloadEditor(); throw; }
         }
-        if (onboarding) Nav.NavigateTo(ProfileSetup.SafeReturnUrl(ReturnUrl), true);
+        if (completingProfile) showProfileInvite = focusProfileInvite = true;
+        else if (onboarding) ContinueAfterProfileSave();
         else
         {
             await ReloadEditor();
@@ -170,6 +198,7 @@ else if (model != null) {
             Success = submission != null ? "Verification request submitted." : "Changes have been saved.";
         }
     });
+    void ContinueAfterProfileSave() => Nav.NavigateTo(onboarding ? ProfileSetup.SafeReturnUrl(ReturnUrl) : Current, forceLoad: true);
     async Task ReloadEditor()
     {
         model = await Profiles.GetProfile();

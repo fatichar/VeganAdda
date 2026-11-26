@@ -1,0 +1,17 @@
+.share-status:empty {
+    position: absolute;
+}
+
+.share-status,
+.share-fallback {
+    flex-basis: 100%;
+}
+
+.share-fallback {
+    min-width: 0;
+}
+
+.settings-row ~ .share-status:not(:empty),
+.settings-row ~ .share-fallback {
+    padding: 0 1rem .75rem;
+}
