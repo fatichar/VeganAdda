@@ -1,6 +1,16 @@
-.verification-panel { margin-top: 1rem; }
-.verification-form fieldset { border: 0; padding: 0; min-width: 0; display: grid; gap: .75rem; }
+.verification-panel { margin-top: 1rem; min-width: 0; }
+.verification-request { border: 0; margin: .8rem 0 0; padding: 0; min-width: 0; }
+.verification-form { display: grid; gap: .75rem; min-width: 0; }
+.verification-form { margin-top: .75rem; }
 .verification-form textarea, .verification-form input { width: 100%; min-width: 0; box-sizing: border-box; }
+.verification-panel .actions, .verification-panel > button { margin-top: .75rem; }
+.verification-proof { margin: .8rem 0 0; padding: .8rem; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); display: grid; gap: .5rem; min-width: 0; }
+.verification-proof h4 { margin: 0; font-size: .95rem; }
+.verification-proof p { margin: 0; }
+.verification-proof dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem .75rem; margin: 0; }
+.verification-proof dt { font-weight: 600; }
+.verification-proof dd { margin: 0; overflow-wrap: anywhere; }
+.verification-proof .text-button, .verification-proof a { justify-self: start; }
 [role="listbox"] { display: grid; gap: .35rem; }
 [role="option"] { text-align: left; }
 [role="option"][aria-selected="true"] { outline: 2px solid currentColor; }
