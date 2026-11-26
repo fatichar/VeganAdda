@@ -4,6 +4,6 @@ public record ConnectionItem(string Key, Person Person, string State, bool Incom
 public record ConnectionInput(Guid PersonId, string Introduction = "");
 public static class ReportReasons
 {
-    public static readonly string[] All = ["Harassment", "Spam", "Not a vegan", "Fake profile or impersonation", "Inappropriate content", "Other"];
+    public static readonly string[] All = ["Harassment", "Spam", "Not a vegan", "Appears to be under 18", "Fake profile or impersonation", "Inappropriate content", "Other"];
 }
 public record ReportInput(Guid PersonId, string Reason, string? Details = null, string? Screenshot = null);

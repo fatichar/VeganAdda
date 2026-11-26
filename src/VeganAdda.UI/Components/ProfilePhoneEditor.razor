@@ -16,7 +16,7 @@
         {
             <label class="check-row">
                 <input @key="sharingVersion" type="checkbox" checked="@status.Shared" @onchange="Share" disabled="@Disabled" />
-                <span>Show on my profile<small>Signed-in members who can view your full profile can see this number.</small></span>
+                <span>Show on my profile<small>Signed-in members who can view your full profile can see this number. Saves right away.</small></span>
             </label>
         }
         <button type="button" class="secondary small-button" disabled="@Disabled" @onclick="Remove">Remove from profile</button>
@@ -129,7 +129,11 @@
 
     Task Share(ChangeEventArgs args) => Run(async () =>
     {
-        try { status = await PhoneApi.SharePhone(new((bool)args.Value!, status?.Number)); }
+        try
+        {
+            status = await PhoneApi.SharePhone(new((bool)args.Value!, status?.Number));
+            success = status.Shared ? "Saved. Your number is shown on your profile." : "Saved. Your number is hidden from your profile.";
+        }
         catch (Exception ex) when (ex is ApiException or HttpRequestException)
         {
             try { status = await PhoneApi.GetPhone(); }
