@@ -1,0 +1,73 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+
+<button type="button" class="@ButtonClass" disabled="@(!ready || sharing)" @onclick="Share">
+    <Icon Name="@IconName" /><span>@Label</span>
+</button>
+<div class="share-status small muted" role="status">@status</div>
+@if (showLink)
+{
+    <div class="share-fallback">
+        <input type="url" aria-label="@($"{Label} link")" value="@Url" readonly />
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public string Path { get; set; } = "";
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public string IconName { get; set; } = "share";
+    [Parameter] public string ButtonClass { get; set; } = "secondary";
+
+    string Url => Nav.ToAbsoluteUri(Path).AbsoluteUri;
+    IJSObjectReference? module;
+    bool ready, sharing, showLink, disposed;
+    string status = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Load before the click so native sharing can use the browser's user activation.
+            var linkModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/VeganAdda.UI/share-link.js");
+            if (disposed)
+            {
+                await linkModule.DisposeAsync();
+                return;
+            }
+            module = linkModule;
+        }
+        catch (JSException) { }
+        if (disposed) return;
+        ready = true;
+        StateHasChanged();
+    }
+
+    async Task Share()
+    {
+        if (sharing) return;
+        sharing = true;
+        status = "";
+        showLink = false;
+        try
+        {
+            var result = module == null ? "manual" : await module.InvokeAsync<string>("shareLink", Url, Title, Message);
+            showLink = result == "manual";
+            if (result == "copied") status = "Link copied.";
+        }
+        catch (JSException) { showLink = true; }
+        finally { sharing = false; }
+
+        if (showLink) status = "Copy the link below to share it.";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        if (module != null) await module.DisposeAsync();
+    }
+}

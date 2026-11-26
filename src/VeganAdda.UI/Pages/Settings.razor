@@ -10,6 +10,10 @@ else if (model != null) { <div class="settings-identity"><Avatar Name="@Session.
 }
 @if (Session?.Id != null)
 {
+    <section class="settings-group" aria-label="Invite friends">
+        <ShareLink Label="Invite friends" Title="Join VeganAdda" Message="Come join me on VeganAdda!" Path="signin?invited=true"
+                   IconName="person_add" ButtonClass="settings-row secondary" />
+    </section>
     <button class="settings-row signout" disabled="@Busy" @onclick="SignOut"><Icon Name="logout" /><span>Sign out</span><Icon Name="chevron_right" /></button>
     <section id="delete-account" class="delete-section">
         <h2>Delete account</h2>
