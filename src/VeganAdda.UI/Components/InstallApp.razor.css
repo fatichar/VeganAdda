@@ -1,0 +1,21 @@
+.settings-row {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: inherit;
+    box-shadow: none;
+}
+
+@media (hover: hover) {
+    .settings-row:enabled:hover {
+        background: var(--green-50);
+    }
+}
+
+.settings-row:enabled:active {
+    background: var(--green-100);
+}
+
+.settings-row:focus-visible {
+    outline-offset: -4px;
+}

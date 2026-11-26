@@ -37,5 +37,85 @@
 @media (max-width: 700px) { .admin-member .admin-row { align-items: flex-start; flex-direction: column; } .admin-member-actions { width: 100%; justify-content: flex-end; } .admin-bulk-confirm { align-items: flex-start; } }
 .admin-feedback { position: sticky; top: 120px; z-index: 6; }
 @media (max-width: 767px) { .admin-feedback { top: 70px; } }
-.admin-page-size { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: .82rem; font-weight: 500; }
-.admin-page-size select { width: auto; min-height: 36px; }
+
+.admin-tabs {
+    align-items: center;
+    flex-wrap: wrap;
+    overflow: visible;
+}
+
+.admin-page-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 0 auto;
+    white-space: nowrap;
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.admin-page-size select {
+    inline-size: 5.75rem;
+    min-height: 44px;
+    padding: .45rem .75rem;
+    border-radius: var(--r-control);
+    cursor: pointer;
+}
+
+.admin-page-size select:focus-visible {
+    outline-width: 2px;
+    outline-offset: 2px;
+}
+
+.admin-page-size select:disabled {
+    opacity: .65;
+    cursor: default;
+}
+
+@supports (appearance: base-select) and selector(::picker(select)) {
+    .admin-page-size select,
+    .admin-page-size select::picker(select) {
+        appearance: base-select;
+    }
+
+    .admin-page-size select {
+        align-items: center;
+    }
+
+    .admin-page-size select::picker(select) {
+        margin-block: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-control);
+        background: var(--raised);
+        color: var(--text);
+        box-shadow: 0 6px 18px #0003;
+    }
+
+    .admin-page-size option {
+        min-height: 44px;
+        padding: .35rem .5rem;
+        border-radius: 8px;
+    }
+
+    .admin-page-size option:checked {
+        background: var(--green-100);
+        color: var(--green);
+    }
+
+    .admin-page-size option:hover,
+    .admin-page-size option:focus-visible {
+        background: var(--green-50);
+    }
+
+    .admin-page-size option:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: -2px;
+    }
+
+    .admin-page-size option::checkmark {
+        order: 1;
+        margin-inline-start: auto;
+    }
+}

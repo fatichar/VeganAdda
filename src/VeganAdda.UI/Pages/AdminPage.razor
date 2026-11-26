@@ -13,7 +13,27 @@ else if (data == null) {
     else { <button class="secondary" @onclick="() => Run(Refresh)">Retry</button> }
 }
 else {
-    <div class="tab-row">@foreach (var t in new[] { "Events", "Members", "Reports" }) { <button class="chip @(tab == t ? "active" : "")" @onclick="() => SwitchTab(t)">@t@if (t == "Members" && data.ProfilesTotal > 0) { <span class="badge" aria-label="Vegans awaiting verification">@data.ProfilesTotal</span> }</button> }<label class="admin-page-size"><span>Per page</span><select aria-label="Rows per page" @bind="pageSize" @bind:after="ChangePageSize" disabled="@Busy">@foreach (var size in AdminPaging.PageSizes) { <option value="@size">@size</option> }</select></label></div>
+    <div class="tab-row admin-tabs">
+        @foreach (var t in new[] { "Events", "Members", "Reports" })
+        {
+            <button class="chip @(tab == t ? "active" : "")" @onclick="() => SwitchTab(t)">
+                @t
+                @if (t == "Members" && data.ProfilesTotal > 0)
+                {
+                    <span class="badge" aria-label="Vegans awaiting verification">@data.ProfilesTotal</span>
+                }
+            </button>
+        }
+        <label class="admin-page-size">
+            <span>Per page</span>
+            <select aria-label="Rows per page" @bind="pageSize" @bind:after="ChangePageSize" disabled="@Busy">
+                @foreach (var size in AdminPaging.PageSizes)
+                {
+                    <option value="@size">@size</option>
+                }
+            </select>
+        </label>
+    </div>
     @if (tab == "Events") {
         <div class="admin-event-toolbar"><EventLocationFilter Country="@country" State="@state" City="@city" Profile="adminProfile" Selected="FilterEvents" /><button @onclick="NewEvent"><Icon Name="add" />Create event</button></div>
         <div class="admin-events @(edit != null ? "editing" : "")"><section class="admin-event-list" aria-label="Events">
