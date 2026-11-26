@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net.Mail;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -89,6 +90,31 @@ public sealed class ProfileReminderQueueTests(DatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task Lost_smtp_acknowledgement_is_unconfirmed_and_cannot_be_retried()
+    {
+        var admin = await fixture.Member(admin: true);
+        var member = await AddRecipient("failed");
+        var sender = new Sender { FailureCode = SmtpStatusCode.GeneralFailure };
+        sender.Release.SetResult();
+        var receipt = await Call(admin, sender, service => service.Queue(new(Guid.NewGuid(), [member])));
+        var clock = new Clock();
+        using var scopes = new ServiceCollection().AddScoped(_ => fixture.Db()).BuildServiceProvider();
+        var worker = new ProfileReminderWorker(scopes.GetRequiredService<IServiceScopeFactory>(), Config, new EmailLookup(), sender,
+            new LifecycleEvents(NullLogger<LifecycleEvents>.Instance), NullLogger<ProfileReminderWorker>.Instance, clock);
+
+        Assert.True(await worker.DeliverNext());
+        clock.Advance(TimeSpan.FromMinutes(3));
+        Assert.False(await worker.DeliverNext());
+
+        var result = await Call(admin, sender, service => service.Get(receipt.BatchId));
+        Assert.True(result.Complete);
+        Assert.Equal(ProfileReminderStatus.Unconfirmed, Status(result, member));
+        Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => Call(admin, sender,
+            service => service.Retry(receipt.BatchId, new(result.RetryVersion))))).Status);
+        Assert.Equal(1, sender.Attempts["failed@example.test"]);
+    }
+
+    [Fact]
     public async Task Expired_in_flight_delivery_is_unconfirmed_and_is_not_automatically_resent()
     {
         var admin = await fixture.Member(admin: true);
@@ -154,6 +180,7 @@ public sealed class ProfileReminderQueueTests(DatabaseFixture fixture)
     {
         public bool IsConfigured => true;
         public bool AllowFailed { get; set; }
+        public SmtpStatusCode FailureCode { get; init; } = SmtpStatusCode.MailboxBusy;
         public ConcurrentDictionary<string, int> Attempts { get; } = new();
         public TaskCompletionSource ParallelSends { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -164,7 +191,7 @@ public sealed class ProfileReminderQueueTests(DatabaseFixture fixture)
             if (Attempts.Count == 2) ParallelSends.TrySetResult();
             await Release.Task.WaitAsync(cancellationToken);
             if (!AllowFailed && recipient == "failed@example.test")
-                throw new System.Net.Mail.SmtpException("Simulated transient SMTP failure.");
+                throw new SmtpException(FailureCode);
         }
     }
 }

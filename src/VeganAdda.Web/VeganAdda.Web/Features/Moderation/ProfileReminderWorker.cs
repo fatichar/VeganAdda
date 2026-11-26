@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using FirebaseAdmin.Auth;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
@@ -112,6 +113,12 @@ public sealed class ProfileReminderWorker(
         }
         catch (OperationCanceledException) when (sending && ct.IsCancellationRequested)
         {
+            return ProfileReminderStatus.Unconfirmed;
+        }
+        catch (SmtpException ex) when (sending && (int)ex.StatusCode is < 400 or >= 600)
+        {
+            // Without an explicit SMTP rejection, the server may already have accepted the message.
+            logger.LogWarning("SMTP did not confirm profile reminder delivery for batch {BatchId}.", claim.BatchId);
             return ProfileReminderStatus.Unconfirmed;
         }
         catch (Exception ex)
