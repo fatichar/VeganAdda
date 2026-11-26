@@ -32,6 +32,7 @@ public record EventCard(Guid Id, string Title, string Cover, string Description,
     EventContact? Creator = null)
 {
     public EventContact[] Contacts { get; init; } = [];
+    public bool CanEdit { get; init; }
 }
 public record EventContact(Guid Id, string Name);
 public record ScheduledEvent(Guid Id, string Title, DateTimeOffset Start, string TimeZone, string City, string Venue,

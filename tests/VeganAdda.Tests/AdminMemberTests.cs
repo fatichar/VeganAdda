@@ -158,41 +158,49 @@ public class AdminMemberTests(DatabaseFixture f)
     [InlineData(AdminMemberSort.NameDescending, true)]
     public async Task Admin_members_are_paged_after_filtering_and_sorting(string sort, bool descending)
     {
-        // The expected page boundaries depend on every unverified member in the database.
-        var isolated = new DatabaseFixture();
-        await isolated.InitializeAsync();
+        var admin = await f.Member(admin: true);
+        var ids = new List<Guid>();
+        var date = DateTimeOffset.UnixEpoch;
+        await using (var db = f.Db())
+        {
+            for (var i = 0; i < 22; i++)
+            {
+                var name = $"{(i % 2 == 0 ? "Pagination" : "pagination")} pending {i:00}";
+                var account = new Account { Name = name, Subject = Guid.NewGuid().ToString(), Created = date.AddMinutes(22 - i) };
+                ids.Add(account.Id);
+                db.Accounts.Add(account);
+                db.Profiles.Add(new() { Id = account.Id, Name = account.Name, IsVegan = true, VeganVerified = false, AdultConfirmedAt = date.AddMinutes(i) });
+            }
+            await db.SaveChangesAsync();
+        }
         try
         {
-            var admin = await isolated.Member(admin: true);
-            var ids = new List<Guid>();
-            var date = DateTimeOffset.UtcNow;
-            await using (var db = isolated.Db())
-            {
-                for (var i = 0; i < 22; i++)
-                {
-                    var name = $"{(i % 2 == 0 ? "Pagination" : "pagination")} pending {i:00}";
-                    var account = new Account { Name = name, Subject = Guid.NewGuid().ToString(), Created = date.AddMinutes(22 - i) };
-                    ids.Add(account.Id);
-                    db.Accounts.Add(account);
-                    db.Profiles.Add(new() { Id = account.Id, Name = account.Name, IsVegan = true, VeganVerified = false, AdultConfirmedAt = date.AddMinutes(i) });
-                }
-                await db.SaveChangesAsync();
-            }
             var path = "admin?verification=unverified&section=Members";
             if (sort != "") path += $"&memberSort={sort}";
-            var first = Assert.IsType<AdminData>(await isolated.Call(admin, $"{path}&page=1"));
-            var second = Assert.IsType<AdminData>(await isolated.Call(admin, $"{path}&page=2"));
-            Assert.Equal(22, first.MembersTotal);
+            var first = Assert.IsType<AdminData>(await f.Call(admin, $"{path}&page=1"));
+            Assert.True(first.MembersTotal >= ids.Count);
+            Assert.Equal(1, first.PageNumber);
             Assert.Equal(20, first.People.Count);
-            Assert.Equal(2, second.People.Count);
-            Assert.Equal(2, second.PageNumber);
-            Assert.All(first.People.Concat(second.People), p => Assert.False(p.VeganVerified));
+
+            var people = first.People.ToList();
+            for (var page = 2; people.Count < first.MembersTotal; page++)
+            {
+                var result = Assert.IsType<AdminData>(await f.Call(admin, $"{path}&page={page}"));
+                Assert.Equal(page, result.PageNumber);
+                Assert.Equal(Math.Min(20, first.MembersTotal - people.Count), result.People.Count);
+                people.AddRange(result.People);
+            }
+
+            Assert.Equal(people.Count, people.Select(p => p.Id).Distinct().Count());
+            Assert.All(people, p => { Assert.True(p.IsVegan); Assert.False(p.VeganVerified); });
+            var inserted = ids.ToHashSet();
             var expected = descending ? ids.AsEnumerable().Reverse() : ids;
-            Assert.Equal(expected, first.People.Concat(second.People).Select(p => p.Id));
+            Assert.Equal(expected, people.Select(p => p.Id).Where(inserted.Contains));
         }
         finally
         {
-            await isolated.DisposeAsync();
+            await using var db = f.Db();
+            await db.Accounts.Where(a => ids.Contains(a.Id)).ExecuteDeleteAsync();
         }
     }
 
