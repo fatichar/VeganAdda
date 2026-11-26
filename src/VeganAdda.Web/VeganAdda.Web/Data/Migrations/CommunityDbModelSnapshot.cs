@@ -200,6 +200,23 @@ namespace VeganAdda.Web.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.EventPublicationBatch", b =>
+                {
+                    b.Property<Guid>("SubmittedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<Guid[]>("EventIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.HasKey("SubmittedBy", "RequestId");
+
+                    b.ToTable("EventPublicationBatches");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.Gathering", b =>
                 {
                     b.Property<Guid>("Id")
@@ -210,6 +227,13 @@ namespace VeganAdda.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(600)
                         .HasColumnType("character varying(600)");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("Country")
                         .IsRequired()
@@ -291,11 +315,28 @@ namespace VeganAdda.Web.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ContactId");
+
                     b.HasIndex("SubmittedBy");
 
                     b.HasIndex("PendingReview", "Demo");
 
                     b.ToTable("Events");
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.GatheringContact", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("EventId", "MemberId");
+
+                    b.HasIndex("MemberId");
+
+                    b.ToTable("EventContacts");
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.Notification", b =>
@@ -814,6 +855,27 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("VerificationRequests");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.VerifiedProfilePhone", b =>
+                {
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<bool>("Shared")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("ProfileId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.ToTable("ProfilePhones");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.AccountActivity", b =>
                 {
                     b.HasOne("VeganAdda.Web.Data.Account", null)
@@ -862,12 +924,41 @@ namespace VeganAdda.Web.Data.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("VeganAdda.Web.Data.Gathering", b =>
+            modelBuilder.Entity("VeganAdda.Web.Data.EventPublicationBatch", b =>
                 {
                     b.HasOne("VeganAdda.Web.Data.Account", null)
                         .WithMany()
                         .HasForeignKey("SubmittedBy")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.Gathering", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("ContactId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("VeganAdda.Web.Data.Account", null)
+                        .WithMany()
+                        .HasForeignKey("SubmittedBy")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.GatheringContact", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Gathering", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VeganAdda.Web.Data.Profile", null)
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.Notification", b =>
@@ -1002,6 +1093,15 @@ namespace VeganAdda.Web.Data.Migrations
             modelBuilder.Entity("VeganAdda.Web.Data.ProfileReminderBatch", b =>
                 {
                     b.Navigation("Deliveries");
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.VerifiedProfilePhone", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Profile", null)
+                        .WithOne()
+                        .HasForeignKey("VeganAdda.Web.Data.VerifiedProfilePhone", "ProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.VerificationRequest", b =>

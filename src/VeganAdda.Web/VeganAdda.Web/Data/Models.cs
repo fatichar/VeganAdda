@@ -149,6 +149,14 @@ public class ChatMessage
     /// <summary>Message send time.</summary>
     public DateTimeOffset SentAt { get; set; } = DateTimeOffset.UtcNow;
 }
+/// <summary>A member's verified contact number and profile-sharing preference.</summary>
+public class VerifiedProfilePhone
+{
+    public Guid ProfileId { get; set; }
+    public string Number { get; set; } = "";
+    public bool Shared { get; set; }
+}
+
 /// <summary>A community gathering or event.</summary>
 public class Gathering
 {
@@ -176,6 +184,8 @@ public class Gathering
     public string Venue { get; set; } = "";
     /// <summary>Organizer name or group.</summary>
     public string Organizer { get; set; } = "";
+    public Guid? ContactId { get; set; }
+    public string? ContactPhone { get; set; }
     /// <summary>Optional registration link.</summary>
     public string? Registration { get; set; }
     /// <summary>Whether the event is published.</summary>
@@ -197,6 +207,20 @@ public class Gathering
     /// <summary>Account that reviewed the event.</summary>
     public Guid? ReviewedBy { get; set; }
 }
+/// <summary>An additional member contact for an event.</summary>
+public class EventPublicationBatch
+{
+    public Guid SubmittedBy { get; set; }
+    public Guid RequestId { get; set; }
+    public Guid[] EventIds { get; set; } = [];
+}
+
+public class GatheringContact
+{
+    public Guid EventId { get; set; }
+    public Guid MemberId { get; set; }
+}
+
 /// <summary>A member's attendance and check-in state for an event.</summary>
 public class Attendance
 {
@@ -344,6 +368,9 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<Saved> Saved => Set<Saved>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<VerifiedProfilePhone> ProfilePhones => Set<VerifiedProfilePhone>();
+    public DbSet<GatheringContact> EventContacts => Set<GatheringContact>();
+    public DbSet<EventPublicationBatch> EventPublicationBatches => Set<EventPublicationBatch>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     public DbSet<AccountActivity> AccountActivity => Set<AccountActivity>();
@@ -397,6 +424,12 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<Report>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReporterId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Report>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubjectId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Gathering>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubmittedBy).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<Gathering>().HasOne<Account>().WithMany().HasForeignKey(x => x.ContactId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<GatheringContact>().HasKey(x => new { x.EventId, x.MemberId });
+        b.Entity<GatheringContact>().HasOne<Gathering>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<GatheringContact>().HasOne<Profile>().WithMany().HasForeignKey(x => x.MemberId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<EventPublicationBatch>().HasKey(x => new { x.SubmittedBy, x.RequestId });
+        b.Entity<EventPublicationBatch>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubmittedBy).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Gathering>().HasIndex(x => new { x.PendingReview, x.Demo });
         b.Entity<Referral>().HasKey(x => x.ReferredId);
         b.Entity<Referral>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReferredId).OnDelete(DeleteBehavior.Cascade);
@@ -406,6 +439,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ReferralInvite>().HasIndex(x => x.ReferredId).IsUnique();
         foreach (var e in b.Model.GetEntityTypes()) foreach (var p in e.GetProperties())
             if (p.ClrType == typeof(string)) p.SetMaxLength(p.Name is "Bio" or "Description" or "Text" ? 4000 : 600);
+        b.Entity<Gathering>().Property(x => x.ContactPhone).HasMaxLength(16);
         b.Entity<VerificationRequest>().Property(r => r.Explanation).HasMaxLength(4000);
         b.Entity<Relationship>().Property(r => r.IntroductionKeyId).HasMaxLength(32);
         b.Entity<ChatMessage>().Property(m => m.BodyKeyId).HasMaxLength(32);
@@ -417,6 +451,10 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<ChatKeyRepair>().Property(x => x.KeyId).HasMaxLength(32);
         b.Entity<Report>().Property(r => r.Details).HasMaxLength(1000).HasDefaultValue("");
         b.Entity<Profile>().Property(x => x.Gender).HasMaxLength(40).HasDefaultValue("");
+        b.Entity<VerifiedProfilePhone>().HasKey(x => x.ProfileId);
+        b.Entity<VerifiedProfilePhone>().HasOne<Profile>().WithOne().HasForeignKey<VerifiedProfilePhone>(x => x.ProfileId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<VerifiedProfilePhone>().Property(x => x.Number).HasMaxLength(16);
+        b.Entity<VerifiedProfilePhone>().HasIndex(x => x.Number).IsUnique();
         b.Entity<Profile>().Property(x => x.Profession).HasMaxLength(80).HasDefaultValue("");
         b.Entity<AccountActivity>().ToTable("AccountActivity").HasKey(x => new { x.AccountId, x.Day });
         b.Entity<AccountActivity>().HasIndex(x => x.Day);

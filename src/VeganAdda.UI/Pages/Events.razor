@@ -1,24 +1,145 @@
 @page "/events"
 @inherits Screen
-<PageTitle>Community gatherings · VeganAdda</PageTitle>
-<div class="discovery-heading"><h1 class="sr-only">Events</h1><EventLocationFilter Country="@country" State="@state" City="@city" Profile="profile" Selected="PlaceSelected" /></div><Feedback Error="@Error" Success="@Success" />
-@if (!Loaded || Busy) { <p class="loading" role="status">Loading events…</p> }
-else if (items.Count == 0) { <Empty Icon="festival" Title="No upcoming events" Text="Check back soon for events in your city." /> }
-else { <div class="events-grid">@foreach (var ev in items) { <EventCardView Event="ev" Save="Save" /> }</div> }
-<Pagination PageNumber="@(page)" Total="@total" Busy="@Busy" PageChanged="SetPage" />
-<a class="button secondary event-suggest" href="/events/suggest"><Icon Name="add" />Suggest an event</a>
+@inject IEventsApi EventsApi
+
+<PageTitle>Events · VeganAdda</PageTitle>
+<header class="events-header">
+    <h1>Events</h1>
+    <div class="event-view-toggle" role="group" aria-label="Event view">
+        <button type="button" class="icon-button" aria-label="Schedule view" title="Schedule view"
+                aria-pressed="@(showSchedule ? "true" : "false")" disabled="@(Busy || !RendererInfo.IsInteractive)"
+                @onclick="() => SwitchView(true)"><Icon Name="calendar_view_day" /></button>
+        <button type="button" class="icon-button" aria-label="Card view" title="Card view"
+                aria-pressed="@(!showSchedule ? "true" : "false")" disabled="@(Busy || !RendererInfo.IsInteractive)"
+                @onclick="() => SwitchView(false)"><Icon Name="grid_view" /></button>
+    </div>
+</header>
+<div class="events-toolbar">
+    <EventLocationFilter Country="@country" State="@state" City="@city" Profile="profile" Selected="PlaceSelected" />
+    <a class="button secondary" href="/events/post"><Icon Name="add" />Post an event</a>
+</div>
+<Feedback Error="@Error" Success="@Success" />
+@if (!Loaded || (Busy && (showSchedule ? schedule is null : cards is null)))
+{
+    <p class="loading" role="status">Loading events…</p>
+}
+else if (showSchedule && schedule is { } agenda)
+{
+    @if (agenda.Items.Count == 0)
+    {
+        <Empty Icon="festival" Title="No upcoming events" Text="Check back soon or try a different location." />
+    }
+    else
+    {
+        <EventSchedule Items="agenda.Items" Busy="@Busy" Attend="Attend" />
+    }
+    <Pagination PageNumber="@(page)" PageSize="@agenda.PageSize" Total="@agenda.Total" Busy="@Busy" PageChanged="SetPage" />
+}
+else if (!showSchedule && cards is { } listing)
+{
+    @if (listing.Items.Count == 0)
+    {
+        <Empty Icon="festival" Title="No upcoming events" Text="Check back soon or try a different location." />
+    }
+    else
+    {
+        <div class="events-grid">
+            @foreach (var ev in listing.Items) { <EventCardView @key="ev.Id" Event="ev" Save="Save" /> }
+        </div>
+    }
+    <Pagination PageNumber="@(page)" Total="@listing.Total" Busy="@Busy" PageChanged="SetPage" />
+}
+
 @code {
     protected override ChangeArea ChangeInterests => ChangeArea.Events;
     [SupplyParameterFromQuery] public string? City { get; set; }
-    string country = "", state = "", city = ""; string? lastCity; ProfileInput? profile;
-    List<EventCard> items = []; int page = 1, total;
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); if (Session?.BasicProfileComplete == true) await Run(async () => profile = await Api.Get<ProfileInput>("profile")); }
-    protected override Task OnParametersSetAsync() { if (City != lastCity) { lastCity = City; country = state = ""; city = City == "All India" ? "" : City ?? ""; page = 1; } return Run(Refresh); }
-    protected override async Task Refresh() { var result = await Api.Get<Page<EventCard>>($"events?country={E(country)}&state={E(state)}&city={E(city)}&page={page}"); items = result.Items; total = result.Total; }
-    Task PlaceSelected(DiscoveryInput place) { country = place.Country; state = place.State; city = place.City; page = 1; return Run(Refresh); }
-    Task SetPage(int value) { page = value; return Run(Refresh); }
-    async Task Save(EventCard ev) { if (!ReadyForAction($"/events/{ev.Id}?action=save")) return; await Act(async () => { await Api.Send<Ok>($"events/{ev.Id}/save"); await Refresh(); Success = "Your saved events are updated."; }); }
+
+    string country = "", state = "", city = "";
+    string? lastCity;
+    ProfileInput? profile;
+    Page<ScheduledEvent>? schedule;
+    Page<EventCard>? cards;
+    bool showSchedule = true;
+    int page = 1;
+    int refreshVersion;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        if (Session?.BasicProfileComplete == true)
+            await Run(async () => profile = await Profiles.GetProfile());
+    }
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (City != lastCity)
+        {
+            lastCity = City;
+            country = state = "";
+            city = City == "All India" ? "" : City ?? "";
+            page = 1;
+        }
+        return Run(Refresh);
+    }
+
+    protected override async Task Refresh()
+    {
+        var version = ++refreshVersion;
+        if (showSchedule)
+        {
+            var result = await EventsApi.GetSchedule(country, state, city, page);
+            if (version == refreshVersion) schedule = result;
+        }
+        else
+        {
+            var result = await Api.Get<Page<EventCard>>($"events?country={E(country)}&state={E(state)}&city={E(city)}&page={page}");
+            if (version == refreshVersion) cards = result;
+        }
+    }
+
+    Task SwitchView(bool scheduleView)
+    {
+        if (showSchedule == scheduleView) return Task.CompletedTask;
+        showSchedule = scheduleView;
+        return SetPage(1);
+    }
+
+    Task PlaceSelected(DiscoveryInput place)
+    {
+        country = place.Country;
+        state = place.State;
+        city = place.City;
+        return SetPage(1);
+    }
+
+    Task SetPage(int value)
+    {
+        page = value;
+        schedule = null;
+        cards = null;
+        return Run(Refresh);
+    }
+
+    async Task Attend(ScheduledEvent ev)
+    {
+        if (!ReadyForAction($"/events/{ev.Id}?action=attend")) return;
+        await Act(async () =>
+        {
+            var attending = !ev.Attending;
+            var visible = attending && (await Profiles.GetProfile()).DefaultAttendeeVisible;
+            await Api.Send<Ok>($"events/{ev.Id}/attendance", new AttendanceInput(attending, visible));
+            await Refresh();
+        });
+    }
+
+    async Task Save(EventCard ev)
+    {
+        if (!ReadyForAction($"/events/{ev.Id}?action=save")) return;
+        await Act(async () =>
+        {
+            await Api.Send<Ok>($"events/{ev.Id}/save");
+            await Refresh();
+            Success = "Your saved events are updated.";
+        });
+    }
 }
-
-
-

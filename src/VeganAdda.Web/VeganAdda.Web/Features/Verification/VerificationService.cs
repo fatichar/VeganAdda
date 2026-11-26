@@ -50,7 +50,7 @@ public sealed class VerificationService(FeatureContext context, LifecycleEvents 
 
     public async Task<List<VerificationCandidate>> SearchReferrers(string search)
     {
-        var me = await User();
+        var me = await User(allowIncomplete: true);
         search = Text(search, 80);
         if (search.Length < 2 || await db.Profiles.AnyAsync(p => p.Id == me.Id && p.TestProfile)) return [];
         var term = search.ToLowerInvariant();

@@ -102,6 +102,8 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         var peers = await db.Relationships.Where(r => r.A == id || r.B == id)
             .Select(r => r.A == id ? r.B : r.A).ToArrayAsync(cancellationToken);
         await db.Saved.Where(s => s.TargetId == id && s.Kind == "person").ExecuteDeleteAsync(cancellationToken);
+        await db.Events.Where(e => e.ContactId == id && e.ContactPhone != null)
+            .ExecuteUpdateAsync(set => set.SetProperty(e => e.ContactPhone, (string?)null), cancellationToken);
         // Cascade removes all conversations and both participants' messages in those conversations.
         if (await target.Where(a => !a.Admin).ExecuteDeleteAsync(cancellationToken) == 0)
         {
@@ -131,7 +133,7 @@ public sealed class ProfilesService(FeatureContext context, ProfileVisibility vi
         await ActiveViewer();
         if (!Viewer.HasValue) throw new ApiException(401, "Sign in to view member profiles.");
         var person = await visibility.Query(true).SingleOrDefaultAsync(p => p.Id == id) ?? throw Missing();
-        return await people.One(person);
+        return await people.Detail(person);
     }
 
     public static string ValidateName(string? value)

@@ -49,6 +49,7 @@ var firebaseApiKey = builder.Configuration["Authentication:Firebase:ApiKey"];
 var firebaseAuthDomain = builder.Configuration["Authentication:Firebase:AuthDomain"];
 var firebaseAppId = builder.Configuration["Authentication:Firebase:AppId"];
 var firebaseConfigured = new[] { firebaseProjectId, firebaseApiKey, firebaseAuthDomain, firebaseAppId }.All(x => !string.IsNullOrWhiteSpace(x));
+var profilePhoneEnabled = firebaseConfigured && builder.Configuration.GetValue<bool>("Authentication:Firebase:ProfilePhoneVerificationEnabled");
 var migrationOnly = args.Contains("--migrate", StringComparer.Ordinal) || args.Contains("--check-migrations", StringComparer.Ordinal);
 if (!dev && !migrationOnly && !firebaseConfigured) throw new InvalidOperationException("Authentication:Firebase project ID, API key, auth domain and app ID are required.");
 if (!dev && !migrationOnly && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS")))
@@ -63,6 +64,8 @@ builder.Services.AddScoped<ServerFeatures>();
 builder.Services.AddScoped<IMessagingApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<ISavedApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IVerificationApi>(s => s.GetRequiredService<ServerFeatures>());
+builder.Services.AddScoped<IEventsApi>(s => s.GetRequiredService<ServerFeatures>());
+builder.Services.AddScoped<IProfilePhoneApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IModerationApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IStatsApi>(s => s.GetRequiredService<ServerFeatures>());
 builder.Services.AddScoped<IProfilesApi>(s => s.GetRequiredService<ServerFeatures>()); builder.Services.AddScoped<IPlatform, ServerPlatform>();
@@ -144,7 +147,10 @@ app.Use(async (ctx, next) =>
     ctx.Items["VeganAdda.CspNonce"] = cspNonce;
     // The free reverse-geocoding endpoint can redirect to BigDataCloud's api-bdc.io host.
     var analyticsOrigin = analytics is null ? "" : " " + analytics.Origin;
-    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com{analyticsOrigin}; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.bigdatacloud.net https://api-bdc.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com ws: wss:{analyticsOrigin}; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    var recaptcha = profilePhoneEnabled ? " https://www.google.com/recaptcha/" : "";
+    var recaptchaScript = profilePhoneEnabled ? " https://www.gstatic.com/recaptcha/" : "";
+    var recaptchaFrame = profilePhoneEnabled ? " https://recaptcha.google.com/recaptcha/" : "";
+    ctx.Response.Headers["Content-Security-Policy"] = $"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-{cspNonce}' https://apis.google.com{analyticsOrigin}{recaptcha}{recaptchaScript}; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.bigdatacloud.net https://api-bdc.io https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://fcm.googleapis.com ws: wss:{analyticsOrigin}{recaptcha}; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com{recaptcha}{recaptchaFrame}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     if (!ctx.Request.Path.StartsWithSegments("/_framework") && !ctx.Request.Path.StartsWithSegments("/_content")) ctx.Response.Headers.CacheControl = "no-cache, no-store";
     try { await next(); }
     catch (ApiException ex) when (!ctx.Response.HasStarted) { ctx.Response.StatusCode = ex.Status; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
@@ -179,7 +185,7 @@ app.MapPost("/auth/firebase", async (HttpContext ctx, CommunityDb db, IAntiforge
     if (!firebaseConfigured) return Results.Json(new { error = "Firebase Authentication is not configured for this environment." }, statusCode: StatusCodes.Status503ServiceUnavailable);
     if (input?.IdToken is not { Length: > 0 and <= 16000 } idToken) throw new ApiException(400, "Google sign-in couldn't be completed. Please try again.");
     var identity = await verifier.Verify(idToken);
-    if (identity is null || identity.Provider is not ("google.com" or "phone")) return Results.Unauthorized();
+    if (identity?.Provider != "google.com") return Results.Unauthorized();
     var subject = $"firebase:{firebaseProjectId}:{identity.Uid}";
     await using var tx = await db.Database.BeginTransactionAsync();
     await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({subject}, 0))");

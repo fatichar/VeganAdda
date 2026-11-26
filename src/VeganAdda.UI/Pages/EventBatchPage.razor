@@ -1,0 +1,351 @@
+@page "/events/post/batch"
+@using Microsoft.JSInterop
+@inherits Screen
+@inject IEventsApi EventsApi
+@inject IJSRuntime JS
+
+<PageTitle>Post multiple events · VeganAdda</PageTitle>
+
+<div class="narrow event-batch">
+    <a class="back-link" href="/events/post"><Icon Name="arrow_back" />Post an event</a>
+    <h1>Post multiple events</h1>
+    @if (Error != "") { <Feedback Error="@Error" /> }
+    @if (Busy && profile == null && Session?.Id != null && Session.BasicProfileComplete)
+    {
+        <p role="status">Loading…</p>
+    }
+    else if (Session?.Id == null)
+    {
+        <Empty Title="Sign in to post events" Text="Verified vegan members can post events.">
+            <a class="button" href="@($"/signin?returnUrl={E(Current)}")">Sign in</a>
+        </Empty>
+    }
+    else if (!Session.BasicProfileComplete)
+    {
+        <Empty Title="Complete your basic profile first" Text="Verified vegan members can post events.">
+            <a class="button" href="@($"/onboarding?returnUrl={E(Current)}")">Create profile</a>
+        </Empty>
+    }
+    else if (profile != null && (profile.IsVegan != true || !profile.VeganVerified))
+    {
+        <Empty Title="Event posting is for verified vegan members" Text="You can check your verification status from your profile settings.">
+            <a class="button secondary" href="/settings/profile">View profile status</a>
+        </Empty>
+    }
+    else if (profile != null)
+    {
+        if (published != null && review != null)
+        {
+            <section class="form-card">
+                <h2 tabindex="-1" @ref="stepHeading">@EventCount(published.EventIds.Length) published</h2>
+                <h3>@review.Title</h3>
+                <ul class="batch-summary">
+                    @for (var i = 0; i < published.EventIds.Length; i++)
+                    {
+                        var date = review.Dates[i];
+                        <li><a href="/events/@published.EventIds[i]">@FormatStart(date.LocalStart) · @date.Venue</a></li>
+                    }
+                </ul>
+                <div class="actions"><a class="button" href="/events">View events</a><a class="button secondary" href="/events/post">Your events</a></div>
+            </section>
+        }
+        else if (review != null)
+        {
+            <section class="form-card">
+                <h2 tabindex="-1" @ref="stepHeading">Review @EventCount(review.Dates.Length)</h2>
+                <p>Each date will publish as a separate event with its own attendance list.</p>
+                <h3>@review.Title</h3>
+                @if (review.Description != "") { <p class="batch-description">@review.Description</p> }
+                @if (review.Cover != "") { <img class="admin-cover" src="@review.Cover" alt="Event cover preview" /> }
+                @if (!string.IsNullOrWhiteSpace(review.Registration)) { <p class="small">Registration link · @review.Registration</p> }
+                <p class="small"><strong>Contact Person(s)</strong> · @Session.Name (you)@if (shared.Contacts is { Length: > 0 }) { <text>, @string.Join(", ", shared.Contacts.Select(c => c.Name))</text> }</p>
+                <ol class="batch-summary">
+                    @foreach (var date in review.Dates)
+                    {
+                        var place = date.Place ?? review.Place;
+                        <li><strong>@FormatStart(date.LocalStart)</strong><br />@date.Venue · @place.City, @place.State, @place.Country</li>
+                    }
+                </ol>
+                @if (publicationUncertain) { <p role="status">The publish result is unclear. Retry this batch to confirm its status.</p> }
+                <div class="actions">
+                    <button type="button" class="secondary" disabled="@(Busy || publicationUncertain)" @onclick="BackToEdit">Back to edit</button>
+                    <button type="button" disabled="@Busy" @onclick="Publish">@(Busy ? "Publishing…" : $"Publish {EventCount(review.Dates.Length)}")<Icon Name="arrow_forward" /></button>
+                </div>
+            </section>
+        }
+        else
+        {
+            <p class="muted">Enter the shared details once, then add dates and venues.</p>
+            <form class="form-card event-submission" @onsubmit="Review" @onsubmit:preventDefault>
+                <fieldset class="interactive-form" disabled="@(!RendererInfo.IsInteractive || Busy)">
+                    <h2 tabindex="-1" @ref="stepHeading">Shared details</h2>
+                    <label for="batch-title">Event name <RequiredMark /></label>
+                    <input id="batch-title" required maxlength="150" @bind="shared.Title" @bind:event="oninput" />
+                    <EventContactPicker Model="shared" Poster="@(new EventContact(Session.Id.Value, Session.Name))" />
+                    <details class="batch-optional" open="@optionalOpen">
+                        <summary>Optional event details</summary>
+                        <label for="batch-description">Description</label>
+                        <textarea id="batch-description" rows="5" maxlength="4000" @bind="shared.Description" @bind:event="oninput"></textarea>
+                        <label for="batch-cover">Cover image</label>
+                        <InputFile id="batch-cover" OnChange="Upload" accept="image/jpeg,image/png,image/webp" />
+                        @if (shared.Cover != "") { <img class="admin-cover" src="@shared.Cover" alt="Event cover preview" /> }
+                        <label for="batch-registration">Official information / registration link</label>
+                        <input id="batch-registration" @bind="shared.Registration" @bind:event="oninput" placeholder="https://" inputmode="url" />
+                    </details>
+                    <LocationPicker Model="defaultPlace" Heading="Default location" ProfileLocation="false" BusyChanged="value => locationBusy = value" />
+                    <h2>Dates and venues</h2>
+                    <p class="small muted">Times are local to each venue. Use the default location or change it for an individual event.</p>
+                    @for (var i = 0; i < rows.Count; i++)
+                    {
+                        var row = rows[i];
+                        var number = i + 1;
+                        var prefix = $"batch-date-{row.Id:N}-";
+                        <fieldset class="batch-date" @key="row">
+                            <legend>Event @number</legend>
+                            <div class="batch-date-fields">
+                                <div>
+                                    <label for="@(prefix + "date")">Date <RequiredMark /></label>
+                                    <input id="@(prefix + "date")" type="date" required @bind="row.Date" />
+                                </div>
+                                <div>
+                                    <label for="@(prefix + "time")">Start time <RequiredMark /></label>
+                                    <input id="@(prefix + "time")" type="time" required @bind="row.Time" />
+                                </div>
+                                <div class="batch-venue">
+                                    <label for="@(prefix + "venue")">Venue <RequiredMark /></label>
+                                    <input id="@(prefix + "venue")" required maxlength="200" @bind="row.Venue" @bind:event="oninput" />
+                                </div>
+                            </div>
+                            <div class="actions">
+                                <button type="button" class="text-button" @onclick="() => TogglePlace(row)" disabled="@row.PlaceBusy">
+                                    @(row.Place == null ? "Change location" : "Use default location")
+                                </button>
+                                <button type="button" class="text-button" aria-label="@($"Remove event {number}")" @onclick="() => Remove(row)" disabled="@(rows.Count == 1)">Remove</button>
+                            </div>
+                            @if (row.Place is { } rowPlace)
+                            {
+                                <LocationPicker IdPrefix="@prefix" Heading="Event location" Model="rowPlace" ProfileLocation="false" BusyChanged="value => row.PlaceBusy = value" />
+                            }
+                        </fieldset>
+                    }
+                    <div class="actions">
+                        <button type="button" class="secondary" disabled="@(rows.Count >= EventBatchInput.MaxDates)" @onclick="AddDate"><Icon Name="add" />Add a date</button>
+                        <button type="button" class="secondary" disabled="@(rows.Count >= EventBatchInput.MaxDates)" aria-expanded="@showWeekly.ToString().ToLowerInvariant()" aria-controls="batch-weekly" @onclick="() => showWeekly = !showWeekly">Generate weekly dates</button>
+                    </div>
+                    @if (showWeekly)
+                    {
+                        <fieldset class="batch-date" id="batch-weekly">
+                            <legend>Generate weekly dates</legend>
+                            <div class="batch-date-fields">
+                                <div><label for="batch-week-first">First date</label><input id="batch-week-first" type="date" @bind="firstWeeklyDate" /></div>
+                                <div><label for="batch-week-count">Weeks</label><input id="batch-week-count" type="number" form="batch-week-generator" min="1" max="@MaxWeeklyDates" @bind="weeks" /></div>
+                                <div><label for="batch-week-time">Start time</label><input id="batch-week-time" type="time" @bind="weeklyTime" /></div>
+                            </div>
+                            <button type="button" class="secondary" @onclick="GenerateWeeklyDates">Add weekly dates</button>
+                        </fieldset>
+                    }
+                    <p class="small muted" role="status">@dateStatus</p>
+                    <div class="actions">
+                        <span class="small muted">@rows.Count of @EventBatchInput.MaxDates dates</span>
+                        <button disabled="@(locationBusy || rows.Any(row => row.PlaceBusy))">Review @EventCount(rows.Count)<Icon Name="arrow_forward" /></button>
+                    </div>
+                    @if (reviewError != "") { <Feedback Error="@reviewError" /> }
+                </fieldset>
+            </form>
+        }
+    }
+</div>
+
+@code {
+    const int MaxWeeklyDates = 16;
+    readonly EventInput shared = new();
+    readonly List<DateRow> rows = [new()];
+    readonly Guid requestId = Guid.NewGuid();
+    ProfileInput defaultPlace = new();
+    ProfileInput? profile;
+    EventBatchInput? review;
+    EventBatchResult? published;
+    ElementReference stepHeading;
+    bool locationBusy, showWeekly, optionalOpen, focusStep, publicationUncertain;
+    DateOnly? firstWeeklyDate;
+    TimeOnly? weeklyTime;
+    int? weeks = 4;
+    string dateStatus = "", reviewError = "";
+
+    protected override ChangeArea ChangeInterests => 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        if (Session?.BasicProfileComplete == true)
+        {
+            await Run(async () =>
+            {
+                profile = await Profiles.GetProfile();
+                defaultPlace = new() { Country = profile.Country, State = profile.State, City = profile.City };
+            });
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (focusStep)
+        {
+            focusStep = false;
+            await stepHeading.FocusAsync();
+        }
+    }
+
+    void AddDate()
+    {
+        if (rows.Count < EventBatchInput.MaxDates) rows.Add(new());
+        dateStatus = "";
+    }
+
+    void Remove(DateRow row)
+    {
+        if (rows.Count > 1) rows.Remove(row);
+        dateStatus = "";
+    }
+
+    void TogglePlace(DateRow row)
+    {
+        row.Place = row.Place == null
+            ? new() { Country = defaultPlace.Country, State = defaultPlace.State, City = defaultPlace.City }
+            : null;
+    }
+
+    void GenerateWeeklyDates()
+    {
+        if (firstWeeklyDate is not { } first || weeklyTime is not { } time || weeks is not (>= 1 and <= MaxWeeklyDates))
+        {
+            dateStatus = $"Enter a first date, a start time and between 1 and {MaxWeeklyDates} weeks.";
+            return;
+        }
+        if (DateOnly.MaxValue.DayNumber - first.DayNumber < (weeks.Value - 1) * 7)
+        {
+            dateStatus = "Choose an earlier first date.";
+            return;
+        }
+
+        var existingDates = rows.Select(row => row.Date).ToHashSet();
+        var additions = Enumerable.Range(0, weeks.Value).Select(i => first.AddDays(i * 7))
+            .Where(date => !existingDates.Contains(date)).ToArray();
+        if (additions.Length == 0)
+        {
+            dateStatus = "These dates are already in your list.";
+            return;
+        }
+
+        var blank = rows.Find(row => row.Date == null && row.Time == null && row.Venue == "" && row.Place == null);
+        if (rows.Count + additions.Length - (blank == null ? 0 : 1) > EventBatchInput.MaxDates)
+        {
+            dateStatus = $"These dates would exceed the {EventBatchInput.MaxDates}-event limit.";
+            return;
+        }
+        if (blank != null)
+        {
+            blank.Date = additions[0];
+            blank.Time = time;
+        }
+        rows.AddRange(additions.Skip(blank == null ? 0 : 1).Select(date => new DateRow { Date = date, Time = time }));
+        showWeekly = false;
+        var skipped = weeks.Value - additions.Length;
+        dateStatus = skipped == 0 ? $"Added {EventCount(additions.Length)}." : $"Added {EventCount(additions.Length)}. Skipped {skipped} existing dates.";
+    }
+
+    void Review()
+    {
+        if (Busy || locationBusy || rows.Any(row => row.PlaceBusy)) return;
+        Error = reviewError = "";
+        if (string.IsNullOrWhiteSpace(shared.Title))
+        {
+            reviewError = "Enter an event name.";
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(shared.Registration) &&
+            (!Uri.TryCreate(shared.Registration.Trim(), UriKind.Absolute, out var registration) || registration.Scheme != Uri.UriSchemeHttps))
+        {
+            optionalOpen = true;
+            reviewError = "Enter an HTTPS link for registration.";
+            return;
+        }
+
+        var place = ToPlace(defaultPlace);
+        if (!CompletePlace(place))
+        {
+            reviewError = "Choose a country, state and city for the default location.";
+            return;
+        }
+
+        var dates = new List<EventBatchDate>(rows.Count);
+        var occurrences = new HashSet<(EventPlace, string, DateTime)>();
+        foreach (var row in rows)
+        {
+            var rowPlace = row.Place == null ? null : ToPlace(row.Place);
+            if (row.Date is not { } date || row.Time is not { } time || string.IsNullOrWhiteSpace(row.Venue) ||
+                (rowPlace != null && !CompletePlace(rowPlace)))
+            {
+                reviewError = $"Event {dates.Count + 1} needs a date, start time, venue and location.";
+                return;
+            }
+            var localStart = date.ToDateTime(time);
+            var venue = row.Venue.Trim();
+            if (!occurrences.Add((rowPlace ?? place, venue, localStart)))
+            {
+                reviewError = $"Event {dates.Count + 1} repeats a venue and start time already in this batch.";
+                return;
+            }
+            dates.Add(new(localStart, venue, rowPlace));
+        }
+
+        review = new(requestId, shared.Title.Trim(), shared.Description.Trim(), shared.Cover, shared.Registration?.Trim(),
+            place, (shared.Contacts ?? []).Select(contact => contact.Id).ToArray(), dates.ToArray());
+        focusStep = true;
+    }
+
+    void BackToEdit()
+    {
+        review = null;
+        Error = "";
+        optionalOpen = shared.Description != "" || shared.Cover != "" || !string.IsNullOrWhiteSpace(shared.Registration);
+        focusStep = true;
+    }
+
+    Task Publish() => Act(async () =>
+    {
+        if (review == null || published != null) return;
+        try
+        {
+            published = await EventsApi.PublishBatch(review);
+            focusStep = true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or ApiException { Status: >= 500 })
+        {
+            publicationUncertain = true;
+        }
+    });
+
+    Task Upload(InputFileChangeEventArgs e) => Run(async () =>
+    {
+        if (e.File.Size > 10 * 1024 * 1024) throw new ApiException(400, "Choose an image smaller than 10 MB.");
+        var (stream, name, contentType) = await ImageResizer.ProcessUpload(JS, e, "event-cover");
+        await using (stream) { shared.Cover = await Platform.Upload(stream, name, contentType); }
+    });
+
+    static EventPlace ToPlace(ProfileInput place) => new(place.Country.Trim(), place.State.Trim(), place.City.Trim());
+    static bool CompletePlace(EventPlace place) => place.Country != "" && place.State != "" && place.City != "";
+    static string EventCount(int count) => count == 1 ? "1 event" : $"{count} events";
+    static string FormatStart(DateTime start) => start.ToString("ddd, d MMM yyyy · h:mm tt");
+
+    sealed class DateRow
+    {
+        public Guid Id { get; } = Guid.NewGuid();
+        public DateOnly? Date { get; set; }
+        public TimeOnly? Time { get; set; }
+        public string Venue { get; set; } = "";
+        public ProfileInput? Place { get; set; }
+        public bool PlaceBusy { get; set; }
+    }
+}

@@ -11,6 +11,21 @@ public record Person(Guid Id, string Name, string City, string Bio, string Photo
     bool Saved, string Relationship, bool Demo = false, string Country = "India", string State = "", bool? IsVegan = null, bool VeganVerified = false, int? Age = null, bool IsBirthday = false, string Profession = "", PhotoFocus? PhotoFocus = null, string Gender = "")
 {
     public bool VeganStatusUnverified => IsVegan == true && !VeganVerified;
+    public string? PhoneNumber { get; init; }
+}
+
+public record ProfilePhone(string? Number, bool Shared, bool CanVerify);
+public record ProfilePhoneAuthorization(string Uid);
+public record ProfilePhoneProof(string GoogleIdToken, string PhoneIdToken);
+public record ProfilePhoneVisibility(bool Shared, string? Number = null);
+
+public interface IProfilePhoneApi
+{
+    Task<ProfilePhone> GetPhone();
+    Task<ProfilePhoneAuthorization> AuthorizePhone(FirebaseLoginInput proof);
+    Task<ProfilePhone> VerifyPhone(ProfilePhoneProof proof);
+    Task<ProfilePhone> SharePhone(ProfilePhoneVisibility visibility);
+    Task<ProfilePhone> RemovePhone();
 }
 public class ProfileInput
 {

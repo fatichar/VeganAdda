@@ -147,3 +147,10 @@ export function reportValidity(form) {
     fieldError = { id: invalid.id, name: invalid.name || '', message: invalid.validationMessage, note: fieldErrorNote(), controls: [] };
     placeFieldError(form);
 }
+
+export function focusField(form, id) {
+    const field = form.querySelector(`#${CSS.escape(id)}`);
+    if (!field) return;
+    field.scrollIntoView({ block: 'center' });
+    field.focus({ preventScroll: true });
+}

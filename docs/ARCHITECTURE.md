@@ -33,7 +33,9 @@ the current inbox uses the paged, typed `IMessagingApi` contract.
 SQL visibility queries. Gender is required on profile creation/save (Man, Woman,
 or Other); legacy profiles retain access until updated. A data migration creates
 one in-app reminder for each missing gender, and saving a valid gender marks it
-read. Social links live under Optional details, separately from verification.
+read. Social links always live under Optional details, for every member. The
+verification panel shows them read-only as proof moderators can check and links
+back to them; saving links never requests verification.
 Signed-in community operations and realtime connections
 require a complete basic profile. Profile setup, account/privacy controls and
 separately authorized administration remain accessible. Anonymous visitors retain
@@ -43,8 +45,10 @@ public browsing; incomplete profiles never appear in discovery.
 independent of referrals. Profile edits preserve it; selecting non-vegan clears it.
 Social links are optional contact details for signed-in members and authorized reviewers;
 anonymous projections omit them. Verification is requested explicitly through the
-Verification feature. A request contains private verification details (social links or other proof)
-and/or up to ten eligible verified vegan referrers. No connection is required. A referrer can confirm the member
+Verification feature. A request can use a saved Instagram or LinkedIn profile, a
+private note, and/or up to ten eligible verified vegan referrers. The panel says a
+social profile used as proof needs to be public and show that the member is vegan.
+No connection is required. A referrer can confirm the member
 is vegan but only a moderator or admin grants verification. The queue contains active
 submitted requests, not all unverified vegans. Request status is private to the owner
 and review team; selected referrers see request/confirmation status on the applicant profile or existing chat cards, never evidence.
@@ -84,7 +88,7 @@ unverified members without a request start at Not requested. Evidence and resolv
 requests remain restricted until applicant account deletion (which cascades them);
 deleting a referrer removes that identity without deleting the applicant's request.
 Verification removal does not hide a complete profile or cascade to referred
-members. Active, verified, non-test vegans may provide referrals, suggest events and
+members. Active, verified, non-test vegans may provide referrals, publish events and
 become moderators. Discovery includes unverified vegans unless filtered out.
 
 Feature consent is always enabled and is no longer editable. Administrators choose
