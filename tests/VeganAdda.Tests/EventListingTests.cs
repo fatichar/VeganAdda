@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using VeganAdda.Web.Features.Events;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Data;
@@ -17,10 +18,6 @@ public class EventListingTests(DatabaseFixture f)
         var expectedStart = DateTimeOffset.UtcNow.AddMinutes(-30);
         var localStart = TimeZoneInfo.ConvertTime(expectedStart, zone).DateTime;
         var input = new EventInput { Title = title, Country = "India", State = "Maharashtra", City = "Pune", Venue = "Community hall", LocalStart = localStart };
-        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(member, "event-submissions", input, "POST"))).Status);
-        input.ContactPhone = "call +918123456789";
-        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(member, "event-submissions", input, "POST"))).Status);
-        input.ContactPhone = "+91 (81234) 56789";
         await f.Call(member, "event-submissions", input, "POST");
         var submission = Assert.Single(Assert.IsType<List<EventInput>>(await f.Call(member, "event-submissions")), e => e.Title == title);
         Assert.Null(submission.End); Assert.Equal("", submission.Organizer); Assert.Equal("", submission.Description);
@@ -31,7 +28,7 @@ public class EventListingTests(DatabaseFixture f)
         Assert.Equal("Published", submission.SubmissionStatus);
         var listed = Assert.IsType<Page<EventCard>>(await f.Call(null, "events?country=India&state=Maharashtra&city=Pune"));
         Assert.Contains(listed.Items, e => e.Id == submission.Id);
-        Assert.Null(listed.Items.Single(e => e.Id == submission.Id).ContactPhone);
+        Assert.Empty(listed.Items.Single(e => e.Id == submission.Id).Contacts);
         submission.LocalStart = localStart;
         submission.Title += " updated";
         await f.Call(member, "event-submissions", submission, "POST");
@@ -39,11 +36,11 @@ public class EventListingTests(DatabaseFixture f)
         await f.Call(member, $"events/{submission.Id}/attendance", new AttendanceInput(true, true), "POST");
         await f.Call(member, $"events/{submission.Id}/check-in", new CheckInInput(true), "POST");
         var detail = Assert.IsType<EventCard>(await f.Call(member, $"events/{submission.Id}"));
-        Assert.Equal("+918123456789", detail.ContactPhone);
         Assert.Equal(member, detail.Creator?.Id);
+        Assert.Empty(detail.Contacts);
         var anonymous = Assert.IsType<EventCard>(await f.Call(null, $"events/{submission.Id}"));
         Assert.Null(anonymous.Creator);
-        Assert.Null(anonymous.ContactPhone);
+        Assert.Empty(anonymous.Contacts);
         Assert.Equal(submission.Start!.Value.AddHours(4), detail.CheckedInUntil);
         submission.LocalEnd = localStart.AddMinutes(-1);
         var error = await Assert.ThrowsAsync<ApiException>(() => f.Call(admin, "admin/events", submission, "POST"));
@@ -51,10 +48,39 @@ public class EventListingTests(DatabaseFixture f)
     }
 
     [Fact]
+    public async Task Migration_preserves_linked_contacts_without_duplicating_the_poster()
+    {
+        var isolated = new DatabaseFixture();
+        await isolated.InitializeAt("VerifiedProfilePhone");
+        try
+        {
+            var poster = await isolated.Member();
+            var contact = await isolated.Member();
+            var legacy = new Gathering { Title = "Legacy outreach", Published = true, SubmittedBy = poster, ContactId = contact };
+            var self = new Gathering { Title = "Self contact", Published = true, SubmittedBy = poster, ContactId = poster };
+            await using (var db = isolated.Db())
+            {
+                db.Events.AddRange(legacy, self);
+                await db.SaveChangesAsync();
+                await db.Database.MigrateAsync();
+            }
+
+            var migrated = Assert.IsType<EventCard>(await isolated.Call(poster, $"events/{legacy.Id}"));
+            Assert.Equal(poster, migrated.Creator?.Id);
+            Assert.Equal(contact, Assert.Single(migrated.Contacts).Id);
+            var selfContact = Assert.IsType<EventCard>(await isolated.Call(poster, $"events/{self.Id}"));
+            Assert.Equal(poster, selfContact.Creator?.Id);
+            Assert.Empty(selfContact.Contacts);
+        }
+        finally { await isolated.DisposeAsync(); }
+    }
+
+    [Fact]
     public async Task Member_contacts_follow_profile_visibility_and_admin_takedowns_cannot_be_undone_by_the_owner()
     {
         var owner = await f.Member();
         var contact = await f.Member(pub: false);
+        var second = await f.Member();
         var attendee = await f.Member();
         var admin = await f.Member(admin: true);
         var contactName = $"Event contact {Guid.NewGuid():N}";
@@ -69,24 +95,41 @@ public class EventListingTests(DatabaseFixture f)
         var input = new EventInput
         {
             Title = "Outreach", Country = "India", State = "Maharashtra", City = "Pune", Venue = "Community hall",
-            LocalStart = DateTime.UtcNow.AddDays(4), Contact = new EventContact(contact, "Client-supplied name"),
-            ContactPhone = "+918123456789"
+            LocalStart = DateTime.UtcNow.AddDays(4),
+            Contacts = [new(Guid.NewGuid(), "Unavailable member")]
         };
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiException>(() => f.Call(owner, "event-submissions", input, "POST"))).Status);
+        input.Contacts = [new(contact, "Client-supplied name"), new(second, ""), new(owner, ""), new(second, "")];
         await f.Call(owner, "event-submissions", input, "POST");
         var posted = Assert.Single(Assert.IsType<List<EventInput>>(await f.Call(owner, "event-submissions")));
-        Assert.Equal(new EventContact(contact, contactName), posted.Contact);
-        Assert.Null(Assert.IsType<EventCard>(await f.Call(null, $"events/{posted.Id}")).Contact);
-        Assert.Equal(posted.Contact, Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}")).Contact);
+        Assert.Equal(owner, posted.Creator?.Id);
+        Assert.Equal(2, posted.Contacts!.Length);
+        Assert.Contains(new EventContact(contact, contactName), posted.Contacts);
+        Assert.Empty(Assert.IsType<EventCard>(await f.Call(null, $"events/{posted.Id}")).Contacts);
+        Assert.Equal(posted.Contacts, Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}")).Contacts);
 
         await f.Call(contact, $"people/{attendee}/block", null, "POST");
         var blocked = Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}"));
-        Assert.Null(blocked.Contact);
-        Assert.Null(blocked.ContactPhone);
+        Assert.Equal(second, Assert.Single(blocked.Contacts).Id);
+
+        await f.Call(contact, $"people/{owner}/block", null, "POST");
+        var editable = Assert.Single(Assert.IsType<List<EventInput>>(await f.Call(owner, "event-submissions")));
+        Assert.Equal(second, Assert.Single(editable.Contacts!).Id);
+        input.Id = posted.Id;
+        input.Contacts = [];
+        await f.Call(owner, "event-submissions", input, "POST");
+        var afterEdit = Assert.IsType<EventCard>(await f.Call(admin, $"events/{posted.Id}"));
+        Assert.Equal(contact, Assert.Single(afterEdit.Contacts).Id);
 
         await f.Call(contact, "account", new DeleteInput("DELETE"), "DELETE");
-        Assert.Null(Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}")).ContactPhone);
+        Assert.Empty(Assert.IsType<EventCard>(await f.Call(admin, $"events/{posted.Id}")).Contacts);
 
-        input.Id = posted.Id;
+        input.Contacts = [new(second, "")];
+        input.Published = true;
+        await f.Call(admin, "admin/events", input, "POST");
+        var updated = Assert.IsType<EventCard>(await f.Call(attendee, $"events/{posted.Id}"));
+        Assert.Equal(owner, updated.Creator?.Id);
+        Assert.Equal(second, Assert.Single(updated.Contacts).Id);
         input.Published = false;
         await f.Call(admin, "admin/events", input, "POST");
         Assert.Equal(409, (await Assert.ThrowsAsync<ApiException>(() => f.Call(owner, "event-submissions", input, "POST"))).Status);

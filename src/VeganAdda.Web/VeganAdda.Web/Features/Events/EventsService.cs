@@ -18,17 +18,11 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
         var gathering = await db.Events.SingleOrDefaultAsync(e => e.Id == id && e.Published) ?? throw Missing();
         var card = await projection.One(gathering);
         if (!Viewer.HasValue) return card;
-        var people = gathering.ContactId.HasValue || gathering.SubmittedBy.HasValue
-            ? await VisibleEventMembers().Where(p => p.Id == gathering.ContactId || p.Id == gathering.SubmittedBy)
-                .Select(p => new EventContact(p.Id, p.Name)).ToDictionaryAsync(p => p.Id)
-            : [];
-        var contact = gathering.ContactId is { } contactId ? people.GetValueOrDefault(contactId) : null;
-        var creator = gathering.SubmittedBy is { } creatorId ? people.GetValueOrDefault(creatorId) : null;
+        var contacts = await ReadEventContacts([id]);
         return card with
         {
-            Contact = contact,
-            ContactPhone = gathering.ContactId == null || contact != null ? gathering.ContactPhone : null,
-            Creator = creator
+            Creator = contacts.SingleOrDefault(c => c.IsCreator)?.Person,
+            Contacts = contacts.Where(c => !c.IsCreator).Select(c => c.Person).ToArray()
         };
     }
     public async Task<Page<EventCard>> ListEvents(string city, int page, bool includePast = false, string country = "", string state = "")
@@ -66,6 +60,32 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
 
     private IQueryable<Profile> VisibleEventMembers() => visibility.Query().Where(p => !p.TestProfile);
 
+    private sealed record VisibleContact(Guid EventId, EventContact Person, bool IsCreator);
+
+    private Task<List<VisibleContact>> ReadEventContacts(Guid[] ids)
+    {
+        var eventMembers = db.EventContacts.Where(c => ids.Contains(c.EventId))
+            .Select(c => new { c.EventId, c.MemberId, IsCreator = false })
+            .Concat(db.Events.Where(e => ids.Contains(e.Id) && e.SubmittedBy.HasValue)
+                .Select(e => new { EventId = e.Id, MemberId = e.SubmittedBy!.Value, IsCreator = true }));
+        return (from member in eventMembers
+                join profile in VisibleEventMembers() on member.MemberId equals profile.Id
+                orderby profile.Name, profile.Id
+                select new VisibleContact(member.EventId, new EventContact(profile.Id, profile.Name), member.IsCreator))
+            .ToListAsync();
+    }
+
+    internal async Task PopulateEventContacts(List<EventInput> events)
+    {
+        if (events.Count == 0) return;
+        var contacts = (await ReadEventContacts(events.Select(e => e.Id).ToArray())).ToLookup(c => c.EventId);
+        foreach (var ev in events)
+        {
+            ev.Creator = contacts[ev.Id].SingleOrDefault(c => c.IsCreator)?.Person;
+            ev.Contacts = contacts[ev.Id].Where(c => !c.IsCreator).Select(c => c.Person).ToArray();
+        }
+    }
+
     public async Task<Page<ProfileEvent>> GetProfileEvents(Guid personId, int page)
     {
         var viewer = await User();
@@ -88,8 +108,8 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
 
     public async Task<List<EventContact>> SearchEventContacts(string search)
     {
-        var me = await User();
-        if (!await EventPosters().AnyAsync(p => p.Id == me.Id)) throw Denied();
+        var me = await User(allowIncomplete: true);
+        if (!me.Admin && !await EventPosters().Where(BasicProfile.Complete).AnyAsync(p => p.Id == me.Id)) throw Denied();
         var term = Text(search, 80).ToLowerInvariant();
         if (term.Length < 2) return [];
         return await VisibleEventMembers().Where(p => p.Name.ToLower().Contains(term))
@@ -142,36 +162,35 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     public async Task<List<EventInput>> MyEventSubmissions()
     {
         var me = await User();
-        var contacts = VisibleEventMembers();
-        return await db.Events.Where(e => e.SubmittedBy == me.Id).OrderByDescending(e => e.SubmittedAt).Select(e => new EventInput
+        var events = await db.Events.Where(e => e.SubmittedBy == me.Id).OrderByDescending(e => e.SubmittedAt).Select(e => new EventInput
         {
             Id = e.Id, Title = e.Title, Cover = e.Cover, Description = e.Description, Start = e.Start, End = e.End, TimeZone = e.TimeZone,
             Country = e.Country, State = e.State, City = e.City, Venue = e.Venue, Organizer = e.Organizer, Registration = e.Registration, Published = e.Published,
-            Contact = contacts.Where(p => p.Id == e.ContactId).Select(p => new EventContact(p.Id, p.Name)).FirstOrDefault(),
-            ContactPhone = e.ContactPhone,
             SubmissionStatus = e.PendingReview ? "Pending review" : e.Published ? "Published" : e.ReviewNote != null ? "Changes requested" : e.ReviewedAt != null ? "Unpublished" : "Draft",
             ReviewNote = e.ReviewNote
         }).ToListAsync();
+        await PopulateEventContacts(events);
+        return events;
     }
     public async Task<Ok> SaveEvent(EventInput input)
     {
         var me = await User(admin: true);
         var title = Text(input.Title, 150, true); var description = Text(input.Description, 4000); var city = Text(input.City, 80, true); var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
-        var venue = Text(input.Venue, 200, true); var organizer = Text(input.Organizer, 150); var registration = Url(input.Registration);
+        var venue = Text(input.Venue, 200, true); var registration = Url(input.Registration);
         var cover = Photo(input.Cover);
         var times = ResolveTimes(input, country, state, city);
+        var contacts = ReadContactIds(input);
         await using var tx = await db.Database.BeginTransactionAsync();
+        await LockContactMembers(me.Id, contacts);
         if (input.Id != Guid.Empty) await EventLock(input.Id);
         var e = input.Id == Guid.Empty ? null : await db.Events.FindAsync(input.Id);
         if (input.Id != Guid.Empty && e == null) throw Missing();
         var created = e == null; var wasPublished = e?.Published == true;
-        var previousPhone = e?.ContactPhone;
-        var phone = EventPhone(input.ContactPhone ?? previousPhone, input.Published && (!wasPublished || previousPhone != null));
         e ??= new() { SubmittedBy = me.Id, SubmittedAt = DateTimeOffset.UtcNow };
         if (db.Entry(e).State == EntityState.Detached) db.Events.Add(e);
-        e.Title = title; e.Description = description; e.Country = country; e.State = state; e.City = city; e.Venue = venue; e.Organizer = organizer; e.Registration = registration;
+        e.Title = title; e.Description = description; e.Country = country; e.State = state; e.City = city; e.Venue = venue; e.Registration = registration;
         e.Cover = cover; e.Start = times.Start; e.End = times.End; e.TimeZone = times.TimeZone; e.Featured = input.Featured; e.Published = input.Published;
-        e.ContactPhone = phone;
+        await UpdateEventContacts(e, contacts);
         if (input.Published) { e.PendingReview = false; e.ReviewNote = null; e.ReviewedBy = me.Id; e.ReviewedAt = DateTimeOffset.UtcNow; }
         else if (wasPublished) { e.ReviewedBy = me.Id; e.ReviewedAt = DateTimeOffset.UtcNow; }
         await db.SaveChangesAsync();
@@ -184,28 +203,23 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     {
         var me = await User();
         var title = Text(input.Title, 150, true); var description = Text(input.Description, 4000); var city = Text(input.City, 80, true); var country = Text(input.Country, 80, true); var state = Text(input.State, 80, true);
-        var venue = Text(input.Venue, 200, true); var organizer = Text(input.Organizer, 150); var registration = Url(input.Registration); var cover = Photo(input.Cover);
+        var venue = Text(input.Venue, 200, true); var registration = Url(input.Registration); var cover = Photo(input.Cover);
         var times = ResolveTimes(input, country, state, city);
-        var contactId = input.Contact?.Id;
-        var phone = EventPhone(input.ContactPhone, required: true);
+        var contacts = ReadContactIds(input);
         await using var tx = await db.Database.BeginTransactionAsync();
-        var members = contactId is { } contactMember && contactMember != me.Id ? new[] { me.Id, contactMember } : [me.Id];
-        foreach (var member in members.Order()) await UserLock(member);
+        await LockContactMembers(me.Id, contacts);
         if (!await EventPosters().AnyAsync(p => p.Id == me.Id)) throw new ApiException(403, "Only a verified vegan member can post an event.");
         if (input.Id != Guid.Empty) await EventLock(input.Id);
         var e = input.Id == Guid.Empty ? null : await db.Events.SingleOrDefaultAsync(x => x.Id == input.Id && x.SubmittedBy == me.Id);
         if (input.Id != Guid.Empty && e == null) throw Missing();
         if (e is { Published: false, ReviewedAt: not null }) throw new ApiException(409, "Contact the community team to republish this event.");
-        if (contactId.HasValue && !await VisibleEventMembers().AnyAsync(p => p.Id == contactId))
-            throw new ApiException(400, "Choose an available VeganAdda member as the contact.");
         var created = e == null;
         var wasPublished = e?.Published == true;
         e ??= new Gathering { SubmittedBy = me.Id, SubmittedAt = DateTimeOffset.UtcNow };
         if (db.Entry(e).State == EntityState.Detached) db.Events.Add(e);
-        e.Title = title; e.Description = description; e.Country = country; e.State = state; e.City = city; e.Venue = venue; e.Organizer = organizer; e.Registration = registration;
+        e.Title = title; e.Description = description; e.Country = country; e.State = state; e.City = city; e.Venue = venue; e.Registration = registration;
         e.Cover = cover; e.Start = times.Start; e.End = times.End; e.TimeZone = times.TimeZone;
-        e.ContactId = contactId;
-        e.ContactPhone = phone;
+        await UpdateEventContacts(e, contacts);
         e.Published = true; e.PendingReview = false; e.ReviewNote = null;
         await db.SaveChangesAsync(); await tx.CommitAsync();
         lifecycle.RecordSubject(created ? LifecycleEvent.EventCreated : LifecycleEvent.EventUpdated, "event", e.Id, me.Id);
@@ -214,16 +228,35 @@ public sealed class EventsService(FeatureContext context, EventProjection projec
     }
     private Task EventLock(Guid id) => PairLock("event:" + id);
 
-    private static string? EventPhone(string? input, bool required)
+    private static Guid[]? ReadContactIds(EventInput input)
     {
-        var phone = input?.Trim() ?? "";
-        if (phone.Length == 0 && !required) return null;
-        var digits = string.Concat(phone.Where(char.IsAsciiDigit));
-        var number = phone.StartsWith('+') ? phone[1..] : phone;
-        if (phone.Length > 32 || digits.Length is < 7 or > 15
-            || number.Any(c => !char.IsAsciiDigit(c) && c is not (' ' or '-' or '(' or ')' or '.')))
-            throw new ApiException(400, "Enter a valid event contact phone number with 7 to 15 digits.");
-        return phone.StartsWith('+') ? "+" + digits : digits;
+        var ids = input.Contacts?.Select(c => c?.Id ?? Guid.Empty).Distinct().ToArray();
+        if (ids?.Contains(Guid.Empty) == true) throw new ApiException(400, "Choose contacts from VeganAdda members.");
+        return ids;
+    }
+
+    private async Task LockContactMembers(Guid editor, Guid[]? contacts)
+    {
+        foreach (var member in (contacts ?? []).Append(editor).Distinct().Order())
+            await UserLock(member);
+    }
+
+    private async Task UpdateEventContacts(Gathering gathering, Guid[]? contacts)
+    {
+        if (contacts == null) return;
+        var desired = contacts.Where(id => id != gathering.SubmittedBy).ToHashSet();
+        var existing = await db.EventContacts.Where(c => c.EventId == gathering.Id).ToListAsync();
+        var ids = desired.Concat(existing.Select(c => c.MemberId)).Distinct().ToArray();
+        if (ids.Length == 0) return;
+        var visible = await VisibleEventMembers().Where(p => ids.Contains(p.Id)).Select(p => p.Id).ToHashSetAsync();
+        var present = existing.Select(c => c.MemberId).ToHashSet();
+        if (desired.Any(id => !visible.Contains(id) && !present.Contains(id)))
+            throw new ApiException(400, "Choose available VeganAdda members as contacts.");
+
+        // An unrelated edit must not remove a contact hidden from the editor.
+        db.EventContacts.RemoveRange(existing.Where(c => visible.Contains(c.MemberId) && !desired.Contains(c.MemberId)));
+        db.EventContacts.AddRange(desired.Where(id => !present.Contains(id))
+            .Select(id => new GatheringContact { EventId = gathering.Id, MemberId = id }));
     }
 
     private sealed record EventTimes(string TimeZone, DateTimeOffset Start, DateTimeOffset? End);

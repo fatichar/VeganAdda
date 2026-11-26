@@ -23,10 +23,7 @@ else if (profile != null) {
             @if (edit.Cover != "") { <img class="admin-cover" src="@edit.Cover" alt="Event cover preview" /> }
             <LocationPicker Model="eventPlace" ProfileLocation="false" BusyChanged="value => locationBusy = value" />
             <label for="event-venue">Venue <RequiredMark /></label><input id="event-venue" required maxlength="200" @bind="edit.Venue" @bind:event="oninput" />
-            <EventContactPicker Model="edit" />
-            <label for="event-contact-phone">Contact phone number <RequiredMark /></label>
-            <input id="event-contact-phone" type="tel" required maxlength="32" @bind="edit.ContactPhone" @bind:event="oninput" aria-describedby="event-contact-phone-help" />
-            <p id="event-contact-phone-help" class="small muted">Use a number you have permission to share with signed-in members. Include the country code where possible.</p>
+            <EventContactPicker Model="edit" Poster="@(new EventContact(Session.Id.Value, Session.Name))" />
             <p class="small muted">Times are local to the event venue.</p>
             <label for="event-start">Start date and time <RequiredMark /></label><input id="event-start" type="datetime-local" required @bind="start" />
             <label for="event-end">End date and time <span class="muted">(optional)</span></label><input id="event-end" type="datetime-local" @bind="end" />

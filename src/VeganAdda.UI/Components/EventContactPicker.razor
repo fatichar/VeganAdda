@@ -1,39 +1,89 @@
 @implements IDisposable
 @inject IEventsApi EventsApi
 
-<div class="event-contact-picker">
-    <label for="event-contact-search">Contact person <span class="muted">(optional)</span></label>
-    <input id="event-contact-search" type="text" form="event-contact-lookup" autocomplete="off" maxlength="150"
-           aria-describedby="event-contact-hint" value="@(Model.Contact?.Name ?? Model.Organizer)" @oninput="Search" />
-    @if (results.Count > 0)
+<section class="event-contact-picker" aria-labelledby="event-contacts-heading">
+    <h3 id="event-contacts-heading">Contact Person(s)</h3>
+    <div class="event-contact-row">
+        <Icon Name="person" />
+        <strong>@(DefaultContact?.Name ?? "Event poster unavailable")@if (DefaultContact?.Id == Poster.Id) { <span class="muted"> (you)</span> }</strong>
+        <span class="badge">Default contact</span>
+    </div>
+    @foreach (var contact in Model.Contacts ?? [])
     {
-        <ul aria-label="Matching members">
-            @foreach (var candidate in results)
-            {
-                <li @key="candidate.Id"><button type="button" class="secondary small-button"
-                    @onclick="() => Choose(candidate)">@candidate.Name</button></li>
-            }
-        </ul>
+        <div class="event-contact-row" @key="contact.Id">
+            <Icon Name="person" />
+            <strong>@contact.Name</strong>
+            <button type="button" class="text-button" aria-label="@($"Remove {contact.Name}")"
+                    @onclick="() => Remove(contact)">Remove</button>
+        </div>
     }
-    @if (searching) { <small role="status">Searching…</small> }
-    else if (error) { <small role="status">Member search is unavailable. You can still use the name you typed.</small> }
-    <p id="event-contact-hint" class="small muted">
-        @(Model.Contact == null ? "Select a matching member to link their profile, or leave the name you typed." : "Linked to a VeganAdda profile. Edit the name to change the contact.")
-    </p>
-</div>
+    <p class="small muted">Phone numbers are available on members’ profiles when they choose to share them.</p>
+
+    @if (editing)
+    {
+        var candidates = results.Where(c => c.Id != DefaultContact?.Id && !(Model.Contacts ?? []).Any(p => p.Id == c.Id)).ToArray();
+        <div id="event-contact-lookup">
+            <label for="event-contact-search">Search VeganAdda members</label>
+            <input id="event-contact-search" type="search" form="event-contact-search-form" autocomplete="off"
+                   maxlength="80" placeholder="Search by name" value="@query" @ref="searchInput" @oninput="Search" />
+            @if (candidates.Length > 0)
+            {
+                <ul aria-label="Matching members">
+                    @foreach (var candidate in candidates)
+                    {
+                        <li @key="candidate.Id"><button type="button" class="secondary small-button"
+                            @onclick="() => Choose(candidate)">@candidate.Name</button></li>
+                    }
+                </ul>
+            }
+            @if (searching) { <small role="status">Searching…</small> }
+            else if (error) { <small class="error-text" role="status">Member search is unavailable. Try again.</small> }
+            else if (query.Trim().Length >= 2 && candidates.Length == 0) { <small role="status">No matching members.</small> }
+            <button type="button" class="text-button" @onclick="Close">Done</button>
+        </div>
+    }
+    else
+    {
+        <button type="button" class="secondary small-button" @onclick="Open"><Icon Name="add" />Add another contact</button>
+    }
+    <span class="sr-only" aria-live="polite">@selectionStatus</span>
+</section>
 
 @code {
     [Parameter, EditorRequired] public EventInput Model { get; set; } = default!;
+    [Parameter, EditorRequired] public EventContact Poster { get; set; } = default!;
 
+    EventContact? DefaultContact => Model.Id == Guid.Empty ? Poster : Model.Creator;
     List<EventContact> results = [];
-    bool searching, error;
+    string query = "", selectionStatus = "";
+    bool editing, searching, error, focusSearch;
+    ElementReference searchInput;
     CancellationTokenSource? searchCancellation;
+
+    void Open()
+    {
+        editing = true;
+        focusSearch = true;
+    }
+
+    void Close()
+    {
+        editing = false;
+        query = "";
+        ResetSearch();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!focusSearch) return;
+        focusSearch = false;
+        await searchInput.FocusAsync();
+    }
 
     async Task Search(ChangeEventArgs args)
     {
-        Model.Contact = null;
-        Model.Organizer = args.Value?.ToString() ?? "";
-        var term = Model.Organizer.Trim();
+        query = args.Value?.ToString() ?? "";
+        var term = query.Trim();
         ResetSearch();
         if (term.Length is < 2 or > 80) return;
 
@@ -59,9 +109,17 @@
 
     void Choose(EventContact contact)
     {
-        Model.Contact = contact;
-        Model.Organizer = "";
+        Model.Contacts = [.. Model.Contacts ?? [], contact];
+        query = "";
+        selectionStatus = $"{contact.Name} added.";
         ResetSearch();
+        focusSearch = true;
+    }
+
+    void Remove(EventContact contact)
+    {
+        Model.Contacts = (Model.Contacts ?? []).Where(c => c.Id != contact.Id).ToArray();
+        selectionStatus = $"{contact.Name} removed.";
     }
 
     void ResetSearch()

@@ -307,6 +307,21 @@ namespace VeganAdda.Web.Data.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("VeganAdda.Web.Data.GatheringContact", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("EventId", "MemberId");
+
+                    b.HasIndex("MemberId");
+
+                    b.ToTable("EventContacts");
+                });
+
             modelBuilder.Entity("VeganAdda.Web.Data.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -841,6 +856,21 @@ namespace VeganAdda.Web.Data.Migrations
                         .WithMany()
                         .HasForeignKey("SubmittedBy")
                         .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("VeganAdda.Web.Data.GatheringContact", b =>
+                {
+                    b.HasOne("VeganAdda.Web.Data.Gathering", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VeganAdda.Web.Data.Profile", null)
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("VeganAdda.Web.Data.Notification", b =>

@@ -16,8 +16,8 @@ public class EventInput
     public string State { get; set; } = "";
     public string Venue { get; set; } = "";
     public string Organizer { get; set; } = "";
-    public EventContact? Contact { get; set; }
-    public string? ContactPhone { get; set; }
+    public EventContact? Creator { get; set; }
+    public EventContact[]? Contacts { get; set; }
     public string? Registration { get; set; }
     public bool Published { get; set; }
     public bool Featured { get; set; }
@@ -29,7 +29,10 @@ public record EventReviewInput(Guid Id, bool Approve, string? Note = null);
 public record EventCard(Guid Id, string Title, string Cover, string Description, DateTimeOffset? Start,
     DateTimeOffset? End, string TimeZone, string City, string Venue, string Organizer, string? Registration,
     bool Featured, bool Saved, bool Attending, bool AttendeeVisible, bool Demo, DateTimeOffset? CheckedInUntil = null,
-    EventContact? Contact = null, string? ContactPhone = null, EventContact? Creator = null);
+    EventContact? Creator = null)
+{
+    public EventContact[] Contacts { get; init; } = [];
+}
 public record EventContact(Guid Id, string Name);
 public record ScheduledEvent(Guid Id, string Title, DateTimeOffset Start, string TimeZone, string City, string Venue,
     bool Attending, bool Demo);

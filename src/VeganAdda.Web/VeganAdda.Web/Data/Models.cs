@@ -207,6 +207,13 @@ public class Gathering
     /// <summary>Account that reviewed the event.</summary>
     public Guid? ReviewedBy { get; set; }
 }
+/// <summary>An additional member contact for an event.</summary>
+public class GatheringContact
+{
+    public Guid EventId { get; set; }
+    public Guid MemberId { get; set; }
+}
+
 /// <summary>A member's attendance and check-in state for an event.</summary>
 public class Attendance
 {
@@ -353,6 +360,7 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<VerifiedProfilePhone> ProfilePhones => Set<VerifiedProfilePhone>();
+    public DbSet<GatheringContact> EventContacts => Set<GatheringContact>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<ReferralInvite> ReferralInvites => Set<ReferralInvite>();
     public DbSet<AccountActivity> AccountActivity => Set<AccountActivity>();
@@ -399,6 +407,9 @@ public class CommunityDb(DbContextOptions<CommunityDb> options) : DbContext(opti
         b.Entity<Report>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubjectId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Gathering>().HasOne<Account>().WithMany().HasForeignKey(x => x.SubmittedBy).OnDelete(DeleteBehavior.SetNull);
         b.Entity<Gathering>().HasOne<Account>().WithMany().HasForeignKey(x => x.ContactId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<GatheringContact>().HasKey(x => new { x.EventId, x.MemberId });
+        b.Entity<GatheringContact>().HasOne<Gathering>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<GatheringContact>().HasOne<Profile>().WithMany().HasForeignKey(x => x.MemberId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Gathering>().HasIndex(x => new { x.PendingReview, x.Demo });
         b.Entity<Referral>().HasKey(x => x.ReferredId);
         b.Entity<Referral>().HasOne<Account>().WithMany().HasForeignKey(x => x.ReferredId).OnDelete(DeleteBehavior.Cascade);
