@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using VeganAdda.Contracts;
 using VeganAdda.Web.Client;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+builder.Services.AddScoped(s => PrerenderedReads.Replaying(s.GetRequiredService<PersistentComponentState>()));
 builder.Services.AddScoped<BrowserApi>();
 builder.Services.AddScoped<BrowserFeatures>();
 builder.Services.AddScoped<IMessagingApi>(s => s.GetRequiredService<BrowserFeatures>());

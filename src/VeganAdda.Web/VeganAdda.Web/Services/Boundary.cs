@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using VeganAdda.Contracts;
+using VeganAdda.Web.Client;
 using VeganAdda.Web.Data;
 using VeganAdda.Web.Features.Shared;
 
@@ -13,9 +14,9 @@ public class HttpActor(IHttpContextAccessor context) : IActor
 {
     public Guid? Id => Guid.TryParse(context.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
 }
-public class ServerApi(IServiceScopeFactory scopes) : ICommunityApi
+public class ServerApi(IServiceScopeFactory scopes, PrerenderedReads prerendered) : ICommunityApi
 {
-    public Task<T> Get<T>(string path) => Execute<T>("GET", path, null);
+    public Task<T> Get<T>(string path) => prerendered.Record(path, () => Execute<T>("GET", path, null));
     public Task<T> Send<T>(string path, object? body = null, string method = "POST") => Execute<T>(method, path, JsonSerializer.SerializeToElement(body, Wire.Json));
     private async Task<T> Execute<T>(string method, string path, JsonElement? body)
     {

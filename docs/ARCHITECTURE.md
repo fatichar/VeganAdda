@@ -21,7 +21,10 @@ Resource ownership and business permissions remain inside operations/policies.
 Profiles, discovery, saved items and inbox screens use typed clients. Browser
 adapters call HTTP; `ServerFeatures` calls the same operations directly in a fresh
 scope for each prerender operation. That prevents concurrent DbContext use and
-avoids a serialization round-trip. Remaining screens retain `ICommunityApi` and
+avoids a serialization round-trip. Prerender reads are recorded by API path in
+`PrerenderedReads` and persisted into the page; the browser replays them for its
+first interactive render (then discards the rest), so hydration does not blank
+screens while refetching. Shared GET paths live in `ReadRoutes`. Remaining screens retain `ICommunityApi` and
 the thin `CommunityService` path adapter for incremental migration. The HTTP host
 does not use the legacy catch-all route. New behavior belongs in feature services.
 The legacy connection/conversation list adapters return at most 20 items;

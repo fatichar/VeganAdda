@@ -15,16 +15,9 @@ public class Screen : ComponentBase, IDisposable
     protected bool Busy;
     protected bool Loaded;
     protected string Current => "/" + Nav.ToBaseRelativePath(Nav.Uri);
-    // Restored from prerendering so the interactive render starts from the same session the server rendered.
-    [PersistentState] public Session? PrerenderedSession { get; set; }
     protected override async Task OnInitializedAsync()
     {
-        if (PrerenderedSession != null) { Session = PrerenderedSession; Loaded = true; }
-        else
-        {
-            await Run(async () => Session = await Api.Get<Session>("session"));
-            PrerenderedSession = Session;
-        }
+        await Run(async () => Session = await Api.Get<Session>("session"));
         Platform.Changed += Changed;
     }
     protected async Task Run(Func<Task> action)

@@ -59,6 +59,7 @@ builder.Services.AddSingleton(s => ChatEncryption.LoadForHost(
     s.GetRequiredService<IConfiguration>(), s.GetRequiredService<IWebHostEnvironment>()));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IActor, HttpActor>(); builder.Services.AddCommunityFeatures();
+builder.Services.AddScoped(s => VeganAdda.Web.Client.PrerenderedReads.Recording(s.GetRequiredService<Microsoft.AspNetCore.Components.PersistentComponentState>()));
 builder.Services.AddScoped<ICommunityApi, ServerApi>();
 builder.Services.AddScoped<ServerFeatures>();
 builder.Services.AddScoped<IMessagingApi>(s => s.GetRequiredService<ServerFeatures>());

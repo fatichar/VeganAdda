@@ -8,9 +8,9 @@ using VeganAdda.Contracts;
 
 namespace VeganAdda.Web.Client;
 
-public class BrowserApi(HttpClient http) : ICommunityApi
+public class BrowserApi(HttpClient http, PrerenderedReads prerendered) : ICommunityApi
 {
-    public async Task<T> Get<T>(string path) => await Result<T>(await http.GetAsync("api/" + path));
+    public Task<T> Get<T>(string path) => prerendered.Replay(path, async () => await Result<T>(await http.GetAsync("api/" + path)));
     public async Task<T> Send<T>(string path, object? body = null, string method = "POST")
     {
         var token = await http.GetFromJsonAsync<Csrf>("api/csrf");

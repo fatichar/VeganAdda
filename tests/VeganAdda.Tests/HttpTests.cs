@@ -244,6 +244,34 @@ public class HttpTests : IDisposable
     }
 
     [Fact]
+    public async Task Prerendered_pages_hand_their_reads_to_webassembly_for_the_same_member_only()
+    {
+        static Dictionary<string, List<string>> Reads(string html)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(html, "<!--Blazor-WebAssembly-Component-State:([^-]*)-->");
+            Assert.True(match.Success, "The page has no persisted WebAssembly state.");
+            var state = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(Convert.FromBase64String(match.Groups[1].Value))!;
+            return state.TryGetValue("veganadda.prerendered-reads", out var reads)
+                ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(Convert.FromBase64String(reads))!
+                : [];
+        }
+
+        var member = await f.Member();
+        using var client = Client(member);
+        var reads = Reads(await client.GetStringAsync("/settings"));
+        // Shell and screen each read the session; the browser replays both in order.
+        Assert.Equal(2, reads["session"].Count);
+        Assert.All(reads["session"], json => Assert.Equal(member, System.Text.Json.JsonSerializer.Deserialize<Session>(json, Wire.Json)!.Id));
+        Assert.Single(reads["profile"]);
+        Assert.Single(reads["blocked"]);
+
+        using var anonymous = Client();
+        var anonymousReads = Reads(await anonymous.GetStringAsync("/settings"));
+        Assert.All(anonymousReads["session"], json => Assert.Null(System.Text.Json.JsonSerializer.Deserialize<Session>(json, Wire.Json)!.Id));
+        Assert.False(anonymousReads.ContainsKey("profile"));
+    }
+
+    [Fact]
     public async Task A_member_can_delete_their_own_account_before_finishing_onboarding()
     {
         var member = await f.Member();

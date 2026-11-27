@@ -9,3 +9,10 @@
     </Found>
 </Router>
 
+
+@code {
+    [Inject] private PrerenderedReads Prerendered { get; set; } = default!;
+
+    // The first interactive render has consumed the prerendered reads it needs; later reads use the network.
+    protected override void OnAfterRender(bool firstRender) { if (firstRender) Prerendered.Seal(); }
+}
