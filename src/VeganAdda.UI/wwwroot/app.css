@@ -17,7 +17,7 @@ h1:focus{outline:none}
 
 @media(max-width:767px){.page:has(.has-conversation){padding-top:16px;padding-bottom:85px}.page:has(.has-conversation)>.eyebrow{display:none}.page:has(.has-conversation)>h1{font-size:1.35rem}.chat-layout.has-conversation{height:calc(100dvh - 245px);min-height:300px;margin-top:15px}}
 @media(max-width:767px){.small-button,.chip{min-height:44px}.person-header>.icon-button{width:44px;min-width:44px;height:44px}.header-actions>.icon-button{width:40px;min-width:40px}}
-.interactive-form{margin:0;padding:0;border:0;min-width:0}.interactive-form>label{margin-top:20px}.interactive-form>small{margin-top:5px}.interactive-form[disabled]{opacity:.65}.hydration-notice{background:var(--green-50);color:var(--muted);font-size:.7rem;text-align:center;padding:5px}.hydration-notice:empty{display:none}
+.interactive-form{margin:0;padding:0;border:0;min-width:0}.interactive-form>label{margin-top:20px}.interactive-form>small{margin-top:5px}.interactive-form[disabled]{opacity:.65}.hydration-notice{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:40;max-width:calc(100% - 24px);background:var(--green-50);color:var(--muted);font-size:.7rem;text-align:center;padding:4px 12px;border:1px solid var(--line);border-top:0;border-radius:0 0 10px 10px}.hydration-notice:empty{display:none}
 input[type=radio]{width:18px;height:18px;min-height:18px;flex:0 0 18px;padding:0;margin:0;accent-color:var(--green)}
 .vegan-status .check-row{gap:10px;min-height:44px;padding:10px 0}
 .vegan-status .check-row>span{flex:1;min-width:0}

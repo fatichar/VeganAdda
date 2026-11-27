@@ -53,3 +53,17 @@
         align-self: start;
     }
 }
+
+/* Dismissal state lives in localStorage, so the card can only appear after startup; ease it in instead of jumping. */
+.feature-announcement {
+    animation: announcement-enter .22s ease-out;
+}
+
+@keyframes announcement-enter {
+    from { opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-width: 0; overflow: hidden; }
+    to { opacity: 1; max-height: 12rem; overflow: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .feature-announcement { animation: none; }
+}
